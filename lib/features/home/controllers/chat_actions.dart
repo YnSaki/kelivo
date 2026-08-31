@@ -115,6 +115,9 @@ class ChatActions {
   /// Called after an assistant reply to maybe update proactive care timing.
   void Function(String conversationId)? onMaybeUpdateProactiveCare;
 
+  /// Reports completion of a registered Multi-AI response slot.
+  void Function(String messageId, bool succeeded)? onMultiAISlotSettled;
+
   /// Called when file processing starts.
   VoidCallback? onFileProcessingStarted;
 
@@ -1117,7 +1120,11 @@ class ChatActions {
       onAssistantMessageFinished?.call(finalized);
     }
     onStreamFinished?.call();
-    onMaybeUpdateProactiveCare?.call(cid);
+    if (ctx.assistantMessage.subgroupId == null) {
+      onMaybeUpdateProactiveCare?.call(cid);
+    } else {
+      onMultiAISlotSettled?.call(mid, true);
+    }
     if (ctx.generateTitleOnFinish) {
       onMaybeGenerateTitle?.call(cid);
     }
@@ -1206,6 +1213,9 @@ class ChatActions {
     if (!cancelled) {
       _setConversationLoading(cid, false);
       onStreamError?.call(errorText);
+    }
+    if (ctx.assistantMessage.subgroupId != null) {
+      onMultiAISlotSettled?.call(mid, false);
     }
     onStreamFinished?.call();
     await _finishIosBackgroundGeneration(success: false, detail: errorText);

@@ -35,6 +35,8 @@ class ConversationRows extends Table {
       text().withDefault(const Constant('{}'))();
   TextColumn get persistentQuickInstructionIdsJson =>
       text().withDefault(const Constant('[]'))();
+  BoolColumn get proactiveCareEnabledOverride => boolean().nullable()();
+  DateTimeColumn get proactiveCareNextMessageAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -688,6 +690,16 @@ class AppDatabase extends _$AppDatabase {
       'persistent_quick_instruction_ids_json',
       "ALTER TABLE conversation_rows ADD COLUMN persistent_quick_instruction_ids_json TEXT NOT NULL DEFAULT '[]'",
     );
+    await _ensureColumn(
+      'conversation_rows',
+      'proactive_care_enabled_override',
+      'ALTER TABLE conversation_rows ADD COLUMN proactive_care_enabled_override INTEGER NULL',
+    );
+    await _ensureColumn(
+      'conversation_rows',
+      'proactive_care_next_message_at',
+      'ALTER TABLE conversation_rows ADD COLUMN proactive_care_next_message_at INTEGER NULL',
+    );
     await customStatement(
       "UPDATE conversation_rows SET conversation_kind = 'normal' "
       "WHERE conversation_kind IS NULL OR conversation_kind = ''",
@@ -721,7 +733,62 @@ class AppDatabase extends _$AppDatabase {
 
     // --- preference_rows (schema v21, issue #123) ---
     await _ensureTable(preferenceRows, 'preference_rows');
+
+    await _transferLegacyProactiveCareSchedules();
   }
+
+  /// Moves each future assistant-level schedule to that assistant's most
+  /// recently updated normal conversation. The legacy value is cleared after
+  /// the transfer update succeeds, including when no eligible target exists.
+  Future<void> _transferLegacyProactiveCareSchedules() async {
+    final nowSeconds =
+        DateTime.now().millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
+    final legacySchedules = await customSelect(
+      'SELECT 1 FROM assistant_rows '
+      'WHERE proactive_care_next_message_at > ? LIMIT 1',
+      variables: [Variable.withInt(nowSeconds)],
+    ).get();
+    if (legacySchedules.isEmpty) return;
+
+    await customStatement(
+      '''
+UPDATE conversation_rows
+SET proactive_care_next_message_at = (
+  SELECT assistant_rows.proactive_care_next_message_at
+  FROM assistant_rows
+  WHERE assistant_rows.id = conversation_rows.assistant_id
+)
+WHERE proactive_care_next_message_at IS NULL
+  AND conversation_kind = 'normal'
+  AND assistant_id IS NOT NULL
+  AND id = (
+    SELECT candidate.id
+    FROM conversation_rows AS candidate
+    WHERE candidate.assistant_id = conversation_rows.assistant_id
+      AND candidate.conversation_kind = 'normal'
+    ORDER BY candidate.updated_at DESC, candidate.id DESC
+    LIMIT 1
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM assistant_rows
+    WHERE assistant_rows.id = conversation_rows.assistant_id
+      AND assistant_rows.proactive_care_next_message_at > ?
+  )
+''',
+      [nowSeconds],
+    );
+    await customStatement(
+      'UPDATE assistant_rows SET proactive_care_next_message_at = NULL '
+      'WHERE proactive_care_next_message_at > ?',
+      [nowSeconds],
+    );
+  }
+
+  /// Replays the idempotent v22 assistant-to-conversation schedule transfer.
+  /// Used after importing backups created by pre-v22 versions.
+  Future<void> transferLegacyProactiveCareSchedules() =>
+      _transferLegacyProactiveCareSchedules();
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1013,12 +1080,34 @@ class AppDatabase extends _$AppDatabase {
         try {
           await migrator.addColumn(
             conversationRows,
+            conversationRows.proactiveCareEnabledOverride,
+          );
+        } catch (error) {
+          debugPrint(
+            'v22 migration could not add conversation proactive-care '
+            'override: $error',
+          );
+        }
+        try {
+          await migrator.addColumn(
+            conversationRows,
             conversationRows.persistentQuickInstructionIdsJson,
           );
         } catch (error) {
           debugPrint(
             'v22 migration could not add persistent quick instructions: '
             '$error',
+          );
+        }
+        try {
+          await migrator.addColumn(
+            conversationRows,
+            conversationRows.proactiveCareNextMessageAt,
+          );
+        } catch (error) {
+          debugPrint(
+            'v22 migration could not add conversation proactive-care '
+            'schedule: $error',
           );
         }
       }

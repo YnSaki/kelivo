@@ -8,6 +8,7 @@ import '../../providers/mcp_provider.dart';
 import '../../providers/quick_instruction_provider.dart';
 import '../../providers/workspace_provider.dart';
 import '../chat/chat_service.dart';
+import '../proactive_care_alarm_service.dart';
 import '../saf/saf_mount_sync_service.dart';
 
 /// Re-reads every provider that mirrors persisted state after a restore /
@@ -34,6 +35,11 @@ Future<void> refreshProvidersAfterRestore(BuildContext context) async {
     await context.read<BusinessPreferences>().reload();
   } catch (e) {
     debugPrint('refreshProvidersAfterRestore: BusinessPreferences: $e');
+  }
+  try {
+    await chatService.repo.transferLegacyProactiveCareSchedules();
+  } catch (e) {
+    debugPrint('refreshProvidersAfterRestore: proactive-care migration: $e');
   }
   try {
     await chatService.reloadCachesFromDb();
@@ -72,6 +78,14 @@ Future<void> refreshProvidersAfterRestore(BuildContext context) async {
     await quickInstructionProvider.loadAll();
   } catch (e) {
     debugPrint('refreshProvidersAfterRestore: QuickInstructionProvider: $e');
+  }
+  try {
+    await ProactiveCareAlarmService.rescheduleAll(
+      conversations: chatService.getAllConversations(),
+      assistants: assistantProvider.assistants,
+    );
+  } catch (e) {
+    debugPrint('refreshProvidersAfterRestore: proactive-care alarms: $e');
   }
   try {
     await groupChatProvider.load();

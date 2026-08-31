@@ -48,6 +48,12 @@ class Conversation {
   /// user turn. Draft conversations retain this list in memory until landed.
   List<String> persistentQuickInstructionIds;
 
+  /// Null inherits the assistant's proactive-care enabled setting.
+  bool? proactiveCareEnabledOverride;
+
+  /// Next proactive-care message scheduled specifically for this conversation.
+  DateTime? proactiveCareNextMessageAt;
+
   static const String kindNormal = 'normal';
   static const String kindGroup = 'group';
 
@@ -71,6 +77,8 @@ class Conversation {
     this.conversationKind = kindNormal,
     Map<String, String>? workspaceDirectoryOverrides,
     List<String>? persistentQuickInstructionIds,
+    this.proactiveCareEnabledOverride,
+    this.proactiveCareNextMessageAt,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now(),
@@ -106,6 +114,10 @@ class Conversation {
     String? conversationKind,
     Map<String, String>? workspaceDirectoryOverrides,
     List<String>? persistentQuickInstructionIds,
+    bool? proactiveCareEnabledOverride,
+    DateTime? proactiveCareNextMessageAt,
+    bool clearProactiveCareEnabledOverride = false,
+    bool clearProactiveCareNextMessageAt = false,
   }) {
     return Conversation(
       id: id ?? this.id,
@@ -128,6 +140,12 @@ class Conversation {
           workspaceDirectoryOverrides ?? this.workspaceDirectoryOverrides,
       persistentQuickInstructionIds:
           persistentQuickInstructionIds ?? this.persistentQuickInstructionIds,
+      proactiveCareEnabledOverride: clearProactiveCareEnabledOverride
+          ? null
+          : (proactiveCareEnabledOverride ?? this.proactiveCareEnabledOverride),
+      proactiveCareNextMessageAt: clearProactiveCareNextMessageAt
+          ? null
+          : (proactiveCareNextMessageAt ?? this.proactiveCareNextMessageAt),
     );
   }
 
@@ -150,6 +168,9 @@ class Conversation {
       'conversationKind': conversationKind,
       'workspaceDirectoryOverrides': workspaceDirectoryOverrides,
       'persistentQuickInstructionIds': persistentQuickInstructionIds,
+      'proactiveCareEnabledOverride': proactiveCareEnabledOverride,
+      'proactiveCareNextMessageAt': proactiveCareNextMessageAt
+          ?.toIso8601String(),
     };
   }
 
@@ -187,6 +208,11 @@ class Conversation {
               ?.map((value) => value.toString())
               .toList(growable: false) ??
           const <String>[],
+      proactiveCareEnabledOverride:
+          json['proactiveCareEnabledOverride'] as bool?,
+      proactiveCareNextMessageAt: json['proactiveCareNextMessageAt'] == null
+          ? null
+          : DateTime.parse(json['proactiveCareNextMessageAt'] as String),
     );
   }
 }
