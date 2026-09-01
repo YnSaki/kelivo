@@ -1252,6 +1252,8 @@ class ChatDatabaseRepository {
           ?.toIso8601String(),
       'proactiveCarePrompt': row.proactiveCarePrompt,
       'proactiveCareDecisionPrompt': row.proactiveCareDecisionPrompt,
+      'proactiveCareDecisionHistoryMessageLimit':
+          row.proactiveCareDecisionHistoryMessageLimit,
       'discoverable': row.discoverable,
       'handoffId': row.handoffId,
       'handoffDescription': row.handoffDescription,
@@ -1310,6 +1312,9 @@ class ChatDatabaseRepository {
       proactiveCareNextMessageAt: Value(a.proactiveCareNextMessageAt),
       proactiveCarePrompt: Value(a.proactiveCarePrompt),
       proactiveCareDecisionPrompt: Value(a.proactiveCareDecisionPrompt),
+      proactiveCareDecisionHistoryMessageLimit: Value(
+        a.proactiveCareDecisionHistoryMessageLimit,
+      ),
       enableTimeInjection: Value(a.enableTimeInjection),
       discoverable: Value(a.discoverable),
       handoffId: Value(a.handoffId),
