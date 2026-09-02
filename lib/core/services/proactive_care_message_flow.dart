@@ -8,6 +8,7 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 import '../../utils/app_directories.dart';
 import '../../utils/assistant_regex.dart';
+import '../utils/multimodal_input_utils.dart';
 import '../models/assistant.dart';
 import '../models/assistant_regex.dart';
 import '../models/auto_retry_options.dart';
@@ -81,6 +82,18 @@ class ProactiveCareModelConfig {
   final ProviderConfig config;
   final String providerKey;
   final String modelId;
+}
+
+/// Visible proactive-care text plus provider metadata that must not be shown
+/// to the user but must be retained for later Gemini history replay.
+class ProactiveCareReply {
+  const ProactiveCareReply({
+    required this.content,
+    this.geminiThoughtSignature,
+  });
+
+  final String content;
+  final String? geminiThoughtSignature;
 }
 
 /// Shared logic for the proactive care message ("Ta的来信") sent when the
@@ -275,6 +288,7 @@ class ProactiveCareMessageFlow {
     required List<ChatMessage> messages,
     required Assistant assistant,
     required bool applySendRegexes,
+    String? Function(String messageId)? geminiThoughtSignatureForMessage,
   }) {
     final collapsed = collapseMessageVersions(
       messages,
@@ -322,7 +336,18 @@ class ProactiveCareMessageFlow {
           message.timestamp,
         );
       }
-      history.add({'role': message.role, 'content': content});
+      final historyMessage = <String, dynamic>{
+        'role': message.role,
+        'content': content,
+      };
+      if (message.role == 'assistant') {
+        final signature = geminiThoughtSignatureForMessage?.call(message.id);
+        if (signature != null && signature.trim().isNotEmpty) {
+          historyMessage[multimodalInternalGeminiThoughtSignatureKey] =
+              signature;
+        }
+      }
+      history.add(historyMessage);
     }
     return history;
   }
@@ -488,8 +513,9 @@ class ProactiveCareMessageFlow {
     }
   }
 
-  /// Sends the silent care request and returns the aggregated reply text.
-  Future<String> requestCareReply({
+  /// Sends the silent care request and separates visible reply text from
+  /// Gemini metadata that must be persisted for later history replay.
+  Future<ProactiveCareReply> requestCareReply({
     required ProviderConfig config,
     required String modelId,
     required Assistant assistant,
@@ -499,6 +525,7 @@ class ProactiveCareMessageFlow {
     PlainTextStreamSender? sendMessageStream,
   }) async {
     // Layer-① collector (ADR-0034): accumulate the silent no-tool stream.
+    String? geminiThoughtSignature;
     final text = await PlainTextCollector(sendMessageStream: sendMessageStream)
         .collect(
           config: config,
@@ -513,13 +540,19 @@ class ProactiveCareMessageFlow {
           topP: assistant.topP,
           maxTokens: assistant.maxTokens,
           stream: false,
+          onGeminiThoughtSignature: (signature) {
+            geminiThoughtSignature = signature;
+          },
         );
-    return applyAssistantRegexes(
-      text,
-      assistant: assistant,
-      scope: AssistantRegexScope.assistant,
-      target: AssistantRegexTransformTarget.persist,
-    ).trim();
+    return ProactiveCareReply(
+      content: applyAssistantRegexes(
+        text,
+        assistant: assistant,
+        scope: AssistantRegexScope.assistant,
+        target: AssistantRegexTransformTarget.persist,
+      ).trim(),
+      geminiThoughtSignature: geminiThoughtSignature,
+    );
   }
 
   static const Duration _decisionTimeout = Duration(seconds: 45);
@@ -1001,6 +1034,10 @@ class ProactiveCareHeadlessChatStore {
         return null;
       }
       final messages = _loadMessages(db, conversationId);
+      final geminiThoughtSignaturesByMessageId = _loadGeminiThoughtSignatures(
+        db,
+        conversationId,
+      );
       db.execute('COMMIT');
       debugPrint(
         '[ProactiveCare] Claimed conversation $conversationId at '
@@ -1013,6 +1050,7 @@ class ProactiveCareHeadlessChatStore {
         ),
         assistant: assistant,
         messages: messages,
+        geminiThoughtSignaturesByMessageId: geminiThoughtSignaturesByMessageId,
         expectedAt: expectedAt,
       );
     } catch (error) {
@@ -1043,12 +1081,14 @@ class ProactiveCareHeadlessChatStore {
 
   /// Appends only when [conversationId] is still a normal conversation owned
   /// by [assistantId] and its effective proactive-care setting remains on.
+  /// Provider metadata is committed in the same transaction as the message.
   static Future<ChatMessage?> appendAssistantReply({
     required String conversationId,
     required String assistantId,
     required String content,
     String? modelId,
     String? providerId,
+    String? geminiThoughtSignature,
   }) async {
     final db = await _ensureDb();
     db.execute('BEGIN IMMEDIATE');
@@ -1115,6 +1155,13 @@ class ProactiveCareHeadlessChatStore {
           messageCount,
         ],
       );
+      if (geminiThoughtSignature?.isNotEmpty == true) {
+        db.execute(
+          'INSERT OR REPLACE INTO gemini_thought_signature_rows '
+          '(message_id, signature) VALUES (?, ?)',
+          [message.id, geminiThoughtSignature],
+        );
+      }
       db.execute('UPDATE conversation_rows SET updated_at = ? WHERE id = ?', [
         _dateTimeToSql(DateTime.now()),
         conversationId,
@@ -1250,6 +1297,22 @@ class ProactiveCareHeadlessChatStore {
       )
       .toList(growable: false);
 
+  static Map<String, String> _loadGeminiThoughtSignatures(
+    sqlite.Database db,
+    String conversationId,
+  ) => <String, String>{
+    for (final row in db.select(
+      'SELECT signatures.message_id, signatures.signature '
+      'FROM gemini_thought_signature_rows AS signatures '
+      'INNER JOIN message_rows AS messages '
+      'ON messages.id = signatures.message_id '
+      'WHERE messages.conversation_id = ?',
+      [conversationId],
+    ))
+      if ((row['signature'] as String).isNotEmpty)
+        row['message_id'] as String: row['signature'] as String,
+  };
+
   /// Loads the same recent-chat references used by the foreground builder.
   static Future<List<Conversation>> loadRecentChatReferencesFor(
     String assistantId, {
@@ -1313,11 +1376,13 @@ class ProactiveCareHeadlessClaim {
     required this.conversation,
     required this.assistant,
     required this.messages,
+    required this.geminiThoughtSignaturesByMessageId,
     required this.expectedAt,
   });
 
   final Conversation conversation;
   final Assistant assistant;
   final List<ChatMessage> messages;
+  final Map<String, String> geminiThoughtSignaturesByMessageId;
   final DateTime expectedAt;
 }

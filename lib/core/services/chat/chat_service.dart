@@ -1214,6 +1214,7 @@ class ChatService extends ChangeNotifier {
     required String content,
     String? modelId,
     String? providerId,
+    String? geminiThoughtSignature,
   }) => _enqueueProactiveCareOperation(
     conversationId,
     () => _appendProactiveCareReplyIfEligible(
@@ -1222,6 +1223,7 @@ class ChatService extends ChangeNotifier {
       content: content,
       modelId: modelId,
       providerId: providerId,
+      geminiThoughtSignature: geminiThoughtSignature,
     ),
   );
 
@@ -1231,6 +1233,7 @@ class ChatService extends ChangeNotifier {
     required String content,
     String? modelId,
     String? providerId,
+    String? geminiThoughtSignature,
   }) async {
     if (!_initialized) await init();
     final message = await _repo.appendProactiveCareReplyIfEligible(
@@ -1239,6 +1242,7 @@ class ChatService extends ChangeNotifier {
       content: content,
       modelId: modelId,
       providerId: providerId,
+      geminiThoughtSignature: geminiThoughtSignature,
     );
     if (message == null) return null;
 

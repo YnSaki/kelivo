@@ -8,11 +8,13 @@ import 'package:Cuplivo/core/models/conversation.dart';
 import 'package:Cuplivo/core/models/world_book.dart';
 import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/core/services/api/chat_api_service.dart';
+import 'package:Cuplivo/core/services/api/providers/gemini_thought_signature.dart';
 import 'package:Cuplivo/core/services/chat/chat_context_transforms.dart';
 import 'package:Cuplivo/core/services/proactive_care_decision_tools.dart';
 import 'package:Cuplivo/core/services/proactive_care_message_flow.dart';
 import 'package:Cuplivo/core/services/proactive_care_service.dart';
 import 'package:Cuplivo/core/services/world_book_store.dart';
+import 'package:Cuplivo/core/utils/multimodal_input_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:Cuplivo/core/database/business_preferences.dart';
 
@@ -488,7 +490,74 @@ void main() {
                 ),
           );
 
-      expect(reply, 'saved send visual user-scope disabled');
+      expect(reply.content, 'saved send visual user-scope disabled');
+      expect(reply.geminiThoughtSignature, isNull);
+    });
+
+    test('care reply separates Gemini signature before persist regex', () async {
+      const signatureComment =
+          '<!-- gemini_thought_signatures:{"text":{"k":"thoughtSignature","v":"opaque"}} -->';
+      final signaturePayload = encodeGeminiThoughtSignature(
+        textKey: 'thoughtSignature',
+        textValue: 'opaque',
+      );
+      final assistant = Assistant(
+        id: 'assistant-1',
+        name: 'Assistant',
+        regexRules: const [
+          AssistantRegex(
+            id: 'persist',
+            name: 'Persist',
+            pattern: 'visible',
+            replacement: 'saved',
+            scopes: [AssistantRegexScope.assistant],
+          ),
+        ],
+      );
+
+      final reply = await ProactiveCareMessageFlow(preferences: businessPrefs)
+          .requestCareReply(
+            config: ProviderConfig.defaultsFor('TestProvider'),
+            modelId: 'gemini-3-pro',
+            assistant: assistant,
+            apiMessages: const [
+              {'role': 'user', 'content': 'care'},
+            ],
+            sendMessageStream:
+                ({
+                  required config,
+                  required modelId,
+                  required messages,
+                  userMediaPaths,
+                  thinkingBudget,
+                  temperature,
+                  topP,
+                  maxTokens,
+                  tools,
+                  onToolCall,
+                  extraHeaders,
+                  extraBody,
+                  stream = true,
+                  requestId,
+                  conversationId,
+                  allowImagesApiRouting = true,
+                  ocrActive = false,
+                }) => Stream<ChatStreamChunk>.fromIterable([
+                  ChatStreamChunk(
+                    content: 'visible reply',
+                    isDone: false,
+                    totalTokens: 0,
+                  ),
+                  ChatStreamChunk(
+                    content: signatureComment,
+                    isDone: true,
+                    totalTokens: 1,
+                  ),
+                ]),
+          );
+
+      expect(reply.content, 'saved reply');
+      expect(reply.geminiThoughtSignature, signaturePayload);
     });
 
     test(
@@ -544,9 +613,41 @@ void main() {
                   ),
             );
 
-        expect(reply, isEmpty);
+        expect(reply.content, isEmpty);
+        expect(reply.geminiThoughtSignature, isNull);
       },
     );
+
+    test('history reattaches a persisted Gemini signature', () {
+      final signature = encodeGeminiThoughtSignature(
+        textKey: 'thoughtSignature',
+        textValue: 'opaque',
+      );
+      final history = ProactiveCareMessageFlow(preferences: businessPrefs)
+          .buildHistory(
+            conversation: Conversation(id: 'conversation-1', title: 'Chat'),
+            messages: [
+              message(
+                id: 'assistant-message',
+                role: 'assistant',
+                content: 'visible reply',
+                timestamp: DateTime(2026, 8, 18),
+              ),
+            ],
+            assistant: Assistant(id: 'assistant-1', name: 'Assistant'),
+            applySendRegexes: true,
+            geminiThoughtSignatureForMessage: (messageId) =>
+                messageId == 'assistant-message' ? signature : null,
+          );
+
+      expect(history, [
+        {
+          'role': 'assistant',
+          'content': 'visible reply',
+          multimodalInternalGeminiThoughtSignatureKey: signature,
+        },
+      ]);
+    });
 
     test('decision merges unlimited history into one user message', () async {
       List<Map<String, dynamic>>? capturedMessages;
