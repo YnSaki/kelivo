@@ -85,6 +85,13 @@ void main() {
       tester.element(find.byType(BackgroundKeepAliveGuidePage)),
     )!;
     expect(find.text(l10n.keepAliveGuidePageTitle), findsOneWidget);
+    final introFinder = find.text(l10n.keepAliveGuideIntro);
+    expect(introFinder, findsOneWidget);
+    // The intro must direct the user to exempt Cuplivo from battery
+    // optimization, not to enable (allow) it (review follow-up).
+    final introText = tester.widget<Text>(introFinder).data!;
+    expect(introText, contains('ignore battery optimization'));
+    expect(introText, isNot(contains('allow battery optimization')));
     expect(find.text(l10n.keepAliveGuideBatteryTitle), findsOneWidget);
     expect(find.text(l10n.keepAliveGuideNotificationTitle), findsOneWidget);
     expect(find.text(l10n.keepAliveGuideVendorTitle), findsOneWidget);

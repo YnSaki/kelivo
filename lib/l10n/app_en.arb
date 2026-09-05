@@ -640,7 +640,7 @@
   "androidBackgroundNotificationTitle": "Cuplivo is running",
   "androidBackgroundNotificationText": "Keeping chat generation alive in background",
   "keepAliveGuidePageTitle": "Background Keep-Alive Guide",
-  "keepAliveGuideIntro": "To keep chat generation running in the background, enable the background chat mode, allow battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer's power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.",
+  "keepAliveGuideIntro": "To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer's power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.",
   "keepAliveGuideBatteryTitle": "Battery Optimization",
   "keepAliveGuideBatteryStep": "If the status is not \"Unrestricted\", tap the row to allow Cuplivo to ignore battery optimization so background generation can finish.",
   "keepAliveGuideStatusIgnored": "Unrestricted",

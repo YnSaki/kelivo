@@ -1613,7 +1613,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get keepAliveGuideIntro =>
-      'To keep chat generation running in the background, enable the background chat mode, allow battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.';
+      'To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.';
 
   @override
   String get keepAliveGuideBatteryTitle => 'Battery Optimization';

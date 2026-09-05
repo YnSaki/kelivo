@@ -403,7 +403,7 @@
   "androidBackgroundNotificationTitle": "Cuplivo 正在运行",
   "androidBackgroundNotificationText": "后台保持聊天生成",
   "keepAliveGuidePageTitle": "后台保活引导",
-  "keepAliveGuideIntro": "如需在后台继续聊天生成：开启后台聊天模式、允许电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。",
+  "keepAliveGuideIntro": "如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。",
   "keepAliveGuideBatteryTitle": "电池优化",
   "keepAliveGuideBatteryStep": "若状态不是「无限制」，点击此行允许 Cuplivo 忽略电池优化，后台生成才能顺利完成。",
   "keepAliveGuideStatusIgnored": "无限制",

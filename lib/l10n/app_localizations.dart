@@ -2947,7 +2947,7 @@ abstract class AppLocalizations {
   /// No description provided for @keepAliveGuideIntro.
   ///
   /// In en, this message translates to:
-  /// **'To keep chat generation running in the background, enable the background chat mode, allow battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.'**
+  /// **'To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.'**
   String get keepAliveGuideIntro;
 
   /// No description provided for @keepAliveGuideBatteryTitle.

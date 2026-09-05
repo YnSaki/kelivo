@@ -1549,7 +1549,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get keepAliveGuideIntro =>
-      '如需在后台继续聊天生成：开启后台聊天模式、允许电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
 
   @override
   String get keepAliveGuideBatteryTitle => '电池优化';
@@ -10970,7 +10970,7 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get keepAliveGuideIntro =>
-      '如需在后台继续聊天生成：开启后台聊天模式、允许电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
 
   @override
   String get keepAliveGuideBatteryTitle => '电池优化';
@@ -20391,7 +20391,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get keepAliveGuideIntro =>
-      '如需在後台繼續聊天生成：開啟後台聊天模式、允許電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。';
+      '如需在後台繼續聊天生成：開啟後台聊天模式、允許 Cuplivo 忽略電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。';
 
   @override
   String get keepAliveGuideBatteryTitle => '電池最佳化';

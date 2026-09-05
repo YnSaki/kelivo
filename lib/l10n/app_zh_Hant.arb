@@ -424,7 +424,7 @@
   "androidBackgroundNotificationTitle": "Cuplivo 正在運行",
   "androidBackgroundNotificationText": "後台保持聊天生成",
   "keepAliveGuidePageTitle": "後台保活引導",
-  "keepAliveGuideIntro": "如需在後台繼續聊天生成：開啟後台聊天模式、允許電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。",
+  "keepAliveGuideIntro": "如需在後台繼續聊天生成：開啟後台聊天模式、允許 Cuplivo 忽略電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。",
   "keepAliveGuideBatteryTitle": "電池最佳化",
   "keepAliveGuideBatteryStep": "若狀態不是「無限制」，點擊此行允許 Cuplivo 忽略電池最佳化，後台生成才能順利完成。",
   "keepAliveGuideStatusIgnored": "無限制",
