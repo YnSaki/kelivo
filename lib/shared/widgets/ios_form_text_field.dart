@@ -155,18 +155,26 @@ class IosFormTextField extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       );
-      final fieldWidget = Container(
+      // heightFactor 1.0 forces the Align to shrink-wrap its child instead of
+      // expanding to fill bounded loose height (e.g. inside AlertDialog
+      // content), which used to stretch the whole dialog to full screen height.
+      final fieldWidget = ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 40),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: enabled ? fieldBg : fieldBg.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(10),
+        child: Align(
+          alignment: Alignment.center,
+          heightFactor: 1.0,
+          child: Container(
+            decoration: BoxDecoration(
+              color: enabled ? fieldBg : fieldBg.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: fieldHorizontalPadding,
+              vertical: 9,
+            ),
+            child: field,
+          ),
         ),
-        padding: EdgeInsets.symmetric(
-          horizontal: fieldHorizontalPadding,
-          vertical: 9,
-        ),
-        child: field,
       );
       return Padding(
         padding: resolvedOuterPadding,
@@ -189,6 +197,9 @@ class IosFormTextField extends StatelessWidget {
     return Padding(
       padding: resolvedOuterPadding,
       child: Column(
+        // Must shrink to content: a max-height Column would otherwise fill any
+        // bounded loose height (e.g. inside AlertDialog content).
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -200,20 +211,28 @@ class IosFormTextField extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Container(
+          // Same bounded-height expansion guard as the inline branch.
+          ConstrainedBox(
             constraints: maxLines == 1
                 ? const BoxConstraints(minHeight: 40)
-                : null,
-            alignment: maxLines == 1 ? Alignment.centerLeft : Alignment.topLeft,
-            decoration: BoxDecoration(
-              color: enabled ? fieldBg : fieldBg.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(12),
+                : const BoxConstraints(),
+            child: Align(
+              alignment: maxLines == 1
+                  ? Alignment.centerLeft
+                  : Alignment.topLeft,
+              heightFactor: 1.0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: enabled ? fieldBg : fieldBg.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: maxLines > 1 ? 12 : 9,
+                ),
+                child: field,
+              ),
             ),
-            padding: EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: maxLines > 1 ? 12 : 9,
-            ),
-            child: field,
           ),
         ],
       ),
