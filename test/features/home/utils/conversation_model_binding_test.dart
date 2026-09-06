@@ -211,6 +211,38 @@ void main() {
         expect(r.modelId, 'deepseek-v4-flash');
       },
     );
+
+    test('partial assistant binding falls back to the global pair', () async {
+      final settings = SettingsProvider(preferences: businessPrefs);
+      await _waitUntil(() => settings.currentModelId != null);
+      final providerOnly = Assistant(
+        id: 'a1',
+        name: 'Alpha',
+        chatModelProvider: 'Gemini',
+      );
+      final providerOnlyResult = resolveChatModel(
+        settings,
+        providerOnly,
+        Conversation(title: 'C'),
+        conversationModelIndependent: true,
+      );
+      expect(providerOnlyResult.providerKey, 'DeepSeek');
+      expect(providerOnlyResult.modelId, 'deepseek-v4-flash');
+
+      final modelOnly = Assistant(
+        id: 'a2',
+        name: 'Beta',
+        chatModelId: 'gemini-3',
+      );
+      final modelOnlyResult = resolveChatModel(
+        settings,
+        modelOnly,
+        Conversation(title: 'C'),
+        conversationModelIndependent: true,
+      );
+      expect(modelOnlyResult.providerKey, 'DeepSeek');
+      expect(modelOnlyResult.modelId, 'deepseek-v4-flash');
+    });
   });
 
   group('Conversation model binding atomicity and round-trip', () {

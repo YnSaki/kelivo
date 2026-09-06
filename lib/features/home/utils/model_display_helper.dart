@@ -100,6 +100,10 @@ ModelDisplayInfo getModelDisplayInfo(
 /// - toggle OFF: `assistant.chatModel* → global default` (a stored binding is
 ///   ignored but preserved, so the conversation follows the assistant again;
 ///   re-enabling the toggle restores the binding).
+///
+/// Both levels are atomic pairs: an assistant (or conversation) that carries
+/// only one of the two fields falls back to the whole next level — a partial
+/// `Gemini`/null assistant can never hybridize into `Gemini + global model`.
 ({String? providerKey, String? modelId}) resolveChatModel(
   SettingsProvider settings,
   Assistant? assistant,
@@ -115,9 +119,17 @@ ModelDisplayInfo getModelDisplayInfo(
       modelId: conversation.chatModelId,
     );
   }
+  if (assistant != null &&
+      assistant.chatModelProvider != null &&
+      assistant.chatModelId != null) {
+    return (
+      providerKey: assistant.chatModelProvider,
+      modelId: assistant.chatModelId,
+    );
+  }
   return (
-    providerKey: assistant?.chatModelProvider ?? settings.currentModelProvider,
-    modelId: assistant?.chatModelId ?? settings.currentModelId,
+    providerKey: settings.currentModelProvider,
+    modelId: settings.currentModelId,
   );
 }
 

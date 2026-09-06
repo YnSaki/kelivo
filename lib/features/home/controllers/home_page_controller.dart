@@ -61,6 +61,7 @@ import '../services/translation_service.dart';
 import '../services/file_upload_service.dart';
 import '../widgets/chat_input_bar.dart';
 import '../utils/conversation_model_binding.dart';
+import '../utils/model_display_helper.dart';
 import '../widgets/quick_instruction_editing_controller.dart';
 import '../../model/widgets/model_select_sheet.dart';
 
@@ -733,7 +734,10 @@ class HomePageController extends ChangeNotifier {
     final assistantProvider = _context.read<AssistantProvider>();
     final ctx = _context;
     // Conversation model independence: resolve the effective chat model
-    // (assistant binding ?? global) that new conversations snapshot.
+    // (assistant binding ?? global) that new conversations snapshot. The
+    // assistant binding goes through the same atomic chain as every other
+    // read: a partial assistant pair falls back to the global pair instead
+    // of hybridizing provider from one layer and model from another.
     _chatService.setCreationModelSnapshotResolver((assistantId) async {
       if (!ctx.mounted) return null;
       final settings = ctx.read<SettingsProvider>();
@@ -741,11 +745,16 @@ class HomePageController extends ChangeNotifier {
       final assistant = assistantId == null
           ? null
           : ctx.read<AssistantProvider>().getById(assistantId);
-      final providerKey =
-          assistant?.chatModelProvider ?? settings.currentModelProvider;
-      final modelId = assistant?.chatModelId ?? settings.currentModelId;
-      if (providerKey == null || modelId == null) return null;
-      return (providerKey: providerKey, modelId: modelId);
+      final resolved = resolveChatModel(
+        settings,
+        assistant,
+        null,
+        conversationModelIndependent: true,
+      );
+      if (resolved.providerKey == null || resolved.modelId == null) {
+        return null;
+      }
+      return (providerKey: resolved.providerKey, modelId: resolved.modelId);
     });
     await _chatService.init();
     if (!ctx.mounted) return;

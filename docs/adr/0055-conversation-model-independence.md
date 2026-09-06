@@ -24,7 +24,10 @@ two new nullable columns on `conversation_rows`
   to unbound at every read boundary (`Conversation.fromJson`, both
   `ChatDatabaseRepository` conversation row mappers, and
   `conversationModelBindingActive`), so `Gemini + claude-4` hybrids can never
-  resolve.
+  resolve. The **assistant** level is atomic at the resolution boundary too:
+  `resolveChatModel` and the creation-snapshot resolver accept an assistant
+  pair only when both fields exist, otherwise the whole pair falls back to
+  the global default (a legacy partial assistant must never hybridize).
 - **Snapshot at creation**: with the toggle ON, new `kindNormal` conversations
   (via `ChatService.createConversation` and `createDraftConversation` —
   handoff, proactive care, and forks all funnel through them) snapshot the
