@@ -390,14 +390,15 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
   final chatService = _FakeChatService();
   SharedPreferences.setMockInitialValues(const <String, Object>{});
   late final SettingsProvider settings;
+  late final QuickInstructionProvider quickInstructions;
   await tester.runAsync(() async {
     settings = SettingsProvider(preferences: preferences);
     await settings.loaded;
+    quickInstructions = QuickInstructionProvider(preferences: preferences);
+    await quickInstructions.initialize();
   });
 
   final assistants = AssistantProvider(preferences: preferences);
-  final quickInstructions = QuickInstructionProvider(preferences: preferences);
-  await quickInstructions.initialize();
 
   late BuildContext providerContext;
   final mcp = McpProvider(
