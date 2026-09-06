@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:Cuplivo/core/database/business_preferences.dart';
 import 'package:Cuplivo/core/models/chat_input_data.dart';
@@ -21,22 +21,6 @@ import 'package:Cuplivo/features/home/controllers/home_page_controller.dart';
 import 'package:Cuplivo/features/home/widgets/chat_input_bar.dart';
 import 'package:Cuplivo/features/home/widgets/quick_instruction_editing_controller.dart';
 import 'package:Cuplivo/l10n/app_localizations.dart';
-
-const _stageTimeout = Duration(seconds: 30);
-
-Future<T> _awaitStage<T>(String name, Future<T> future) async {
-  debugPrint('[FirstSendTest] $name started');
-  try {
-    final result = await future.timeout(_stageTimeout);
-    debugPrint('[FirstSendTest] $name completed');
-    return result;
-  } on TimeoutException {
-    throw TimeoutException(
-      'First-send regression stage timed out: $name',
-      _stageTimeout,
-    );
-  }
-}
 
 class _FakeChatService extends ChatService {
   Conversation? _conversation;
@@ -369,15 +353,8 @@ class _Harness {
     if (conversationId != null) {
       engine.cancelConversation(conversationId);
     }
-    await _awaitStage('dispose event queue', pumpEventQueue());
-    await _awaitStage(
-      'dispose settle frame',
-      tester.pump(const Duration(milliseconds: 150)),
-    );
-    await _awaitStage(
-      'dispose widget tree',
-      tester.pumpWidget(const SizedBox.shrink()),
-    );
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pumpWidget(const SizedBox.shrink());
     engine.dispose();
     mcp.dispose();
     quickInstructions.dispose();
@@ -388,39 +365,38 @@ class _Harness {
 }
 
 Future<_Harness> _pumpHarness(WidgetTester tester) async {
-  final preferences = BusinessPreferences.memoryForTests();
+  final providerConfig = ProviderConfig(
+    id: 'TestProvider',
+    enabled: true,
+    name: 'Test Provider',
+    apiKey: 'test-key',
+    baseUrl: 'https://example.com/v1',
+    providerType: ProviderKind.openai,
+    models: const <String>['plain-model'],
+    modelOverrides: const <String, dynamic>{
+      'plain-model': <String, dynamic>{'abilities': <String>[]},
+    },
+  );
+  final preferences = BusinessPreferences.memoryForTests(<String, Object>{
+    'provider_configs_v1': jsonEncode(<String, dynamic>{
+      'TestProvider': providerConfig.toJson(),
+    }),
+    'selected_model_v1': 'TestProvider::plain-model',
+    'default_model_seeded_v1': true,
+    'migrations_version_v1': 4,
+    'instruction_injections_v1': '[]',
+  });
   final chatService = _FakeChatService();
-  final settings = SettingsProvider(preferences: preferences);
-  await _awaitStage('settings load', settings.loaded);
-  await _awaitStage(
-    'provider config',
-    settings.setProviderConfig(
-      'TestProvider',
-      ProviderConfig(
-        id: 'TestProvider',
-        enabled: true,
-        name: 'Test Provider',
-        apiKey: 'test-key',
-        baseUrl: 'https://example.com/v1',
-        providerType: ProviderKind.openai,
-        models: const <String>['plain-model'],
-        modelOverrides: const <String, dynamic>{
-          'plain-model': <String, dynamic>{'abilities': <String>[]},
-        },
-      ),
-    ),
-  );
-  await _awaitStage(
-    'current model',
-    settings.setCurrentModel('TestProvider', 'plain-model'),
-  );
+  SharedPreferences.setMockInitialValues(const <String, Object>{});
+  late final SettingsProvider settings;
+  await tester.runAsync(() async {
+    settings = SettingsProvider(preferences: preferences);
+    await settings.loaded;
+  });
 
   final assistants = AssistantProvider(preferences: preferences);
   final quickInstructions = QuickInstructionProvider(preferences: preferences);
-  await _awaitStage(
-    'quick instruction initialization',
-    quickInstructions.initialize(),
-  );
+  await quickInstructions.initialize();
 
   late BuildContext providerContext;
   final mcp = McpProvider(
@@ -455,35 +431,32 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
   );
 
   HomePageController? controller;
-  await _awaitStage(
-    'widget harness pump',
-    tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: MultiProvider(
-          providers: [
-            Provider<BusinessPreferences>.value(value: preferences),
-            ChangeNotifierProvider<ChatService>.value(value: chatService),
-            ChangeNotifierProvider<SettingsProvider>.value(value: settings),
-            ChangeNotifierProvider<AssistantProvider>.value(value: assistants),
-            ChangeNotifierProvider<QuickInstructionProvider>.value(
-              value: quickInstructions,
-            ),
-            ChangeNotifierProvider<McpProvider>.value(value: mcp),
-            ChangeNotifierProvider<GenerationEngine>.value(value: engine),
-          ],
-          child: Builder(
-            builder: (context) {
-              providerContext = context;
-              return _ControllerHost(onReady: (value) => controller = value);
-            },
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: MultiProvider(
+        providers: [
+          Provider<BusinessPreferences>.value(value: preferences),
+          ChangeNotifierProvider<ChatService>.value(value: chatService),
+          ChangeNotifierProvider<SettingsProvider>.value(value: settings),
+          ChangeNotifierProvider<AssistantProvider>.value(value: assistants),
+          ChangeNotifierProvider<QuickInstructionProvider>.value(
+            value: quickInstructions,
           ),
+          ChangeNotifierProvider<McpProvider>.value(value: mcp),
+          ChangeNotifierProvider<GenerationEngine>.value(value: engine),
+        ],
+        child: Builder(
+          builder: (context) {
+            providerContext = context;
+            return _ControllerHost(onReady: (value) => controller = value);
+          },
         ),
       ),
     ),
   );
-  await _awaitStage('post-harness frame', tester.pump());
+  await tester.pump();
 
   return _Harness(
     controller: controller!,
@@ -503,15 +476,12 @@ void main() {
     'first plain-text send creates and uses a conversation',
     (tester) async {
       final harness = await _pumpHarness(tester);
-      addTearDown(
-        () => _awaitStage('plain-text teardown', harness.dispose(tester)),
-      );
+      addTearDown(() => harness.dispose(tester));
 
       expect(harness.controller.currentConversation, isNull);
 
-      final result = await _awaitStage(
-        'plain-text send',
-        harness.controller.sendMessage(const ChatInputData(text: 'hello')),
+      final result = await harness.controller.sendMessage(
+        const ChatInputData(text: 'hello'),
       );
 
       expect(result, ChatInputSubmissionResult.sent);
@@ -531,10 +501,7 @@ void main() {
     'first quick-instruction-only send uses the new conversation',
     (tester) async {
       final harness = await _pumpHarness(tester);
-      addTearDown(
-        () =>
-            _awaitStage('quick-instruction teardown', harness.dispose(tester)),
-      );
+      addTearDown(() => harness.dispose(tester));
       final invocation = QuickInstructionInvocationSnapshot.fromInstruction(
         QuickInstruction(
           id: 'quick-before',
@@ -546,13 +513,10 @@ void main() {
 
       expect(harness.controller.currentConversation, isNull);
 
-      final result = await _awaitStage(
-        'quick-instruction send',
-        harness.controller.sendMessage(
-          ChatInputData(
-            text: '',
-            quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
-          ),
+      final result = await harness.controller.sendMessage(
+        ChatInputData(
+          text: '',
+          quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
         ),
       );
 
