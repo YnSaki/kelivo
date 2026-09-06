@@ -22,6 +22,22 @@ import 'package:Cuplivo/features/home/widgets/chat_input_bar.dart';
 import 'package:Cuplivo/features/home/widgets/quick_instruction_editing_controller.dart';
 import 'package:Cuplivo/l10n/app_localizations.dart';
 
+const _stageTimeout = Duration(seconds: 30);
+
+Future<T> _awaitStage<T>(String name, Future<T> future) async {
+  debugPrint('[FirstSendTest] $name started');
+  try {
+    final result = await future.timeout(_stageTimeout);
+    debugPrint('[FirstSendTest] $name completed');
+    return result;
+  } on TimeoutException {
+    throw TimeoutException(
+      'First-send regression stage timed out: $name',
+      _stageTimeout,
+    );
+  }
+}
+
 class _FakeChatService extends ChatService {
   Conversation? _conversation;
   final List<ChatMessage> _messages = <ChatMessage>[];
@@ -353,9 +369,15 @@ class _Harness {
     if (conversationId != null) {
       engine.cancelConversation(conversationId);
     }
-    await pumpEventQueue();
-    await tester.pump(const Duration(milliseconds: 150));
-    await tester.pumpWidget(const SizedBox.shrink());
+    await _awaitStage('dispose event queue', pumpEventQueue());
+    await _awaitStage(
+      'dispose settle frame',
+      tester.pump(const Duration(milliseconds: 150)),
+    );
+    await _awaitStage(
+      'dispose widget tree',
+      tester.pumpWidget(const SizedBox.shrink()),
+    );
     engine.dispose();
     mcp.dispose();
     quickInstructions.dispose();
@@ -369,27 +391,36 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
   final preferences = BusinessPreferences.memoryForTests();
   final chatService = _FakeChatService();
   final settings = SettingsProvider(preferences: preferences);
-  await settings.loaded;
-  await settings.setProviderConfig(
-    'TestProvider',
-    ProviderConfig(
-      id: 'TestProvider',
-      enabled: true,
-      name: 'Test Provider',
-      apiKey: 'test-key',
-      baseUrl: 'https://example.com/v1',
-      providerType: ProviderKind.openai,
-      models: const <String>['plain-model'],
-      modelOverrides: const <String, dynamic>{
-        'plain-model': <String, dynamic>{'abilities': <String>[]},
-      },
+  await _awaitStage('settings load', settings.loaded);
+  await _awaitStage(
+    'provider config',
+    settings.setProviderConfig(
+      'TestProvider',
+      ProviderConfig(
+        id: 'TestProvider',
+        enabled: true,
+        name: 'Test Provider',
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com/v1',
+        providerType: ProviderKind.openai,
+        models: const <String>['plain-model'],
+        modelOverrides: const <String, dynamic>{
+          'plain-model': <String, dynamic>{'abilities': <String>[]},
+        },
+      ),
     ),
   );
-  await settings.setCurrentModel('TestProvider', 'plain-model');
+  await _awaitStage(
+    'current model',
+    settings.setCurrentModel('TestProvider', 'plain-model'),
+  );
 
   final assistants = AssistantProvider(preferences: preferences);
   final quickInstructions = QuickInstructionProvider(preferences: preferences);
-  await quickInstructions.initialize();
+  await _awaitStage(
+    'quick instruction initialization',
+    quickInstructions.initialize(),
+  );
 
   late BuildContext providerContext;
   final mcp = McpProvider(
@@ -424,32 +455,35 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
   );
 
   HomePageController? controller;
-  await tester.pumpWidget(
-    MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: MultiProvider(
-        providers: [
-          Provider<BusinessPreferences>.value(value: preferences),
-          ChangeNotifierProvider<ChatService>.value(value: chatService),
-          ChangeNotifierProvider<SettingsProvider>.value(value: settings),
-          ChangeNotifierProvider<AssistantProvider>.value(value: assistants),
-          ChangeNotifierProvider<QuickInstructionProvider>.value(
-            value: quickInstructions,
+  await _awaitStage(
+    'widget harness pump',
+    tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: MultiProvider(
+          providers: [
+            Provider<BusinessPreferences>.value(value: preferences),
+            ChangeNotifierProvider<ChatService>.value(value: chatService),
+            ChangeNotifierProvider<SettingsProvider>.value(value: settings),
+            ChangeNotifierProvider<AssistantProvider>.value(value: assistants),
+            ChangeNotifierProvider<QuickInstructionProvider>.value(
+              value: quickInstructions,
+            ),
+            ChangeNotifierProvider<McpProvider>.value(value: mcp),
+            ChangeNotifierProvider<GenerationEngine>.value(value: engine),
+          ],
+          child: Builder(
+            builder: (context) {
+              providerContext = context;
+              return _ControllerHost(onReady: (value) => controller = value);
+            },
           ),
-          ChangeNotifierProvider<McpProvider>.value(value: mcp),
-          ChangeNotifierProvider<GenerationEngine>.value(value: engine),
-        ],
-        child: Builder(
-          builder: (context) {
-            providerContext = context;
-            return _ControllerHost(onReady: (value) => controller = value);
-          },
         ),
       ),
     ),
   );
-  await tester.pump();
+  await _awaitStage('post-harness frame', tester.pump());
 
   return _Harness(
     controller: controller!,
@@ -469,12 +503,15 @@ void main() {
     tester,
   ) async {
     final harness = await _pumpHarness(tester);
-    addTearDown(() => harness.dispose(tester));
+    addTearDown(
+      () => _awaitStage('plain-text teardown', harness.dispose(tester)),
+    );
 
     expect(harness.controller.currentConversation, isNull);
 
-    final result = await harness.controller.sendMessage(
-      const ChatInputData(text: 'hello'),
+    final result = await _awaitStage(
+      'plain-text send',
+      harness.controller.sendMessage(const ChatInputData(text: 'hello')),
     );
 
     expect(result, ChatInputSubmissionResult.sent);
@@ -492,7 +529,9 @@ void main() {
     tester,
   ) async {
     final harness = await _pumpHarness(tester);
-    addTearDown(() => harness.dispose(tester));
+    addTearDown(
+      () => _awaitStage('quick-instruction teardown', harness.dispose(tester)),
+    );
     final invocation = QuickInstructionInvocationSnapshot.fromInstruction(
       QuickInstruction(
         id: 'quick-before',
@@ -504,10 +543,13 @@ void main() {
 
     expect(harness.controller.currentConversation, isNull);
 
-    final result = await harness.controller.sendMessage(
-      ChatInputData(
-        text: '',
-        quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
+    final result = await _awaitStage(
+      'quick-instruction send',
+      harness.controller.sendMessage(
+        ChatInputData(
+          text: '',
+          quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
+        ),
       ),
     );
 
