@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:Cuplivo/shared/widgets/markdown_line_lexer.dart';
 import 'package:Cuplivo/utils/markdown_code_scanner.dart';
@@ -577,6 +578,74 @@ Inline ***strong emphasis*** text.
     },
   );
 
+  testWidgets('paragraph selection keeps line breaks through streaming', (
+    tester,
+  ) async {
+    // The incremental blocks path only engages for streaming text of 512+
+    // chars, so the paragraph fill is padded past that threshold. Sentences
+    // are joined with a space and none of them trails the blank line, so the
+    // original text has nothing the renderer would trim in either path.
+    final text =
+        '${List.filled(10, 'First paragraph with enough text to engage incremental blocks.').join(' ')}\n\nSecond paragraph.';
+    final streaming = ValueNotifier(true);
+    addTearDown(streaming.dispose);
+    String? selected;
+    await tester.pumpWidget(
+      _settingsHarness(
+        onSettingsReady: (_) {},
+        child: SelectionArea(
+          onSelectionChanged: (content) => selected = content?.plainText,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: streaming,
+              builder: (_, value, _) =>
+                  MarkdownWithCodeHighlight(text: text, streaming: value),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final value in [true, false]) {
+      streaming.value = value;
+      await tester.pumpAndSettle();
+      final region = tester.state<SelectableRegionState>(
+        find.byType(SelectableRegion),
+      );
+      region.selectAll(SelectionChangedCause.keyboard);
+      await tester.pumpAndSettle();
+      expect(selected, text, reason: 'streaming=$value');
+      region.clearSelection();
+      await tester.pump();
+
+      // A drag across the gap must include the same break as Select All.
+      final first = _paragraphContaining('First paragraph');
+      final second = _paragraphContaining('Second paragraph');
+      final start = first.localToGlobal(const Offset(1, 8));
+      final end = second.localToGlobal(Offset(second.size.width - 1, 8));
+      for (final reverse in [true, false]) {
+        // Separate the gestures so reversing at the previous endpoint does
+        // not become a double click and select a word instead of a range.
+        await tester.pump(const Duration(milliseconds: 400));
+        final gesture = await tester.startGesture(
+          reverse ? end : start,
+          kind: ui.PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveTo(reverse ? start : end);
+        await tester.pump();
+        await gesture.up();
+        await gesture.removePointer();
+        await tester.pumpAndSettle();
+        expect(selected, text, reason: 'streaming=$value reverse=$reverse');
+        region.clearSelection();
+        await tester.pump();
+      }
+    }
+  }, variant: TargetPlatformVariant.desktop());
+
   testWidgets(
     'MarkdownWithCodeHighlight renders grouped raw citation metadata as separate capsules',
     (tester) async {
@@ -991,6 +1060,165 @@ Inline ***strong emphasis*** text.
       ),
     );
     expect(scrollView.physics, isA<ClampingScrollPhysics>());
+  });
+
+  for (final longReply in [false, true]) {
+    testWidgets(
+      'streaming table preserves its offset and active drag (long=$longReply)',
+      (tester) async {
+        _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+        await tester.binding.setSurfaceSize(const Size(800, 1600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final prefix = longReply ? '${'Intro text. ' * 50}\n\n' : '';
+        final text = ValueNotifier(
+          '$prefix| A | B | C | D | E |\n'
+          '| --- | --- | --- | --- | --- |\n| apple',
+        );
+        addTearDown(text.dispose);
+        await tester.pumpWidget(_streamingMarkdownHarness(text, width: 320));
+        await tester.pump();
+        final viewport = find.byKey(
+          const ValueKey('markdown-table-horizontal-scroll'),
+        );
+        final scroll = find.descendant(
+          of: viewport,
+          matching: find.byType(Scrollable),
+        );
+        final state = tester.state<ScrollableState>(scroll);
+        await tester.drag(viewport, const Offset(-100, 0));
+        await tester.pumpAndSettle();
+        final offset = state.position.pixels;
+        expect(offset, greaterThan(50));
+
+        text.value += ' banana';
+        await tester.pump();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, offset);
+        expect(
+          find.textContaining('apple banana', findRichText: true),
+          findsWidgets,
+        );
+
+        final gesture = await tester.startGesture(tester.getCenter(viewport));
+        await gesture.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        final duringDrag = state.position.pixels;
+        text.value += ' cherry';
+        await tester.pump();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, duringDrag);
+        await gesture.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        expect(state.position.pixels, greaterThan(duringDrag));
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
+  testWidgets(
+    'table offset survives stream growth, block close and completion',
+    (tester) async {
+      _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+      var text =
+          '| A | B | C | D | E |\n'
+          '| --- | --- | --- | --- | --- |\n| apple';
+      Future<void> render({bool streaming = true}) async {
+        await tester.pumpWidget(
+          _markdownHarness(text, width: 320, streaming: streaming),
+        );
+        await tester.pump();
+      }
+
+      await render();
+      final viewport = find.byKey(
+        const ValueKey('markdown-table-horizontal-scroll'),
+      );
+      final scroll = find.descendant(
+        of: viewport,
+        matching: find.byType(Scrollable),
+      );
+      final state = tester.state<ScrollableState>(scroll);
+      await tester.drag(viewport, const Offset(-100, 0));
+      await tester.pumpAndSettle();
+      final offset = state.position.pixels;
+      expect(offset, greaterThan(50));
+
+      // Cross the old whole-document / incremental rendering threshold.
+      text += ' | ${'wide ' * 100} | C | D | E |';
+      expect(text.length, greaterThan(512));
+      await render();
+      expect(tester.state<ScrollableState>(scroll), same(state));
+      expect(state.position.pixels, offset);
+      for (final suffix in ['\n', '\nFollowing paragraph']) {
+        text += suffix;
+        await render();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, offset);
+      }
+      await render(streaming: false);
+      expect(tester.state<ScrollableState>(scroll), same(state));
+      expect(state.position.pixels, offset);
+      expect(
+        find.textContaining('Following paragraph', findRichText: true),
+        findsWidgets,
+      );
+
+      text = text.replaceFirst('apple', 'replacement');
+      await render(streaming: false);
+      expect(tester.state<ScrollableState>(scroll).position.pixels, 0);
+      expect(
+        find.textContaining('replacement', findRichText: true),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets('appending to a table reuses the earlier table and its offset', (
+    tester,
+  ) async {
+    _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+    const header =
+        '| A | B | C | D | E |\n'
+        '| --- | --- | --- | --- | --- |\n';
+    final text = ValueNotifier(
+      '$header| apple | B | C | D | E |\n\n$header| banana',
+    );
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_streamingMarkdownHarness(text, width: 320));
+    await tester.pump();
+    final viewports = find.byKey(
+      const ValueKey('markdown-table-horizontal-scroll'),
+    );
+    expect(viewports, findsNWidgets(2));
+    final states = <ScrollableState>[];
+    for (var i = 0; i < 2; i++) {
+      states.add(
+        tester.state<ScrollableState>(
+          find.descendant(
+            of: viewports.at(i),
+            matching: find.byType(Scrollable),
+          ),
+        ),
+      );
+      await tester.drag(viewports.at(i), Offset(-80.0 * (i + 1), 0));
+      await tester.pumpAndSettle();
+    }
+    final offsets = states.map((state) => state.position.pixels).toList();
+    expect(offsets.first, greaterThan(0));
+    expect(offsets.last, greaterThan(offsets.first));
+    final cached = tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
+
+    text.value += ' cherry';
+    await tester.pump();
+    expect(tester.widget(find.byType(GptMarkdown).first), same(cached));
+    for (var i = 0; i < 2; i++) {
+      final state = tester.state<ScrollableState>(
+        find.descendant(of: viewports.at(i), matching: find.byType(Scrollable)),
+      );
+      expect(state, same(states[i]));
+      expect(state.position.pixels, offsets[i]);
+    }
   });
 
   testWidgets(
@@ -2236,6 +2464,185 @@ A-->B
     },
   );
 
+  testWidgets(
+    r'MarkdownWithCodeHighlight renders nested ovalbox and operatorname expressions',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+标签\(\textbf{\small\colorbox{white}{\textcolor{#AEC6CF}{\ovalbox{\textcolor{#AEC6CF}{\textbf{示例文字}}}}}}\) 
+函数\(\operatorname{Function}\left(x\right)\)
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(find.textContaining(r'\ovalbox'), findsNothing);
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    r'MarkdownWithCodeHighlight parses operatorname with scripts and limits',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(
+          r'$\operatorname{lim}_{x\to 0}$ 与 $\operatorname{sin}^2 x$',
+        ),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+    },
+  );
+
+  testWidgets(r'MarkdownWithCodeHighlight renders ovalbox with math content', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _markdownHarness(r'''
+$$\ovalbox{1+\frac{1}{2}}$$
+'''),
+    );
+    await tester.pump();
+
+    final mathWidgets = _mathWidgets(tester);
+    expect(mathWidgets, hasLength(1));
+    expect(mathWidgets.single.parseError, isNull);
+    expect(find.textContaining(r'\ovalbox'), findsNothing);
+  });
+
+  for (final entry in <String, String>{
+    'equation': r'a^2+b^2=c^2',
+    'align': r'a&=b\\c&=d',
+    'gather': r'a=b\\c=d',
+  }.entries) {
+    testWidgets(
+      r'MarkdownWithCodeHighlight renders dollar-wrapped ${entry.key} math environment',
+      (tester) async {
+        await tester.pumpWidget(
+          _markdownHarness(
+            'Before\n\n\$\$\\begin{${entry.key}}\n${entry.value}\n\\end{${entry.key}}\$\$\n\nAfter',
+          ),
+        );
+        await tester.pump();
+
+        final mathWidgets = _mathWidgets(tester);
+        expect(mathWidgets, hasLength(1));
+        expect(mathWidgets.single.parseError, isNull);
+        expect(mathWidgets.single.mathStyle, MathStyle.display);
+        expect(find.textContaining(r'\begin'), findsNothing);
+        expect(find.textContaining('Before'), findsOneWidget);
+        expect(find.textContaining('After'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'MarkdownWithCodeHighlight renders a tagged equation environment',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+$$
+\begin{equation}
+f(x) = x^2\tag{Pythagoras}
+\end{equation}
+$$
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(1));
+      expect(mathWidgets.single.parseError, isNull);
+      expect(find.textContaining(r'\tag'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'MarkdownWithCodeHighlight renders complex operatorname expressions from issue 960',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+$\operatorname{Var}\left( \frac{1}{n}\sum_{i=1}^n a_i X_i \right)$
+
+$\operatorname{Var}\left( \prod_{j=1}^m \exp\left( \beta_j Z_j \right) \right)$
+
+$\operatorname{Var}\left( \hat{\theta}_{\mathrm{MLE}} \right)$
+
+$\operatorname{Var}_{\theta}\left( \frac{\partial}{\partial \theta} \log L(\theta; \mathbf{x}) \right)$
+
+$\operatorname{Var}\left( \sqrt{n}\left( \bar{X} - \mu \right) \right)$
+
+$\operatorname{Var}\left( \frac{1}{N} \sum_{k=1}^{N} \left( f(X_k) - \frac{1}{N}\sum_{j=1}^{N} f(X_j) \right)^2 \right)$
+'''),
+      );
+      await tester.pump();
+
+      final widgets = _mathWidgets(tester);
+      expect(widgets, hasLength(6));
+      expect(widgets.map((widget) => widget.parseError), everyElement(isNull));
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'MarkdownWithCodeHighlight preserves spaced starred command arguments',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+\[x=1\tag *{A,B}\]
+
+\[\operatorname *{arg\,max}_{x} f(x)\]
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(_encodedMathTex(tester).first, contains('A,B'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'display math block overlays the chat background without an opaque plate',
+    (tester) async {
+      await tester.pumpWidget(_markdownHarness(r'$$E = mc^2$$'));
+      await tester.pump();
+
+      expect(
+        find.ancestor(
+          of: _findMathWidget(),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.color == Colors.transparent &&
+                widget.padding == const EdgeInsets.all(4),
+          ),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('MarkdownWithCodeHighlight baseline-aligns inline math', (
     tester,
   ) async {
@@ -2526,14 +2933,14 @@ $$
     'MarkdownWithCodeHighlight keeps unknown TeX as raw-text fallback',
     (tester) async {
       await tester.pumpWidget(
-        _markdownHarness(r'$$\begin{equation}x\end{equation}$$'),
+        _markdownHarness(r'$$\begin{document}x\end{document}$$'),
       );
       await tester.pump();
 
       final mathWidgets = _mathWidgets(tester);
       expect(mathWidgets, hasLength(1));
       expect(mathWidgets.single.parseError, isNotNull);
-      expect(find.textContaining(r'\begin{equation}'), findsOneWidget);
+      expect(find.textContaining(r'\begin{document}'), findsOneWidget);
     },
   );
 
@@ -2557,16 +2964,16 @@ $$
   );
 
   testWidgets(
-    r'MarkdownWithCodeHighlight keeps \tag{\alpha} untouched for fallback',
+    r'MarkdownWithCodeHighlight renders \tag{\alpha} labels without fallback',
     (tester) async {
       await tester.pumpWidget(_markdownHarness(r'$$\tag{\alpha} x = y$$'));
       await tester.pump();
 
       final mathWidgets = _mathWidgets(tester);
       expect(mathWidgets, hasLength(1));
-      expect(mathWidgets.single.parseError, isNotNull);
-      // The fallback shows the ORIGINAL tex, not the rewritten approximation.
-      expect(find.textContaining(r'\tag{\alpha}'), findsOneWidget);
+      expect(mathWidgets.single.parseError, isNull);
+      expect(_encodedMathTex(tester).first, contains(r'\alpha'));
+      expect(find.textContaining(r'\tag{\alpha}'), findsNothing);
     },
   );
 

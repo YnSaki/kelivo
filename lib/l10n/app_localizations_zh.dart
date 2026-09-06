@@ -1545,6 +1545,133 @@ class AppLocalizationsZh extends AppLocalizations {
   String get androidBackgroundNotificationText => '后台保持聊天生成';
 
   @override
+  String get keepAliveGuidePageTitle => '后台保活引导';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '电池优化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若状态不是「无限制」，点击此行允许 Cuplivo 忽略电池优化，后台生成才能顺利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '无限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受优化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '检查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允许';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允许';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查询失败';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被禁用，可在系统设置中开启。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知权限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知权限才能发送后台完成通知。若被禁用，点击此行按系统提示授权。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '厂商电源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未识别';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：设置 → 应用设置 → 自启动管理，开启 Cuplivo；设置 → 省电与电池 → 省电策略，将 Cuplivo 设为「无限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '华为：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许自启动、关联启动与后台活动。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '荣耀：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许后台活动。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；电池 → 应用耗电 → 无限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：设置 → 电池 → 应用耗电管理 → Cuplivo → 不限制；应用 → 自启动，开启。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；i 管家 → 耗电管理 → 后台起动，允许。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：设置 → 电池和日常维护 → 电池 → 后台使用限制；确保 Cuplivo 未在「休眠的应用」列表中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：设置 → 应用管理 → 权限管理 → 后台权限；或手机管家 → 电量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '未能识别您的手机品牌。可在系统设置的「应用 → Cuplivo → 耗电/电池」中将电源改为「无限制」；多数系统在最近任务列表中还可将应用「锁定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自启动';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省电设置';
+
+  @override
+  String get keepAliveGuideLockTitle => '后台锁定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任务列表中长按 Cuplivo 卡片并选择「锁定」，避免一键清理将其杀死。小米：长按卡片 → 锁定；华为/荣耀：下拉卡片；OPPO/一加：长按 → 锁定；vivo：点击右上角锁形图标。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已打开通用设置页。若找不到对应选项，请按下方步骤操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '无法打开任何设置页，请按下方步骤手动操作。';
+
+  @override
   String get assistantEditEmojiDialogTitle => '选择表情';
 
   @override
@@ -6994,6 +7121,56 @@ class AppLocalizationsZh extends AppLocalizations {
   String get networkProxyPriorityNote => '当同时开启全局代理与供应商代理时，将优先使用供应商代理。';
 
   @override
+  String get settingsPageAutoRetry => '自动重试';
+
+  @override
+  String get autoRetryEnableLabel => '开启自动重试';
+
+  @override
+  String get autoRetryMaxRetries => '最大重试次数';
+
+  @override
+  String get autoRetryInitialDelay => '首次延迟（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延迟（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖动';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待随机 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '网络错误时重试';
+
+  @override
+  String get autoRetryStatusCodes => '可重试状态码';
+
+  @override
+  String get autoRetryKeywords => '重试关键字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重试关键字';
+
+  @override
+  String get autoRetryAddHint => '添加';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢复默认';
+
+  @override
+  String get autoRetryFooter => '仅在本次请求尚未产生任何输出时才会自动重试。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒后重试 ($attempt/$maxRetries)';
+  }
+
+  @override
   String get desktopShowProviderInModelCapsule => '模型胶囊显示供应商';
 
   @override
@@ -8214,17 +8391,47 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已开启，但还没有可委派的目标助手。请在另一个助手上开启「可作为子代理被其他助手委派」。';
+  String get subagentGoSetup => '去配置';
 
   @override
-  String get subagentGoSetup => '去设置';
+  String get subagentPageTitle => '子智能体委派';
 
   @override
-  String get subagentTargetListTitle => '可委派的目标助手';
+  String get subagentPageExplainer =>
+      '开启子智能体委派后，当前助手可以把任务委派给其他助手，并等待其作为子智能体返回结果。要成为可委派目标，助手需要同时满足：\n1. 开启「可被发现」\n2. 设置非空的「委派 ID」';
 
   @override
-  String get subagentTargetListEmpty => '还没有可委派的目标助手。';
+  String get subagentPageStatusEmptySub => '开启「可被发现」并设置委派 ID 后即可';
+
+  @override
+  String get subagentPageEmpty => '还没有助手。请先到「助手设置」创建助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未配置';
+
+  @override
+  String get subagentReasonNoId => '未设置委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未开启可被发现';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已满足全部条件';
+
+  @override
+  String get subagentEditorNoIdSub => '补全委派 ID 后即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先开启「可被发现」';
+
+  @override
+  String get subagentIdConflict => 'ID 冲突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -9222,6 +9429,13 @@ class AppLocalizationsZh extends AppLocalizations {
       '助手气泡按文字宽度收缩，不再占满整行';
 
   @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段显示为多个气泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回复遇到空行时拆分，每段单独一个气泡';
+
+  @override
   String get messageStyleSettingsPageBackgroundColor => '背景颜色';
 
   @override
@@ -9407,6 +9621,103 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String quickInstructionMcpOffline(String serverId) {
     return '离线 · $serverId';
+  }
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '从…搬来';
+
+  @override
+  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageImportFromOtherApps => '从其他APP导入';
+
+  @override
+  String get backupReminderSidebarTitle => '备份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去备份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍后提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自动快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '启用自动快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本机保留最多 3 份完整快照。快照独立于备份之外，不会随备份上传。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照频率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小时';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即创建快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照列表';
+
+  @override
+  String get autoSnapshotEmpty => '暂无快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 个助手 · $conversations 个会话';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功创建';
+
+  @override
+  String get autoSnapshotDedupedToast => '数据无变化，已跳过本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他备份任务进行中，请稍后再试';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照创建失败：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '关闭自动快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '关闭会永久删除已有的 $count 份快照。确定继续吗？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '关闭并删除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '删除存储的快照失败：$error。快照文件仍保留在磁盘上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '无法保存「自动快照」设置：$error。请重试。';
   }
 }
 
@@ -10949,6 +11260,133 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get androidBackgroundNotificationText => '后台保持聊天生成';
+
+  @override
+  String get keepAliveGuidePageTitle => '后台保活引导';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '电池优化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若状态不是「无限制」，点击此行允许 Cuplivo 忽略电池优化，后台生成才能顺利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '无限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受优化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '检查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允许';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允许';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查询失败';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被禁用，可在系统设置中开启。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知权限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知权限才能发送后台完成通知。若被禁用，点击此行按系统提示授权。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '厂商电源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未识别';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：设置 → 应用设置 → 自启动管理，开启 Cuplivo；设置 → 省电与电池 → 省电策略，将 Cuplivo 设为「无限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '华为：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许自启动、关联启动与后台活动。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '荣耀：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许后台活动。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；电池 → 应用耗电 → 无限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：设置 → 电池 → 应用耗电管理 → Cuplivo → 不限制；应用 → 自启动，开启。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；i 管家 → 耗电管理 → 后台起动，允许。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：设置 → 电池和日常维护 → 电池 → 后台使用限制；确保 Cuplivo 未在「休眠的应用」列表中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：设置 → 应用管理 → 权限管理 → 后台权限；或手机管家 → 电量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '未能识别您的手机品牌。可在系统设置的「应用 → Cuplivo → 耗电/电池」中将电源改为「无限制」；多数系统在最近任务列表中还可将应用「锁定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自启动';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省电设置';
+
+  @override
+  String get keepAliveGuideLockTitle => '后台锁定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任务列表中长按 Cuplivo 卡片并选择「锁定」，避免一键清理将其杀死。小米：长按卡片 → 锁定；华为/荣耀：下拉卡片；OPPO/一加：长按 → 锁定；vivo：点击右上角锁形图标。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已打开通用设置页。若找不到对应选项，请按下方步骤操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '无法打开任何设置页，请按下方步骤手动操作。';
 
   @override
   String get assistantEditEmojiDialogTitle => '选择表情';
@@ -16400,6 +16838,56 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get networkProxyPriorityNote => '当同时开启全局代理与供应商代理时，将优先使用供应商代理。';
 
   @override
+  String get settingsPageAutoRetry => '自动重试';
+
+  @override
+  String get autoRetryEnableLabel => '开启自动重试';
+
+  @override
+  String get autoRetryMaxRetries => '最大重试次数';
+
+  @override
+  String get autoRetryInitialDelay => '首次延迟（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延迟（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖动';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待随机 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '网络错误时重试';
+
+  @override
+  String get autoRetryStatusCodes => '可重试状态码';
+
+  @override
+  String get autoRetryKeywords => '重试关键字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重试关键字';
+
+  @override
+  String get autoRetryAddHint => '添加';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢复默认';
+
+  @override
+  String get autoRetryFooter => '仅在本次请求尚未产生任何输出时才会自动重试。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒后重试 ($attempt/$maxRetries)';
+  }
+
+  @override
   String get desktopShowProviderInModelCapsule => '模型胶囊显示供应商';
 
   @override
@@ -17620,17 +18108,47 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已开启，但还没有可委派的目标助手。请在另一个助手上开启「可作为子代理被其他助手委派」。';
+  String get subagentGoSetup => '去配置';
 
   @override
-  String get subagentGoSetup => '去设置';
+  String get subagentPageTitle => '子智能体委派';
 
   @override
-  String get subagentTargetListTitle => '可委派的目标助手';
+  String get subagentPageExplainer =>
+      '开启子智能体委派后，当前助手可以把任务委派给其他助手，并等待其作为子智能体返回结果。要成为可委派目标，助手需要同时满足：\n1. 开启「可被发现」\n2. 设置非空的「委派 ID」';
 
   @override
-  String get subagentTargetListEmpty => '还没有可委派的目标助手。';
+  String get subagentPageStatusEmptySub => '开启「可被发现」并设置委派 ID 后即可';
+
+  @override
+  String get subagentPageEmpty => '还没有助手。请先到「助手设置」创建助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未配置';
+
+  @override
+  String get subagentReasonNoId => '未设置委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未开启可被发现';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已满足全部条件';
+
+  @override
+  String get subagentEditorNoIdSub => '补全委派 ID 后即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先开启「可被发现」';
+
+  @override
+  String get subagentIdConflict => 'ID 冲突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -18628,6 +19146,13 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
       '助手气泡按文字宽度收缩，不再占满整行';
 
   @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段显示为多个气泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回复遇到空行时拆分，每段单独一个气泡';
+
+  @override
   String get messageStyleSettingsPageBackgroundColor => '背景颜色';
 
   @override
@@ -18813,6 +19338,103 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   @override
   String quickInstructionMcpOffline(String serverId) {
     return '离线 · $serverId';
+  }
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '从…搬来';
+
+  @override
+  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageImportFromOtherApps => '从其他APP导入';
+
+  @override
+  String get backupReminderSidebarTitle => '备份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去备份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍后提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自动快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '启用自动快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本机保留最多 3 份完整快照。快照独立于备份之外，不会随备份上传。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照频率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小时';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即创建快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照列表';
+
+  @override
+  String get autoSnapshotEmpty => '暂无快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 个助手 · $conversations 个会话';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功创建';
+
+  @override
+  String get autoSnapshotDedupedToast => '数据无变化，已跳过本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他备份任务进行中，请稍后再试';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照创建失败：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '关闭自动快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '关闭会永久删除已有的 $count 份快照。确定继续吗？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '关闭并删除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '删除存储的快照失败：$error。快照文件仍保留在磁盘上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '无法保存「自动快照」设置：$error。请重试。';
   }
 }
 
@@ -20355,6 +20977,133 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get androidBackgroundNotificationText => '後台保持聊天生成';
+
+  @override
+  String get keepAliveGuidePageTitle => '後台保活引導';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在後台繼續聊天生成：開啟後台聊天模式、允許 Cuplivo 忽略電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '電池最佳化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若狀態不是「無限制」，點擊此行允許 Cuplivo 忽略電池最佳化，後台生成才能順利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '無限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受最佳化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '檢查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允許';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允許';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查詢失敗';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被停用，可在系統設定中開啟。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知權限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知權限才能發送後台完成通知。若被停用，點擊此行按系統提示授權。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '廠商電源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未識別';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：設定 → 應用程式設定 → 自啟動管理，開啟 Cuplivo；設定 → 省電與電池 → 省電策略，將 Cuplivo 設為「無限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '華為：設定 → 應用程式 → 應用程式啟動管理 → Cuplivo → 手動管理，允許自啟動、關聯啟動與後台活動。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '榮耀：設定 → 應用程式 → 應用程式啟動管理 → Cuplivo → 手動管理，允許後台活動。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：設定 → 應用程式 → 應用程式管理 → Cuplivo → 自啟動，開啟；電池 → 應用程式耗電 → 無限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：設定 → 電池 → 應用程式耗電管理 → Cuplivo → 不限制；應用程式 → 自啟動，開啟。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：設定 → 應用程式 → 應用程式管理 → Cuplivo → 自啟動，開啟；i 管家 → 耗電管理 → 後台啟動，允許。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：設定 → 電池與日常維護 → 電池 → 後台使用限制；確保 Cuplivo 不在「休眠的應用程式」清單中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：設定 → 應用程式管理 → 權限管理 → 後台權限；或手機管家 → 電量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '無法辨識您的手機品牌。可在系統設定的「應用程式 → Cuplivo → 耗電/電池」中將電源改為「無限制」；多數系統在最近任務清單中還可將應用程式「鎖定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自啟動';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省電設定';
+
+  @override
+  String get keepAliveGuideLockTitle => '後台鎖定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任務清單中長按 Cuplivo 卡片並選擇「鎖定」，避免一鍵清理將其殺死。小米：長按卡片 → 鎖定；華為/榮耀：下拉卡片；OPPO/一加：長按 → 鎖定；vivo：點擊右上角鎖形圖示。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已開啟通用設定頁。若找不到對應選項，請按下方步驟操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '無法開啟任何設定頁，請按下方步驟手動操作。';
 
   @override
   String get assistantEditEmojiDialogTitle => '選擇表情';
@@ -25807,6 +26556,56 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get networkProxyPriorityNote => '同時啟用全域代理與供應商代理時，將優先使用供應商代理。';
 
   @override
+  String get settingsPageAutoRetry => '自動重試';
+
+  @override
+  String get autoRetryEnableLabel => '開啟自動重試';
+
+  @override
+  String get autoRetryMaxRetries => '最大重試次數';
+
+  @override
+  String get autoRetryInitialDelay => '首次延遲（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延遲（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖動';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待隨機 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '網路錯誤時重試';
+
+  @override
+  String get autoRetryStatusCodes => '可重試狀態碼';
+
+  @override
+  String get autoRetryKeywords => '重試關鍵字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重試關鍵字';
+
+  @override
+  String get autoRetryAddHint => '新增';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢復預設';
+
+  @override
+  String get autoRetryFooter => '僅在本次請求尚未產生任何輸出時才會自動重試。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒後重試 ($attempt/$maxRetries)';
+  }
+
+  @override
   String get desktopShowProviderInModelCapsule => '模型膠囊顯示供應商';
 
   @override
@@ -27027,17 +27826,47 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已開啟，但還沒有可委派的目標助手。請在另一個助手上開啟「可作為子代理被其他助手委派」。';
-
-  @override
   String get subagentGoSetup => '去設定';
 
   @override
-  String get subagentTargetListTitle => '可委派的目標助手';
+  String get subagentPageTitle => '子智能體委派';
 
   @override
-  String get subagentTargetListEmpty => '還沒有可委派的目標助手。';
+  String get subagentPageExplainer =>
+      '開啟子智能體委派後，目前助手可以把任務委派給其他助手，並等待其作為子智能體返回結果。要成為可委派目標，助手需要同時滿足：\n1. 開啟「可被發現」\n2. 設定非空的「委派 ID」';
+
+  @override
+  String get subagentPageStatusEmptySub => '開啟「可被發現」並設定委派 ID 後即可';
+
+  @override
+  String get subagentPageEmpty => '還沒有助手。請先到「助手設定」建立助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未設定';
+
+  @override
+  String get subagentReasonNoId => '未設定委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未開啟可被發現';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已滿足全部條件';
+
+  @override
+  String get subagentEditorNoIdSub => '補全委派 ID 後即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先開啟「可被發現」';
+
+  @override
+  String get subagentIdConflict => 'ID 衝突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -28036,6 +28865,13 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
       '助手氣泡按文字寬度收縮，不再佔滿整行';
 
   @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段顯示為多個氣泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回覆遇到空行時拆分，每段單獨一個氣泡';
+
+  @override
   String get messageStyleSettingsPageBackgroundColor => '背景顏色';
 
   @override
@@ -28221,5 +29057,102 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   @override
   String quickInstructionMcpOffline(String serverId) {
     return '離線 · $serverId';
+  }
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '從…搬來';
+
+  @override
+  String get backupPageExportKelivoCompatible => '匯出 Kelivo 相容備份';
+
+  @override
+  String get backupPageImportFromOtherApps => '從其他APP匯入';
+
+  @override
+  String get backupReminderSidebarTitle => '備份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已經到你設定的備份週期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去備份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍後提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自動快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '啟用自動快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本機保留最多 3 份完整快照。快照獨立於備份之外，不會隨備份上傳。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照頻率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小時';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即建立快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照清單';
+
+  @override
+  String get autoSnapshotEmpty => '尚無快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 個助手 · $conversations 個會話';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功建立';
+
+  @override
+  String get autoSnapshotDedupedToast => '資料無變化，已跳過本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他備份任務進行中，請稍後再試';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照建立失敗：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '關閉自動快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '關閉會永久刪除已有的 $count 份快照。確定繼續嗎？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '關閉並刪除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '刪除儲存的快照失敗：$error。快照檔案仍保留在磁碟上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '無法儲存「自動快照」設定：$error。請重試。';
   }
 }

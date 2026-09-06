@@ -178,6 +178,7 @@ class MessageGenerationService {
           providerKey: providerKey,
           modelId: modelId,
           includeUserQuickInstructions: includeUserQuickInstructions,
+          requestId: currentConversation?.id,
         );
 
     // Signal processing finished

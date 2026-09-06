@@ -58,7 +58,7 @@ class MessageBuilderService {
     required this.contextProvider,
     required BusinessPreferences preferences,
     this.ocrHandler,
-    this.geminiThoughtSignatureHandler,
+    this.geminiThoughtSignatureProvider,
   }) : _worldBookStore = WorldBookStore.shared(preferences),
        _instructionInjectionStore = QuickInstructionStore.shared(preferences);
 
@@ -68,14 +68,16 @@ class MessageBuilderService {
   final BuildContext contextProvider;
 
   /// OCR handler for processing images (optional, injected from home_page)
-  final Future<String?> Function(List<String> imagePaths)? ocrHandler;
+  final Future<String?> Function(List<String> imagePaths, {String? requestId})?
+  ocrHandler;
 
   /// OCR text wrapper function
   String Function(String ocrText)? ocrTextWrapper;
 
-  /// Handler to append Gemini thought signatures for API calls
-  final String Function(ChatMessage message, String content)?
-  geminiThoughtSignatureHandler;
+  /// Handler to provide the Gemini thought signature payload (artifact JSON or
+  /// legacy comment shell) for API calls; carried under an internal key so the
+  /// message text stays clean for every provider.
+  final String? Function(ChatMessage message)? geminiThoughtSignatureProvider;
 
   final WorldBookStore _worldBookStore;
   final QuickInstructionStore _instructionInjectionStore;
@@ -86,40 +88,12 @@ class MessageBuilderService {
       <String, _DocTextCacheEntry>{};
 
   /// Collapse message versions to show only selected version per group.
+  /// Delegates to the canonical [ChatService.collapseMessageVersions].
   List<ChatMessage> collapseVersions(
     List<ChatMessage> items,
     Map<String, int> versionSelections,
   ) {
-    final Map<String, List<ChatMessage>> byGroup =
-        <String, List<ChatMessage>>{};
-    final List<String> order = <String>[];
-
-    for (final m in items) {
-      final gid = (m.groupId ?? m.id);
-      final list = byGroup.putIfAbsent(gid, () {
-        order.add(gid);
-        return <ChatMessage>[];
-      });
-      list.add(m);
-    }
-
-    // Sort each group by version
-    for (final e in byGroup.entries) {
-      e.value.sort((a, b) => a.version.compareTo(b.version));
-    }
-
-    // Select the appropriate version from each group
-    final out = <ChatMessage>[];
-    for (final gid in order) {
-      final vers = byGroup[gid]!;
-      final sel = versionSelections[gid];
-      final idx = (sel != null && sel >= 0 && sel < vers.length)
-          ? sel
-          : (vers.length - 1);
-      out.add(vers[idx]);
-    }
-
-    return out;
+    return ChatService.collapseMessageVersions(items, versionSelections);
   }
 
   /// Build API messages list from current conversation state.
@@ -231,9 +205,6 @@ class MessageBuilderService {
       }
 
       var content = m.content;
-      if (m.role == 'assistant' && geminiThoughtSignatureHandler != null) {
-        content = geminiThoughtSignatureHandler!(m, content);
-      }
       final isUser = m.role != 'assistant';
       final quickInstructions = isUser
           ? m.quickInstructionInvocations
@@ -252,6 +223,12 @@ class MessageBuilderService {
         'role': isUser ? 'user' : 'assistant',
         'content': content,
       };
+      if (!isUser && geminiThoughtSignatureProvider != null) {
+        final payload = geminiThoughtSignatureProvider!(m);
+        if (payload != null && payload.trim().isNotEmpty) {
+          message[multimodalInternalGeminiThoughtSignatureKey] = payload;
+        }
+      }
       if (isUser) {
         message[_isPresetKey] = m.isPreset;
         message[_timestampKey] = m.timestamp.toIso8601String();
@@ -445,6 +422,7 @@ class MessageBuilderService {
     required String providerKey,
     required String modelId,
     bool includeUserQuickInstructions = false,
+    String? requestId,
   }) async {
     final bool ocrActive = resolveOcrActive(
       settings: settings,
@@ -616,7 +594,7 @@ class MessageBuilderService {
             .toSet()
             .toList();
         if (ocrTargets.isNotEmpty) {
-          final ocrText = await ocrHandler!(ocrTargets);
+          final ocrText = await ocrHandler!(ocrTargets, requestId: requestId);
           if (ocrText != null && ocrText.trim().isNotEmpty) {
             final wrapped = ocrTextWrapper != null
                 ? ocrTextWrapper!(ocrText)

@@ -59,6 +59,7 @@ import '../../chat/pages/html_preview_page.dart';
 import '../../chat/models/tool_ui_part.dart';
 import '../../chat/utils/message_visual_content.dart';
 import '../../chat/widgets/citation_sources_sheet.dart';
+import '../../chat/widgets/frosted/chat_frosted_backdrop.dart';
 import '../../search/widgets/search_settings_sheet.dart';
 import '../../model/widgets/model_select_sheet.dart';
 import '../../mcp/pages/mcp_page.dart';
@@ -612,7 +613,6 @@ class _HomePageState extends State<HomePage>
       ImageGenerationOptionsController();
   scroll_ctrl.ChatAutoFollowScrollController _scrollController =
       scroll_ctrl.ChatAutoFollowScrollController();
-  final BackdropKey _messageListBackdropKey = BackdropKey();
   final GlobalKey _inputBarKey = GlobalKey();
   final GlobalKey _selectionMiniMapKey = GlobalKey();
   final GlobalKey _selectionActionBarKey = GlobalKey();
@@ -1318,17 +1318,7 @@ class _HomePageState extends State<HomePage>
   }
 
   bool _assistantBackgroundActive(BuildContext context) {
-    final bgRaw =
-        (context.watch<AssistantProvider>().currentAssistant?.background ?? '')
-            .trim();
-    if (bgRaw.isEmpty) return false;
-    if (bgRaw.startsWith('http')) return true;
-    try {
-      final fixed = SandboxPathResolver.fix(bgRaw);
-      return File(fixed).existsSync();
-    } catch (_) {
-      return false;
-    }
+    return ChatBackdropSpec.resolve(context).active;
   }
 
   double _chatTopOverlayInset(BuildContext context) {
@@ -1710,10 +1700,7 @@ class _HomePageState extends State<HomePage>
       },
     );
 
-    return BackdropGroup(
-      backdropKey: _messageListBackdropKey,
-      child: messageList,
-    );
+    return messageList;
   }
 
   bool _webViewportRequested(SettingsProvider settings, String conversationId) {

@@ -1609,6 +1609,136 @@ class AppLocalizationsEn extends AppLocalizations {
       'Keeping chat generation alive in background';
 
   @override
+  String get keepAliveGuidePageTitle => 'Background Keep-Alive Guide';
+
+  @override
+  String get keepAliveGuideIntro =>
+      'To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.';
+
+  @override
+  String get keepAliveGuideBatteryTitle => 'Battery Optimization';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      'If the status is not \"Unrestricted\", tap the row to allow Cuplivo to ignore battery optimization so background generation can finish.';
+
+  @override
+  String get keepAliveGuideStatusIgnored => 'Unrestricted';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => 'Optimized';
+
+  @override
+  String get keepAliveGuideStatusUnknown => 'Checking…';
+
+  @override
+  String get keepAliveGuideStatusGranted => 'Allowed';
+
+  @override
+  String get keepAliveGuideStatusDenied => 'Denied';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => 'Query failed';
+
+  @override
+  String get keepAliveGuideNotificationsDenied =>
+      'Notifications are still blocked. You can enable them in system settings.';
+
+  @override
+  String get keepAliveGuideNotificationTitle => 'Notifications';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Notification permission (Android 13+) is required for background completion notifications. If blocked, tap the row and follow the system prompt.';
+
+  @override
+  String get keepAliveGuideVendorTitle => 'Manufacturer Settings';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => 'Not detected';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      'Xiaomi: Settings → Apps → Autostart → enable Cuplivo; Settings → Battery → Battery saver policy for Cuplivo → No restrictions.';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      'Huawei: Settings → Apps → Launch management → Cuplivo → Manage manually, allow self-launch, associate launch and background activity.';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      'Honor: Settings → Apps → App launch management → Cuplivo → Manage manually, allow background activity.';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO: Settings → Apps → App management → Cuplivo → Autostart, enable; Battery → App battery usage → Unlimited.';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      'OnePlus: Settings → Battery → App power management → Cuplivo → Don\'t restrict; enable Self-startup under Settings → Apps.';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo: Settings → Apps → App management → Cuplivo → Autostart, enable; i Manager → Power management → background auto-start, allow.';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      'Samsung: Settings → Battery and device care → Battery → Background usage limits; ensure Cuplivo is not in the sleeping apps list.';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      'Meizu: Settings → Apps → Rights management → background; or Security center → App power saving.';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      'Your manufacturer is not recognized. Find the app\'s power management under system settings (usually Apps → Cuplivo → Power/Battery) and set it to Unrestricted; many ROMs also provide a lock in the recent-apps list.';
+
+  @override
+  String get keepAliveGuideAutostartAction => 'Open Autostart';
+
+  @override
+  String get keepAliveGuidePowerAction => 'Open Power Settings';
+
+  @override
+  String get keepAliveGuideLockTitle => 'Lock in Recent Apps';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      'In the recent-apps list, long-press the Cuplivo card and choose lock (pin) so one-tap cleanup does not kill it. Xiaomi: long-press → lock; Huawei/Honor: pull the card down; OPPO/OnePlus: long-press → lock; vivo: tap the lock icon.';
+
+  @override
+  String get keepAliveGuideFallbackOpened =>
+      'Opened a generic settings page. If you cannot find the option, follow the steps below.';
+
+  @override
+  String get keepAliveGuideOpenFailed =>
+      'Could not open any settings page. Please follow the steps below manually.';
+
+  @override
   String get assistantEditEmojiDialogTitle => 'Choose Emoji';
 
   @override
@@ -7316,6 +7446,57 @@ class AppLocalizationsEn extends AppLocalizations {
       'When both global and provider proxies are enabled, provider-level proxy takes priority.';
 
   @override
+  String get settingsPageAutoRetry => 'Auto Retry';
+
+  @override
+  String get autoRetryEnableLabel => 'Enable auto-retry';
+
+  @override
+  String get autoRetryMaxRetries => 'Max retries';
+
+  @override
+  String get autoRetryInitialDelay => 'Initial delay (ms)';
+
+  @override
+  String get autoRetryMultiplier => 'Backoff multiplier';
+
+  @override
+  String get autoRetryMaxDelay => 'Max delay (ms)';
+
+  @override
+  String get autoRetryJitter => 'Jitter';
+
+  @override
+  String get autoRetryJitterSubtitle => 'Randomize each wait by ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => 'Retry on network errors';
+
+  @override
+  String get autoRetryStatusCodes => 'Retry status codes';
+
+  @override
+  String get autoRetryKeywords => 'Retry keywords';
+
+  @override
+  String get autoRetryStopKeywords => 'Stop keywords';
+
+  @override
+  String get autoRetryAddHint => 'Add';
+
+  @override
+  String get autoRetryRestoreDefaults => 'Restore defaults';
+
+  @override
+  String get autoRetryFooter =>
+      'Auto-retry only runs if this request has not produced any output yet.';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '${seconds}s until retry ($attempt/$maxRetries)';
+  }
+
+  @override
   String get desktopShowProviderInModelCapsule =>
       'Show provider in model capsule';
 
@@ -8604,17 +8785,49 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      'Sub-agent delegation is on, but no sub-agent targets are available. Enable “Delegateable as a sub-agent” on another assistant first.';
-
-  @override
   String get subagentGoSetup => 'Set up';
 
   @override
-  String get subagentTargetListTitle => 'Delegatable assistants';
+  String get subagentPageTitle => 'Sub-agent Delegation';
 
   @override
-  String get subagentTargetListEmpty => 'No delegatable assistants yet.';
+  String get subagentPageExplainer =>
+      'With Sub-agent Delegation enabled, the current assistant can delegate tasks to other assistants and wait for their sub-agent result. To become a delegatable target, an assistant must:\n1. Have “Discoverable” enabled\n2. Set a non-empty delegation ID';
+
+  @override
+  String get subagentPageStatusEmptySub =>
+      'Enable “Discoverable” and set a delegation ID first';
+
+  @override
+  String get subagentPageEmpty =>
+      'No assistants to configure yet. Create one in Assistant settings first.';
+
+  @override
+  String get subagentSectionDelegatable => 'Delegatable';
+
+  @override
+  String get subagentSectionUnconfigured => 'Not configured';
+
+  @override
+  String get subagentReasonNoId => 'No delegation ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => 'Discoverability is off';
+
+  @override
+  String get subagentEditorStateOk => 'Delegatable';
+
+  @override
+  String get subagentEditorOkSub => 'All conditions met';
+
+  @override
+  String get subagentEditorNoIdSub => 'Set a delegation ID to enable';
+
+  @override
+  String get subagentEditorNotDiscSub => '“Discoverable” must be enabled first';
+
+  @override
+  String get subagentIdConflict => 'ID conflict';
 
   @override
   String get groupChatCreate => 'New group chat';
@@ -9676,6 +9889,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Assistant bubbles hug their text instead of filling the row';
 
   @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs =>
+      'Split paragraphs into bubbles';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      'Blank lines break an assistant reply into one bubble per paragraph';
+
+  @override
   String get messageStyleSettingsPageBackgroundColor => 'Background';
 
   @override
@@ -9877,5 +10098,105 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String quickInstructionMcpOffline(String serverId) {
     return 'Offline · $serverId';
+  }
+
+  @override
+  String get backupMigrateMoveOutHeader => 'Move out to';
+
+  @override
+  String get backupMigrateMoveInHeader => 'Move in from';
+
+  @override
+  String get backupPageExportKelivoCompatible => 'Export for Kelivo';
+
+  @override
+  String get backupPageImportFromOtherApps => 'Import from Other Apps';
+
+  @override
+  String get backupReminderSidebarTitle => 'Backup reminder';
+
+  @override
+  String get backupReminderSidebarSubtitle =>
+      'Your backup interval has arrived.';
+
+  @override
+  String get backupReminderSidebarAction => 'Go to backup';
+
+  @override
+  String get backupReminderSnoozeTooltip => 'Remind me later';
+
+  @override
+  String get autoSnapshotSectionTitle => 'Auto Snapshots';
+
+  @override
+  String get autoSnapshotEnableTitle => 'Enable Auto Snapshots';
+
+  @override
+  String get autoSnapshotEnableSubtitle =>
+      'Keep up to 3 full snapshots on this device. Snapshots are independent of backups and are never uploaded.';
+
+  @override
+  String get autoSnapshotFrequencyTitle => 'Snapshot Frequency';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => 'Every 12 hours';
+
+  @override
+  String get autoSnapshotFrequencyDaily => 'Every day';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => 'Every 3 days';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => 'Every 5 days';
+
+  @override
+  String get autoSnapshotCreateNow => 'Create Snapshot Now';
+
+  @override
+  String get autoSnapshotListTitle => 'Snapshots';
+
+  @override
+  String get autoSnapshotEmpty => 'No snapshots yet';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants assistants · $conversations chats';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => 'Snapshot created';
+
+  @override
+  String get autoSnapshotDedupedToast => 'Data unchanged — snapshot skipped';
+
+  @override
+  String get autoSnapshotBusyToast =>
+      'Another backup task is running. Try again later.';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return 'Snapshot failed: $error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => 'Turn off Auto Snapshots?';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return 'Turning off will permanently delete $count existing snapshot(s). Continue?';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => 'Turn off & Delete';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return 'Failed to delete stored snapshots: $error. They are kept on disk.';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return 'Could not save the Auto Snapshots setting: $error. Please try again.';
   }
 }

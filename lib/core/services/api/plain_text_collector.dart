@@ -20,6 +20,7 @@ typedef PlainTextStreamSender =
       Map<String, dynamic>? extraBody,
       bool stream,
       String? requestId,
+      String? conversationId,
       bool allowImagesApiRouting,
       bool ocrActive,
     });
@@ -57,6 +58,7 @@ class PlainTextCollector {
     bool allowImagesApiRouting = true,
     bool ocrActive = false,
     String? requestId,
+    String? conversationId,
     Duration? updateInterval,
     void Function(String accumulated)? onAccumulated,
   }) async {
@@ -120,6 +122,7 @@ class PlainTextCollector {
         extraBody: null,
         stream: stream,
         requestId: requestId,
+        conversationId: conversationId,
         allowImagesApiRouting: allowImagesApiRouting,
         ocrActive: ocrActive,
       )) {

@@ -536,7 +536,6 @@ class LocalToolsService {
           'name': LocalToolNames.handoff,
           'description': _handoffDescription(
             discoverableAssistants: discoverableAssistants,
-            excludeId: assistant.id,
           ),
           'parameters': _handoffParameters(),
         },
@@ -587,36 +586,25 @@ class LocalToolsService {
     return tools;
   }
 
-  static List<Assistant> _handoffTargets(
-    List<Assistant>? discoverable, {
-    String? excludeId,
-  }) {
+  static List<Assistant> _handoffTargets(List<Assistant>? discoverable) {
     return (discoverable ?? const <Assistant>[])
         .where(
           (a) =>
-              a.discoverable &&
-              a.handoffId != null &&
-              a.handoffId!.isNotEmpty &&
-              // Self-delegation would enable unbounded recursion — the
-              // delegating assistant is never a valid target.
-              a.id != excludeId,
+              a.discoverable && a.handoffId != null && a.handoffId!.isNotEmpty,
         )
         .toList();
   }
 
-  /// Available sub-agent delegation targets for the given assistant — the
-  /// single source behind the settings status row, the Tools Hub badge and
-  /// the target list sheet.
-  static List<Assistant> handoffTargets(
-    List<Assistant> all, {
-    String? excludeId,
-  }) {
-    return _handoffTargets(all, excludeId: excludeId);
+  /// Available sub-agent delegation targets — the single source behind the
+  /// settings status row, the Tools Hub badge and the delegation page.
+  /// Self-delegation is allowed (recursion is bounded by
+  /// [HandoffToolService.maxDelegationDepth] at execution time).
+  static List<Assistant> handoffTargets(List<Assistant> all) {
+    return _handoffTargets(all);
   }
 
   static String _handoffDescription({
     required List<Assistant>? discoverableAssistants,
-    String? excludeId,
   }) {
     final buffer = StringBuffer();
     buffer.write(
@@ -628,10 +616,7 @@ class LocalToolsService {
       'The user can watch progress in the sub-agent panel and visit the '
       'sub-conversation.\n',
     );
-    final targets = _handoffTargets(
-      discoverableAssistants,
-      excludeId: excludeId,
-    );
+    final targets = _handoffTargets(discoverableAssistants);
     if (targets.isEmpty) {
       buffer.write(
         'No assistants are currently available. '

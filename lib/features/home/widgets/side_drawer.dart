@@ -1303,6 +1303,7 @@ class _SideDrawerState extends State<SideDrawer> with TickerProviderStateMixin {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: conversationId,
         thinkingBudget: budget,
       )).trim();
       if (title.isNotEmpty) {

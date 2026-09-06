@@ -406,6 +406,58 @@ void main() {
       }
     });
 
+    testWidgets('within a bounded-height parent', (tester) async {
+      tester.view.physicalSize = const Size(2400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // The block column has a bounded-height branch that used to force the
+      // child to the parent's width. In a bounded parent the paragraphs fill
+      // the full width on both render paths anyway, so the branch contract is
+      // streaming/finished parity and width stability, not hugging. Assert
+      // that pair so a later change to the branch stays consistent.
+      final text = List.filled(20, 'A short hugged line fits.').join('\n\n');
+
+      Future<Size> sizeFor(bool streaming) async {
+        await tester.pumpWidget(
+          ChangeNotifierProvider.value(
+            value: settings,
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: 600,
+                    height: 1000,
+                    child: MarkdownWithCodeHighlight(
+                      key: ValueKey<String>('bounded-$streaming'),
+                      text: text,
+                      streaming: streaming,
+                      baseStyle: baseStyle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        return tester.getSize(find.byType(MarkdownWithCodeHighlight));
+      }
+
+      final streamingSize = await sizeFor(true);
+      final finishedSize = await sizeFor(false);
+      // Wrapping under a wide parent costs a few subpixels against the
+      // natural paragraph width; allow that rounding only.
+      expect(streamingSize.width, closeTo(finishedSize.width, 0.1));
+      expect(streamingSize.height, closeTo(finishedSize.height, 0.1));
+      // The bounded parent pins the column to its own full width on both
+      // paths, so the measured sizes must be the box size, not the viewport.
+      expect(streamingSize.width, greaterThan(500));
+      expect(finishedSize.width, greaterThan(500));
+    });
+
     testWidgets('for a long multi-paragraph reply', (tester) async {
       boundTester = tester;
       tester.view.physicalSize = const Size(1170, 2100);

@@ -10,6 +10,7 @@ import '../../utils/app_directories.dart';
 import '../../utils/assistant_regex.dart';
 import '../models/assistant.dart';
 import '../models/assistant_regex.dart';
+import '../models/auto_retry_options.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../providers/settings_provider.dart';
@@ -44,6 +45,8 @@ typedef ProactiveCareDecisionSender =
       int? maxTokens,
       bool stream,
       String? requestId,
+      String? conversationId,
+      AutoRetryOptions? retryOverride,
     });
 
 /// Snapshot of localized strings needed by the proactive care background
@@ -284,39 +287,13 @@ class ProactiveCareMessageFlow {
   }
 
   /// Collapses message versions, keeping the selected (or latest) version per
-  /// group. Same semantics as MessageBuilderService.collapseVersions.
+  /// group. Same semantics as ChatService.collapseMessageVersions.
   @visibleForTesting
   static List<ChatMessage> collapseMessageVersions(
     List<ChatMessage> items,
     Map<String, int> versionSelections,
   ) {
-    final Map<String, List<ChatMessage>> byGroup =
-        <String, List<ChatMessage>>{};
-    final List<String> order = <String>[];
-
-    for (final m in items) {
-      final gid = (m.groupId ?? m.id);
-      final list = byGroup.putIfAbsent(gid, () {
-        order.add(gid);
-        return <ChatMessage>[];
-      });
-      list.add(m);
-    }
-
-    for (final e in byGroup.entries) {
-      e.value.sort((a, b) => a.version.compareTo(b.version));
-    }
-
-    final out = <ChatMessage>[];
-    for (final gid in order) {
-      final vers = byGroup[gid]!;
-      final sel = versionSelections[gid];
-      final idx = (sel != null && sel >= 0 && sel < vers.length)
-          ? sel
-          : (vers.length - 1);
-      out.add(vers[idx]);
-    }
-    return out;
+    return ChatService.collapseMessageVersions(items, versionSelections);
   }
 
   /// Builds the plain-text LLM history for [conversation]: collapsed versions,
@@ -547,6 +524,7 @@ class ProactiveCareMessageFlow {
     required String modelId,
     required Assistant assistant,
     required List<Map<String, dynamic>> apiMessages,
+    String? conversationId,
     int? fallbackThinkingBudget,
   }) async {
     // Layer-① collector (ADR-0034): accumulate the silent no-tool stream.
@@ -554,6 +532,7 @@ class ProactiveCareMessageFlow {
       config: config,
       modelId: modelId,
       messages: apiMessages,
+      conversationId: conversationId,
       thinkingBudget: assistant.thinkingBudget ?? fallbackThinkingBudget,
       // No temperature: silent background generation — a rejected sampling
       // parameter would fail the care reply invisibly (many models no longer
@@ -581,6 +560,7 @@ class ProactiveCareMessageFlow {
     required String userNickname,
     required List<Map<String, dynamic>> history,
     required String decisionPrompt,
+    String? conversationId,
     int? fallbackThinkingBudget,
     ProactiveCareDecisionSender? sendMessageStream,
     Duration decisionTimeout = _decisionTimeout,
@@ -643,6 +623,7 @@ class ProactiveCareMessageFlow {
       messages: apiMessages,
       tools: tools,
       assistant: assistant,
+      conversationId: conversationId,
       fallbackThinkingBudget: fallbackThinkingBudget,
       timeout: decisionTimeout,
       requestId: baseRequestId,
@@ -665,6 +646,7 @@ class ProactiveCareMessageFlow {
       messages: retryMessages,
       tools: tools,
       assistant: assistant,
+      conversationId: conversationId,
       fallbackThinkingBudget: fallbackThinkingBudget,
       timeout: decisionTimeout,
       requestId: '$baseRequestId-retry',
@@ -693,6 +675,7 @@ class ProactiveCareMessageFlow {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required Assistant assistant,
+    String? conversationId,
     required int? fallbackThinkingBudget,
     required Duration timeout,
     required String requestId,
@@ -761,6 +744,10 @@ class ProactiveCareMessageFlow {
         maxTokens: assistant.maxTokens,
         stream: false,
         requestId: requestId,
+        conversationId: conversationId,
+        // This flow performs its own single retry ('-retry' suffix id); the
+        // user-configurable backoff would double attempts on free-tier limits.
+        retryOverride: const AutoRetryOptions.defaults(),
       );
 
       sub = stream.listen(

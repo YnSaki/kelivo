@@ -201,218 +201,256 @@ class _AddGroupChatButtonState extends State<_AddGroupChatButton> {
   }
 }
 
-Future<String?> _showAddGroupChatDesktopDialog(BuildContext context) async {
-  final l10n = AppLocalizations.of(context)!;
-  final cs = Theme.of(context).colorScheme;
-  final controller = TextEditingController();
-  String? result;
-  await showDialog<String>(
+Future<String?> _showAddGroupChatDesktopDialog(BuildContext context) {
+  return showDialog<String>(
     context: context,
     barrierDismissible: true,
-    builder: (ctx) {
-      return Dialog(
-        backgroundColor: cs.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: 44,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          l10n.groupChatCreate,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: AppFontWeights.emphasis,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: MaterialLocalizations.of(
-                          ctx,
-                        ).closeButtonTooltip,
-                        icon: const Icon(lucide.Lucide.X, size: 18),
-                        color: cs.onSurface,
-                        onPressed: () => Navigator.of(ctx).maybePop(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+    builder: (_) => const _AddGroupChatDesktopDialog(),
+  );
+}
+
+class _AddGroupChatDesktopDialog extends StatefulWidget {
+  const _AddGroupChatDesktopDialog();
+
+  @override
+  State<_AddGroupChatDesktopDialog> createState() =>
+      _AddGroupChatDesktopDialogState();
+}
+
+class _AddGroupChatDesktopDialogState
+    extends State<_AddGroupChatDesktopDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 44,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
                   children: [
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: l10n.groupChatNameHint,
-                        filled: true,
-                        fillColor: ctx.appColors.surfaceFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: cs.outlineVariant.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: cs.primary.withValues(alpha: 0.4),
-                          ),
+                    Expanded(
+                      child: Text(
+                        l10n.groupChatCreate,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: AppFontWeights.emphasis,
                         ),
                       ),
-                      onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _DeskIosButton(
-                          label: l10n.groupChatCancel,
-                          filled: false,
-                          dense: true,
-                          onTap: () => Navigator.of(ctx).pop(),
-                        ),
-                        const SizedBox(width: 8),
-                        _DeskIosButton(
-                          label: l10n.groupChatConfirm,
-                          filled: true,
-                          dense: true,
-                          onTap: () =>
-                              Navigator.of(ctx).pop(controller.text.trim()),
-                        ),
-                      ],
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(
+                        context,
+                      ).closeButtonTooltip,
+                      icon: const Icon(lucide.Lucide.X, size: 18),
+                      color: cs.onSurface,
+                      onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: l10n.groupChatNameHint,
+                      filled: true,
+                      fillColor: context.appColors.surfaceFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: cs.primary.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                    onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _DeskIosButton(
+                        label: l10n.groupChatCancel,
+                        filled: false,
+                        dense: true,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 8),
+                      _DeskIosButton(
+                        label: l10n.groupChatConfirm,
+                        filled: true,
+                        dense: true,
+                        onTap: () =>
+                            Navigator.of(context).pop(_controller.text.trim()),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      );
-    },
-  );
-  controller.dispose();
-  return result;
+      ),
+    );
+  }
 }
 
 Future<String?> _showAddAssistantDesktopDialog(BuildContext context) async {
-  final l10n = AppLocalizations.of(context)!;
-  final cs = Theme.of(context).colorScheme;
-  final controller = TextEditingController();
-  String? result;
-  await showDialog<String>(
+  final result = await showDialog<String>(
     context: context,
     barrierDismissible: true,
-    builder: (ctx) {
-      return Dialog(
-        backgroundColor: cs.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: 44,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          l10n.assistantSettingsAddSheetTitle,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: AppFontWeights.emphasis,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: MaterialLocalizations.of(
-                          ctx,
-                        ).closeButtonTooltip,
-                        icon: const Icon(lucide.Lucide.X, size: 18),
-                        color: cs.onSurface,
-                        onPressed: () => Navigator.of(ctx).maybePop(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: l10n.assistantSettingsAddSheetHint,
-                        filled: true,
-                        fillColor: ctx.appColors.surfaceFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: cs.outlineVariant.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: cs.primary.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ),
-                      onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _DeskIosButton(
-                          label: l10n.assistantSettingsAddSheetCancel,
-                          filled: false,
-                          dense: true,
-                          onTap: () => Navigator.of(ctx).pop(),
-                        ),
-                        const SizedBox(width: 8),
-                        _DeskIosButton(
-                          label: l10n.assistantSettingsAddSheetSave,
-                          filled: true,
-                          dense: true,
-                          onTap: () =>
-                              Navigator.of(ctx).pop(controller.text.trim()),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  ).then((v) => result = v);
+    builder: (_) => const _AddAssistantDesktopDialog(),
+  );
   final s = (result ?? '').trim();
   if (s.isEmpty) return null;
   return s;
+}
+
+class _AddAssistantDesktopDialog extends StatefulWidget {
+  const _AddAssistantDesktopDialog();
+
+  @override
+  State<_AddAssistantDesktopDialog> createState() =>
+      _AddAssistantDesktopDialogState();
+}
+
+class _AddAssistantDesktopDialogState
+    extends State<_AddAssistantDesktopDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 44,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        l10n.assistantSettingsAddSheetTitle,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: AppFontWeights.emphasis,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(
+                        context,
+                      ).closeButtonTooltip,
+                      icon: const Icon(lucide.Lucide.X, size: 18),
+                      color: cs.onSurface,
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: l10n.assistantSettingsAddSheetHint,
+                      filled: true,
+                      fillColor: context.appColors.surfaceFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: cs.primary.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                    onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _DeskIosButton(
+                        label: l10n.assistantSettingsAddSheetCancel,
+                        filled: false,
+                        dense: true,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 8),
+                      _DeskIosButton(
+                        label: l10n.assistantSettingsAddSheetSave,
+                        filled: true,
+                        dense: true,
+                        onTap: () =>
+                            Navigator.of(context).pop(_controller.text.trim()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _DeleteAssistantIcon extends StatefulWidget {

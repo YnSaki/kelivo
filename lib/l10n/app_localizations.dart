@@ -2938,6 +2938,234 @@ abstract class AppLocalizations {
   /// **'Keeping chat generation alive in background'**
   String get androidBackgroundNotificationText;
 
+  /// No description provided for @keepAliveGuidePageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Background Keep-Alive Guide'**
+  String get keepAliveGuidePageTitle;
+
+  /// No description provided for @keepAliveGuideIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.'**
+  String get keepAliveGuideIntro;
+
+  /// No description provided for @keepAliveGuideBatteryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery Optimization'**
+  String get keepAliveGuideBatteryTitle;
+
+  /// No description provided for @keepAliveGuideBatteryStep.
+  ///
+  /// In en, this message translates to:
+  /// **'If the status is not \"Unrestricted\", tap the row to allow Cuplivo to ignore battery optimization so background generation can finish.'**
+  String get keepAliveGuideBatteryStep;
+
+  /// No description provided for @keepAliveGuideStatusIgnored.
+  ///
+  /// In en, this message translates to:
+  /// **'Unrestricted'**
+  String get keepAliveGuideStatusIgnored;
+
+  /// No description provided for @keepAliveGuideStatusNotIgnored.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimized'**
+  String get keepAliveGuideStatusNotIgnored;
+
+  /// No description provided for @keepAliveGuideStatusUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get keepAliveGuideStatusUnknown;
+
+  /// No description provided for @keepAliveGuideStatusGranted.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get keepAliveGuideStatusGranted;
+
+  /// No description provided for @keepAliveGuideStatusDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Denied'**
+  String get keepAliveGuideStatusDenied;
+
+  /// No description provided for @keepAliveGuideStatusQueryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Query failed'**
+  String get keepAliveGuideStatusQueryFailed;
+
+  /// No description provided for @keepAliveGuideNotificationsDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are still blocked. You can enable them in system settings.'**
+  String get keepAliveGuideNotificationsDenied;
+
+  /// No description provided for @keepAliveGuideNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get keepAliveGuideNotificationTitle;
+
+  /// No description provided for @keepAliveGuideNotificationStep.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification permission (Android 13+) is required for background completion notifications. If blocked, tap the row and follow the system prompt.'**
+  String get keepAliveGuideNotificationStep;
+
+  /// No description provided for @keepAliveGuideVendorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Manufacturer Settings'**
+  String get keepAliveGuideVendorTitle;
+
+  /// No description provided for @keepAliveGuideVendorNotDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not detected'**
+  String get keepAliveGuideVendorNotDetected;
+
+  /// No description provided for @keepAliveGuideVendorXiaomi.
+  ///
+  /// In en, this message translates to:
+  /// **'Xiaomi / HyperOS'**
+  String get keepAliveGuideVendorXiaomi;
+
+  /// No description provided for @keepAliveGuideVendorHuawei.
+  ///
+  /// In en, this message translates to:
+  /// **'Huawei / HarmonyOS'**
+  String get keepAliveGuideVendorHuawei;
+
+  /// No description provided for @keepAliveGuideVendorHonor.
+  ///
+  /// In en, this message translates to:
+  /// **'Honor / MagicOS'**
+  String get keepAliveGuideVendorHonor;
+
+  /// No description provided for @keepAliveGuideVendorOppo.
+  ///
+  /// In en, this message translates to:
+  /// **'OPPO / ColorOS'**
+  String get keepAliveGuideVendorOppo;
+
+  /// No description provided for @keepAliveGuideVendorOneplus.
+  ///
+  /// In en, this message translates to:
+  /// **'OnePlus'**
+  String get keepAliveGuideVendorOneplus;
+
+  /// No description provided for @keepAliveGuideVendorVivo.
+  ///
+  /// In en, this message translates to:
+  /// **'vivo / OriginOS'**
+  String get keepAliveGuideVendorVivo;
+
+  /// No description provided for @keepAliveGuideVendorSamsung.
+  ///
+  /// In en, this message translates to:
+  /// **'Samsung / One UI'**
+  String get keepAliveGuideVendorSamsung;
+
+  /// No description provided for @keepAliveGuideVendorMeizu.
+  ///
+  /// In en, this message translates to:
+  /// **'Meizu / Flyme'**
+  String get keepAliveGuideVendorMeizu;
+
+  /// No description provided for @keepAliveGuideXiaomiHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Xiaomi: Settings → Apps → Autostart → enable Cuplivo; Settings → Battery → Battery saver policy for Cuplivo → No restrictions.'**
+  String get keepAliveGuideXiaomiHint;
+
+  /// No description provided for @keepAliveGuideHuaweiHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Huawei: Settings → Apps → Launch management → Cuplivo → Manage manually, allow self-launch, associate launch and background activity.'**
+  String get keepAliveGuideHuaweiHint;
+
+  /// No description provided for @keepAliveGuideHonorHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Honor: Settings → Apps → App launch management → Cuplivo → Manage manually, allow background activity.'**
+  String get keepAliveGuideHonorHint;
+
+  /// No description provided for @keepAliveGuideOppoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'OPPO: Settings → Apps → App management → Cuplivo → Autostart, enable; Battery → App battery usage → Unlimited.'**
+  String get keepAliveGuideOppoHint;
+
+  /// No description provided for @keepAliveGuideOneplusHint.
+  ///
+  /// In en, this message translates to:
+  /// **'OnePlus: Settings → Battery → App power management → Cuplivo → Don\'t restrict; enable Self-startup under Settings → Apps.'**
+  String get keepAliveGuideOneplusHint;
+
+  /// No description provided for @keepAliveGuideVivoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'vivo: Settings → Apps → App management → Cuplivo → Autostart, enable; i Manager → Power management → background auto-start, allow.'**
+  String get keepAliveGuideVivoHint;
+
+  /// No description provided for @keepAliveGuideSamsungHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Samsung: Settings → Battery and device care → Battery → Background usage limits; ensure Cuplivo is not in the sleeping apps list.'**
+  String get keepAliveGuideSamsungHint;
+
+  /// No description provided for @keepAliveGuideMeizuHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Meizu: Settings → Apps → Rights management → background; or Security center → App power saving.'**
+  String get keepAliveGuideMeizuHint;
+
+  /// No description provided for @keepAliveGuideOtherVendorHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your manufacturer is not recognized. Find the app\'s power management under system settings (usually Apps → Cuplivo → Power/Battery) and set it to Unrestricted; many ROMs also provide a lock in the recent-apps list.'**
+  String get keepAliveGuideOtherVendorHint;
+
+  /// No description provided for @keepAliveGuideAutostartAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Autostart'**
+  String get keepAliveGuideAutostartAction;
+
+  /// No description provided for @keepAliveGuidePowerAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Power Settings'**
+  String get keepAliveGuidePowerAction;
+
+  /// No description provided for @keepAliveGuideLockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock in Recent Apps'**
+  String get keepAliveGuideLockTitle;
+
+  /// No description provided for @keepAliveGuideLockStep.
+  ///
+  /// In en, this message translates to:
+  /// **'In the recent-apps list, long-press the Cuplivo card and choose lock (pin) so one-tap cleanup does not kill it. Xiaomi: long-press → lock; Huawei/Honor: pull the card down; OPPO/OnePlus: long-press → lock; vivo: tap the lock icon.'**
+  String get keepAliveGuideLockStep;
+
+  /// No description provided for @keepAliveGuideFallbackOpened.
+  ///
+  /// In en, this message translates to:
+  /// **'Opened a generic settings page. If you cannot find the option, follow the steps below.'**
+  String get keepAliveGuideFallbackOpened;
+
+  /// No description provided for @keepAliveGuideOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open any settings page. Please follow the steps below manually.'**
+  String get keepAliveGuideOpenFailed;
+
   /// No description provided for @assistantEditEmojiDialogTitle.
   ///
   /// In en, this message translates to:
@@ -13165,6 +13393,102 @@ abstract class AppLocalizations {
   /// **'When both global and provider proxies are enabled, provider-level proxy takes priority.'**
   String get networkProxyPriorityNote;
 
+  /// No description provided for @settingsPageAutoRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto Retry'**
+  String get settingsPageAutoRetry;
+
+  /// No description provided for @autoRetryEnableLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable auto-retry'**
+  String get autoRetryEnableLabel;
+
+  /// No description provided for @autoRetryMaxRetries.
+  ///
+  /// In en, this message translates to:
+  /// **'Max retries'**
+  String get autoRetryMaxRetries;
+
+  /// No description provided for @autoRetryInitialDelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Initial delay (ms)'**
+  String get autoRetryInitialDelay;
+
+  /// No description provided for @autoRetryMultiplier.
+  ///
+  /// In en, this message translates to:
+  /// **'Backoff multiplier'**
+  String get autoRetryMultiplier;
+
+  /// No description provided for @autoRetryMaxDelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Max delay (ms)'**
+  String get autoRetryMaxDelay;
+
+  /// No description provided for @autoRetryJitter.
+  ///
+  /// In en, this message translates to:
+  /// **'Jitter'**
+  String get autoRetryJitter;
+
+  /// No description provided for @autoRetryJitterSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Randomize each wait by ±20%'**
+  String get autoRetryJitterSubtitle;
+
+  /// No description provided for @autoRetryOnNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry on network errors'**
+  String get autoRetryOnNetworkError;
+
+  /// No description provided for @autoRetryStatusCodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry status codes'**
+  String get autoRetryStatusCodes;
+
+  /// No description provided for @autoRetryKeywords.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry keywords'**
+  String get autoRetryKeywords;
+
+  /// No description provided for @autoRetryStopKeywords.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop keywords'**
+  String get autoRetryStopKeywords;
+
+  /// No description provided for @autoRetryAddHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get autoRetryAddHint;
+
+  /// No description provided for @autoRetryRestoreDefaults.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore defaults'**
+  String get autoRetryRestoreDefaults;
+
+  /// No description provided for @autoRetryFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-retry only runs if this request has not produced any output yet.'**
+  String get autoRetryFooter;
+
+  /// No description provided for @autoRetryCountdown.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds}s until retry ({attempt}/{maxRetries})'**
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds);
+
   /// No description provided for @desktopShowProviderInModelCapsule.
   ///
   /// In en, this message translates to:
@@ -15355,29 +15679,89 @@ abstract class AppLocalizations {
   /// **'{count, plural, =0{0 targets} =1{1 target} other{{count} targets}}'**
   String subagentTargetBadge(num count);
 
-  /// No description provided for @subagentNoTargetHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Sub-agent delegation is on, but no sub-agent targets are available. Enable “Delegateable as a sub-agent” on another assistant first.'**
-  String get subagentNoTargetHint;
-
   /// No description provided for @subagentGoSetup.
   ///
   /// In en, this message translates to:
   /// **'Set up'**
   String get subagentGoSetup;
 
-  /// No description provided for @subagentTargetListTitle.
+  /// No description provided for @subagentPageTitle.
   ///
   /// In en, this message translates to:
-  /// **'Delegatable assistants'**
-  String get subagentTargetListTitle;
+  /// **'Sub-agent Delegation'**
+  String get subagentPageTitle;
 
-  /// No description provided for @subagentTargetListEmpty.
+  /// No description provided for @subagentPageExplainer.
   ///
   /// In en, this message translates to:
-  /// **'No delegatable assistants yet.'**
-  String get subagentTargetListEmpty;
+  /// **'With Sub-agent Delegation enabled, the current assistant can delegate tasks to other assistants and wait for their sub-agent result. To become a delegatable target, an assistant must:\n1. Have “Discoverable” enabled\n2. Set a non-empty delegation ID'**
+  String get subagentPageExplainer;
+
+  /// No description provided for @subagentPageStatusEmptySub.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable “Discoverable” and set a delegation ID first'**
+  String get subagentPageStatusEmptySub;
+
+  /// No description provided for @subagentPageEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No assistants to configure yet. Create one in Assistant settings first.'**
+  String get subagentPageEmpty;
+
+  /// No description provided for @subagentSectionDelegatable.
+  ///
+  /// In en, this message translates to:
+  /// **'Delegatable'**
+  String get subagentSectionDelegatable;
+
+  /// No description provided for @subagentSectionUnconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Not configured'**
+  String get subagentSectionUnconfigured;
+
+  /// No description provided for @subagentReasonNoId.
+  ///
+  /// In en, this message translates to:
+  /// **'No delegation ID'**
+  String get subagentReasonNoId;
+
+  /// No description provided for @subagentReasonNotDiscoverable.
+  ///
+  /// In en, this message translates to:
+  /// **'Discoverability is off'**
+  String get subagentReasonNotDiscoverable;
+
+  /// No description provided for @subagentEditorStateOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Delegatable'**
+  String get subagentEditorStateOk;
+
+  /// No description provided for @subagentEditorOkSub.
+  ///
+  /// In en, this message translates to:
+  /// **'All conditions met'**
+  String get subagentEditorOkSub;
+
+  /// No description provided for @subagentEditorNoIdSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a delegation ID to enable'**
+  String get subagentEditorNoIdSub;
+
+  /// No description provided for @subagentEditorNotDiscSub.
+  ///
+  /// In en, this message translates to:
+  /// **'“Discoverable” must be enabled first'**
+  String get subagentEditorNotDiscSub;
+
+  /// No description provided for @subagentIdConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'ID conflict'**
+  String get subagentIdConflict;
 
   /// No description provided for @groupChatCreate.
   ///
@@ -17311,6 +17695,18 @@ abstract class AppLocalizations {
   /// **'Assistant bubbles hug their text instead of filling the row'**
   String get messageStyleSettingsPageAssistantFitContentSubtitle;
 
+  /// No description provided for @messageStyleSettingsPageAssistantSplitParagraphs.
+  ///
+  /// In en, this message translates to:
+  /// **'Split paragraphs into bubbles'**
+  String get messageStyleSettingsPageAssistantSplitParagraphs;
+
+  /// No description provided for @messageStyleSettingsPageAssistantSplitParagraphsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Blank lines break an assistant reply into one bubble per paragraph'**
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle;
+
   /// No description provided for @messageStyleSettingsPageBackgroundColor.
   ///
   /// In en, this message translates to:
@@ -17667,6 +18063,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Offline · {serverId}'**
   String quickInstructionMcpOffline(String serverId);
+
+  /// No description provided for @backupMigrateMoveOutHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Move out to'**
+  String get backupMigrateMoveOutHeader;
+
+  /// No description provided for @backupMigrateMoveInHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Move in from'**
+  String get backupMigrateMoveInHeader;
+
+  /// No description provided for @backupPageExportKelivoCompatible.
+  ///
+  /// In en, this message translates to:
+  /// **'Export for Kelivo'**
+  String get backupPageExportKelivoCompatible;
+
+  /// No description provided for @backupPageImportFromOtherApps.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from Other Apps'**
+  String get backupPageImportFromOtherApps;
+
+  /// No description provided for @backupReminderSidebarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup reminder'**
+  String get backupReminderSidebarTitle;
+
+  /// No description provided for @backupReminderSidebarSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your backup interval has arrived.'**
+  String get backupReminderSidebarSubtitle;
+
+  /// No description provided for @backupReminderSidebarAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to backup'**
+  String get backupReminderSidebarAction;
+
+  /// No description provided for @backupReminderSnoozeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me later'**
+  String get backupReminderSnoozeTooltip;
+
+  /// No description provided for @autoSnapshotSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto Snapshots'**
+  String get autoSnapshotSectionTitle;
+
+  /// No description provided for @autoSnapshotEnableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable Auto Snapshots'**
+  String get autoSnapshotEnableTitle;
+
+  /// No description provided for @autoSnapshotEnableSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep up to 3 full snapshots on this device. Snapshots are independent of backups and are never uploaded.'**
+  String get autoSnapshotEnableSubtitle;
+
+  /// No description provided for @autoSnapshotFrequencyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Snapshot Frequency'**
+  String get autoSnapshotFrequencyTitle;
+
+  /// No description provided for @autoSnapshotFrequencyEvery12h.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 12 hours'**
+  String get autoSnapshotFrequencyEvery12h;
+
+  /// No description provided for @autoSnapshotFrequencyDaily.
+  ///
+  /// In en, this message translates to:
+  /// **'Every day'**
+  String get autoSnapshotFrequencyDaily;
+
+  /// No description provided for @autoSnapshotFrequencyEvery3Days.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 3 days'**
+  String get autoSnapshotFrequencyEvery3Days;
+
+  /// No description provided for @autoSnapshotFrequencyEvery5Days.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 5 days'**
+  String get autoSnapshotFrequencyEvery5Days;
+
+  /// No description provided for @autoSnapshotCreateNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Snapshot Now'**
+  String get autoSnapshotCreateNow;
+
+  /// No description provided for @autoSnapshotListTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Snapshots'**
+  String get autoSnapshotListTitle;
+
+  /// No description provided for @autoSnapshotEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No snapshots yet'**
+  String get autoSnapshotEmpty;
+
+  /// No description provided for @autoSnapshotMetaCounts.
+  ///
+  /// In en, this message translates to:
+  /// **'{assistants} assistants · {conversations} chats'**
+  String autoSnapshotMetaCounts(int assistants, int conversations);
+
+  /// No description provided for @autoSnapshotCreatedToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Snapshot created'**
+  String get autoSnapshotCreatedToast;
+
+  /// No description provided for @autoSnapshotDedupedToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Data unchanged — snapshot skipped'**
+  String get autoSnapshotDedupedToast;
+
+  /// No description provided for @autoSnapshotBusyToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Another backup task is running. Try again later.'**
+  String get autoSnapshotBusyToast;
+
+  /// No description provided for @autoSnapshotFailedToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Snapshot failed: {error}'**
+  String autoSnapshotFailedToast(String error);
+
+  /// No description provided for @autoSnapshotDisableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off Auto Snapshots?'**
+  String get autoSnapshotDisableTitle;
+
+  /// No description provided for @autoSnapshotDisableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning off will permanently delete {count} existing snapshot(s). Continue?'**
+  String autoSnapshotDisableBody(int count);
+
+  /// No description provided for @autoSnapshotDisableConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off & Delete'**
+  String get autoSnapshotDisableConfirm;
+
+  /// No description provided for @autoSnapshotDisableDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete stored snapshots: {error}. They are kept on disk.'**
+  String autoSnapshotDisableDeleteFailed(String error);
+
+  /// No description provided for @autoSnapshotToggleFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the Auto Snapshots setting: {error}. Please try again.'**
+  String autoSnapshotToggleFailed(String error);
 }
 
 class _AppLocalizationsDelegate

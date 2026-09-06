@@ -8,6 +8,7 @@ import '../../../core/models/assistant.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/group_chat.dart';
 import '../../../core/models/group_chat_director_log.dart';
+import '../../../core/models/auto_retry_options.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/services/api/chat_api_service.dart';
 import '../../../core/services/chat/chat_service.dart';
@@ -31,8 +32,10 @@ typedef DirectorStreamSender =
       Map<String, dynamic>? extraBody,
       bool stream,
       String? requestId,
+      String? conversationId,
       bool allowImagesApiRouting,
       bool ocrActive,
+      AutoRetryOptions? retryOverride,
     });
 
 typedef DirectorRuntimeLogSink = void Function(GroupChatDirectorRuntimeLog log);
@@ -169,6 +172,7 @@ class DirectorRunner {
           messages: apiMessages,
           tools: tools,
           assistantIds: assistantIds,
+          conversationId: group.conversationId,
           requestId: 'director-${group.id}-$requestStamp',
         );
         decision = result.decision;
@@ -196,6 +200,7 @@ class DirectorRunner {
             messages: retryMessages,
             tools: tools,
             assistantIds: assistantIds,
+            conversationId: group.conversationId,
             requestId: 'director-${group.id}-$requestStamp-retry',
           );
           decision = result.decision;
@@ -245,6 +250,7 @@ class DirectorRunner {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required List<String> assistantIds,
+    String? conversationId,
     required String requestId,
   }) async {
     DirectorDecision? decided;
@@ -282,6 +288,10 @@ class DirectorRunner {
         maxTokens: maxTokens,
         stream: false,
         requestId: requestId,
+        conversationId: conversationId,
+        // DirectorRunner has its own retry loop; an additional auto-retry
+        // would multiply attempts (own-loop x backoff) on free-tier limits.
+        retryOverride: const AutoRetryOptions.defaults(),
       );
 
       sub = stream.listen(

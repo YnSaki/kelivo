@@ -630,9 +630,11 @@ void main() {
         await liveFile.writeAsString('backup version');
         await liveFile.setLastModified(DateTime(2026, 1, 2, 0, 0, 57));
 
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
         final sync = DataSync(
           preferences: businessPrefs,
-          chatService: ChatService(),
+          chatService: chatService,
         );
         final zipFile = await sync.prepareBackupFile(
           const WebDavConfig(
@@ -720,9 +722,11 @@ void main() {
             .modified
             .millisecondsSinceEpoch;
 
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
         final sync = DataSync(
           preferences: businessPrefs,
-          chatService: ChatService(),
+          chatService: chatService,
         );
         final zipFile = await sync.prepareBackupFile(
           const WebDavConfig(
@@ -791,9 +795,11 @@ void main() {
         await target.setLastModified(DateTime(2026, 1, 2, 12, 34, 56, 800));
         final srcMs = target.statSync().modified.millisecondsSinceEpoch;
 
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
         final sync = DataSync(
           preferences: businessPrefs,
-          chatService: ChatService(),
+          chatService: chatService,
         );
         final zipFile = await sync.prepareBackupFile(
           const WebDavConfig(
@@ -1580,9 +1586,11 @@ void main() {
     test(
       'incremental: since param produces cuplivo_incr_ prefix and includeSettings=false excludes settings.json',
       () async {
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
         final sync = DataSync(
           preferences: businessPrefs,
-          chatService: ChatService(),
+          chatService: chatService,
         );
         final backupFile = await sync.prepareBackupFile(
           const WebDavConfig(
@@ -1695,9 +1703,11 @@ void main() {
         '${fontsDir.path}/custom.ttf',
       ).writeAsBytes(List<int>.filled(64, 9));
 
+      final chatService = _InMemoryChatService();
+      addTearDown(chatService.closeDb);
       final sync = DataSync(
         preferences: businessPrefs,
-        chatService: ChatService(),
+        chatService: chatService,
       );
       final backupFile = await sync.prepareBackupFile(
         const WebDavConfig(
@@ -1736,9 +1746,11 @@ void main() {
       await uploadDir.create(recursive: true);
       await File('${uploadDir.path}/doc.txt').writeAsString('hello');
 
+      final chatService = _InMemoryChatService();
+      addTearDown(chatService.closeDb);
       final sync = DataSync(
         preferences: businessPrefs,
-        chatService: ChatService(),
+        chatService: chatService,
       );
       final backupFile = await sync.prepareBackupFile(
         const WebDavConfig(
