@@ -1173,6 +1173,13 @@ class _OpenAIProviderInfo {
   bool get isDeepSeek =>
       host.contains('deepseek') ||
       upstreamModelId.toLowerCase().contains('deepseek');
+  bool get isMiniMax =>
+      host.contains('minimax') ||
+      providerId.contains('minimax') ||
+      RegExp(
+        r'(^|[/_:@])minimax-',
+        caseSensitive: false,
+      ).hasMatch(upstreamModelId.trim());
   bool get isDashScope => host.contains('dashscope') || host.contains('aliyun');
   bool get isVolc =>
       host.contains('ark.cn-beijing.volces.com') ||
@@ -1287,6 +1294,13 @@ void _applyVendorReasoningKnobs(
       body.remove('thinking');
       body.remove('reasoning_effort');
     }
+  } else if (info.isMiniMax) {
+    if (isReasoning) {
+      body['thinking'] = {'type': off ? 'disabled' : 'adaptive'};
+    } else {
+      body.remove('thinking');
+    }
+    body.remove('reasoning_effort');
   }
 }
 
