@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import '../../../core/services/haptics.dart';
+import '../../../core/services/streaming_content_notifier.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
@@ -48,13 +49,17 @@ import '../../home/services/ask_user_interaction_service.dart';
 import '../../home/services/local_tools_service.dart';
 import 'screen_time_tool_ui.dart';
 import '../../home/services/tool_approval_service.dart';
-import '../utils/thinking_tag_parser.dart';
+import '../../../core/utils/thinking_tag_parser.dart';
+import '../utils/assistant_paragraph_splitter.dart';
 import 'citation_sources_sheet.dart';
 import 'chat_suggestion_bubbles.dart';
 import 'token_display_widget.dart';
 import '../../../theme/app_font_weights.dart';
 import '../../../theme/app_semantic_colors.dart';
+import '../../../theme/chat_bubble_style.dart';
 import '../models/tool_ui_part.dart';
+import 'frosted/frosted_surface.dart';
+import 'tool_approval_binding.dart';
 
 export '../models/tool_ui_part.dart';
 
@@ -758,6 +763,8 @@ class ChatMessageWidget extends StatefulWidget {
   // Whether files are currently being processed
   final bool isProcessingFiles;
   final bool enableStreamingTextMotion;
+  // Auto-retry countdown while the request waits in backoff
+  final RetryStatus? retryStatus;
   final List<String> suggestions;
   final ValueChanged<String>? onSuggestionTap;
   final ValueChanged<String>? onQuoteSelection;
@@ -812,6 +819,7 @@ class ChatMessageWidget extends StatefulWidget {
     this.toolCountAtSplit,
     this.hideStreamingIndicator = false,
     this.isProcessingFiles = false,
+    this.retryStatus,
     this.enableStreamingTextMotion = true,
     this.suggestions = const <String>[],
     this.onSuggestionTap,
@@ -1381,7 +1389,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
             child: _buildBubbleContainer(
               context: context,
               isUser: true,
-              child: _buildUserTextContent(context, visualText, settings, cs),
+              child: _buildUserTextContent(context, visualText, settings),
             ),
           )
         : null;
@@ -1667,7 +1675,6 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     BuildContext context,
     String visualText,
     SettingsProvider settings,
-    ColorScheme cs,
   ) {
     final bool isDesktop =
         defaultTargetPlatform == TargetPlatform.macOS ||
@@ -1687,7 +1694,11 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     } else {
       content = Text(
         visualText,
-        style: TextStyle(fontSize: baseUser, height: 1.4, color: cs.onSurface),
+        style: TextStyle(
+          fontSize: baseUser,
+          height: 1.4,
+          color: _chatSurfacePlainTextColor(context, isUser: true),
+        ),
       );
     }
 
@@ -1898,6 +1909,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                 : cs.primary.withValues(alpha: 0.08))
           : null,
       bareOnDefault: !isUser,
+      isUser: isUser,
       child: child,
     );
   }
@@ -1943,9 +1955,9 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
   Widget _buildAssistantTextContent(
     BuildContext context,
     String visualContent,
-    SettingsProvider settings,
-  ) {
-    final cs = Theme.of(context).colorScheme;
+    SettingsProvider settings, {
+    String contentKey = '',
+  }) {
     final bool isDesktop =
         defaultTargetPlatform == TargetPlatform.macOS ||
         defaultTargetPlatform == TargetPlatform.windows ||
@@ -1966,7 +1978,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
         style: TextStyle(
           fontSize: baseAssistant,
           height: 1.5,
-          color: cs.onSurface,
+          color: _chatSurfacePlainTextColor(context),
         ),
       );
     }
@@ -1986,7 +1998,11 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
 
     return RepaintBoundary(
       child: SelectionArea(
-        key: ValueKey('assistant_${widget.message.id}'),
+        key: ValueKey(
+          contentKey.isEmpty
+              ? 'assistant_${widget.message.id}'
+              : 'assistant_${widget.message.id}_$contentKey',
+        ),
         onSelectionChanged: (selection) {
           _selectedPlainText = selection?.plainText;
         },
@@ -2097,18 +2113,55 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     );
   }
 
+  /// Assistant blocks span the row by default. With the fit-content option
+  /// on, [Align] hands the bubble loose constraints so it hugs its text;
+  /// long text still wraps at the same max width.
+  Widget _assistantBlockWidth(BuildContext context, {required Widget child}) {
+    final fitContent = context.select<SettingsProvider, bool>(
+      (s) => s.assistantBubbleFitContent,
+    );
+    if (!fitContent) return SizedBox(width: double.infinity, child: child);
+    return Align(alignment: Alignment.centerLeft, child: child);
+  }
+
   Widget _buildAssistantTextBlock(
     BuildContext context,
     String visualContent,
-    SettingsProvider settings,
-  ) {
-    return SizedBox(
-      width: double.infinity,
+    SettingsProvider settings, {
+    String contentKey = '',
+  }) {
+    return _assistantBlockWidth(
+      context,
       child: _buildAssistantBubbleContainer(
         context: context,
-        child: _buildAssistantTextContent(context, visualContent, settings),
+        child: _buildAssistantTextContent(
+          context,
+          visualContent,
+          settings,
+          contentKey: contentKey,
+        ),
       ),
     );
+  }
+
+  List<Widget> _buildAssistantTextBubbles(
+    BuildContext context,
+    String visualContent,
+    SettingsProvider settings, {
+    required String blockKey,
+  }) {
+    final parts = settings.assistantBubbleSplitParagraphs
+        ? splitAssistantParagraphs(visualContent)
+        : <String>[visualContent];
+    return <Widget>[
+      for (var i = 0; i < parts.length; i++)
+        _buildAssistantTextBlock(
+          context,
+          parts[i],
+          settings,
+          contentKey: parts.length == 1 ? '' : '$blockKey.$i',
+        ),
+    ];
   }
 
   List<_TimelineStepData> _buildTimelineSteps(
@@ -2538,17 +2591,38 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                 widget.message.isStreaming &&
                 visualContent.isEmpty) {
               return <Widget>[
-                SizedBox(
-                  width: double.infinity,
+                _assistantBlockWidth(
+                  context,
                   child: _buildAssistantBubbleContainer(
                     context: context,
                     child: Align(
                       alignment: Alignment.centerLeft,
+                      // widthFactor keeps the waiting bubble from filling a
+                      // loose row under the fit-content option; with tight
+                      // constraints (option off) Align ignores it.
+                      widthFactor: 1,
                       child: Semantics(
-                        label: l10n.chatMessageWidgetThinking,
+                        label: widget.retryStatus == null
+                            ? l10n.chatMessageWidgetThinking
+                            : l10n.autoRetryCountdown(
+                                widget.retryStatus!.attempt,
+                                widget.retryStatus!.maxRetries,
+                                _retrySecondsLeft(widget.retryStatus!),
+                              ),
                         child: widget.hideStreamingIndicator
                             ? const SizedBox(height: 16)
-                            : const LoadingIndicator(),
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const LoadingIndicator(),
+                                  if (widget.retryStatus != null) ...[
+                                    const SizedBox(width: 8),
+                                    _RetryCountdownHint(
+                                      status: widget.retryStatus!,
+                                    ),
+                                  ],
+                                ],
+                              ),
                       ),
                     ),
                   ),
@@ -2557,22 +2631,31 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
             }
 
             final widgets = <Widget>[];
+            void addVisible(Widget child) {
+              if (widgets.isNotEmpty) {
+                widgets.add(const SizedBox(height: 8));
+              }
+              widgets.add(child);
+            }
+
             for (int i = 0; i < renderBlocks.length; i++) {
               final block = renderBlocks[i];
               if (block.type == _RenderBlockType.text && block.text != null) {
-                widgets.add(
-                  _buildAssistantTextBlock(context, block.text!, settings),
-                );
+                for (final bubble in _buildAssistantTextBubbles(
+                  context,
+                  block.text!,
+                  settings,
+                  blockKey: 'text$i',
+                )) {
+                  addVisible(bubble);
+                }
               } else if (block.steps.isNotEmpty) {
-                widgets.add(
+                addVisible(
                   _ChainOfThoughtCard(
                     steps: block.steps,
                     onRecoveredAnswer: widget.onRecoveredAskUserAnswer,
                   ),
                 );
-              }
-              if (i != renderBlocks.length - 1) {
-                widgets.add(const SizedBox(height: 8));
               }
             }
 
@@ -2714,7 +2797,9 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                                         style: TextStyle(
                                           fontSize: baseTranslation,
                                           height: 1.4,
-                                          color: cs.onSurface,
+                                          color: _chatSurfacePlainTextColor(
+                                            context,
+                                          ),
                                         ),
                                       );
                                     }
@@ -3259,6 +3344,34 @@ class _AnimatedPopupState extends State<_AnimatedPopup> {
   }
 }
 
+({ChatMessageBackgroundStyle style, ChatBubbleStyleOverrides overrides})
+_chatSurfaceStyleSelection(BuildContext context, {bool isUser = false}) {
+  return context.select<
+    SettingsProvider,
+    ({ChatMessageBackgroundStyle style, ChatBubbleStyleOverrides overrides})
+  >(
+    (s) => (
+      style: s.chatMessageBackgroundStyle,
+      overrides: s.chatBubbleStyleOverridesFor(isUser: isUser),
+    ),
+  );
+}
+
+Color _chatSurfacePlainTextColor(BuildContext context, {bool isUser = false}) {
+  final theme = Theme.of(context);
+  final cs = theme.colorScheme;
+  final selection = _chatSurfaceStyleSelection(context, isUser: isUser);
+  if (selection.style == ChatMessageBackgroundStyle.defaultStyle) {
+    return cs.onSurface;
+  }
+  return resolveBubbleStyle(
+    cs,
+    theme.brightness,
+    selection.style,
+    selection.overrides,
+  ).text;
+}
+
 Widget _buildSharedChatSurface(
   BuildContext context, {
   required Widget child,
@@ -3266,43 +3379,41 @@ Widget _buildSharedChatSurface(
   required EdgeInsetsGeometry padding,
   Color? defaultColor,
   bool bareOnDefault = false,
+  bool isUser = false,
 }) {
   final theme = Theme.of(context);
   final cs = theme.colorScheme;
-  final isDark = theme.brightness == Brightness.dark;
-  final style = context.watch<SettingsProvider>().chatMessageBackgroundStyle;
-  final paddedChild = Padding(padding: padding, child: child);
+  final selection = _chatSurfaceStyleSelection(context, isUser: isUser);
+  final style = selection.style;
+  final overrides = selection.overrides;
+  final resolved = resolveBubbleStyle(cs, theme.brightness, style, overrides);
+  Widget paddedChild = Padding(padding: padding, child: child);
+  if (style != ChatMessageBackgroundStyle.defaultStyle &&
+      overrides.hasTextOverride(theme.brightness)) {
+    paddedChild = DefaultTextStyle.merge(
+      style: TextStyle(color: resolved.text),
+      child: paddedChild,
+    );
+  }
 
   switch (style) {
     case ChatMessageBackgroundStyle.frosted:
-      return ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter.grouped(
-          filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  // color-gate: ignore
-                  ? const Color(0xFF1C1C1E).withValues(alpha: 0.66)
-                  : Colors.white.withValues(alpha: 0.66),
-              borderRadius: borderRadius,
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.14),
-                width: 0.8,
-              ),
-            ),
-            child: paddedChild,
-          ),
-        ),
+      final radius = BorderRadius.circular(resolved.radius);
+      return FrostedSurface(
+        style: resolved,
+        borderRadius: radius,
+        isUser: isUser,
+        child: paddedChild,
       );
     case ChatMessageBackgroundStyle.solid:
+      final radius = BorderRadius.circular(resolved.radius);
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: context.appColors.surfaceCard,
-          borderRadius: borderRadius,
+          color: resolved.background,
+          borderRadius: radius,
           border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.16),
-            width: 0.8,
+            color: resolved.border,
+            width: resolved.borderWidth,
           ),
         ),
         child: paddedChild,
@@ -3343,12 +3454,13 @@ class _ChatSurfaceForegroundPalette {
 }
 
 _ChatSurfaceForegroundPalette _chatSurfaceForegroundPalette(
-  BuildContext context,
-) {
+  BuildContext context, {
+  bool isUser = false,
+}) {
   final theme = Theme.of(context);
   final cs = theme.colorScheme;
-  final style = context.watch<SettingsProvider>().chatMessageBackgroundStyle;
-  if (style == ChatMessageBackgroundStyle.defaultStyle) {
+  final selection = _chatSurfaceStyleSelection(context, isUser: isUser);
+  if (selection.style == ChatMessageBackgroundStyle.defaultStyle) {
     return _ChatSurfaceForegroundPalette(
       strong: cs.secondary,
       medium: cs.secondary.withValues(alpha: 0.9),
@@ -3427,6 +3539,52 @@ class _MenuItem extends StatelessWidget {
 }
 
 // Pulsing 3-dot loading indicator for chat thinking states (shared)
+int _retrySecondsLeft(RetryStatus status) {
+  final remaining = status.retryAt.difference(DateTime.now());
+  if (remaining.isNegative) return 0;
+  return remaining.inMilliseconds == 0
+      ? 0
+      : (remaining.inMilliseconds / 1000).ceil();
+}
+
+/// One-shot countdown next to the thinking indicator while auto-retry waits.
+/// A fresh [RetryStatus] (new [RetryStatus.retryAt]) restarts the animation.
+class _RetryCountdownHint extends StatelessWidget {
+  const _RetryCountdownHint({required this.status});
+
+  final RetryStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    final remaining = status.retryAt.difference(DateTime.now());
+    final startSeconds = remaining.inMilliseconds / 1000.0;
+    final style = TextStyle(
+      fontSize: 12,
+      color: cs.onSurface.withValues(alpha: 0.55),
+    );
+    if (startSeconds <= 0) {
+      return Text(
+        l10n.autoRetryCountdown(status.attempt, status.maxRetries, 0),
+        style: style,
+      );
+    }
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(status.retryAt),
+      tween: Tween<double>(begin: startSeconds, end: 0),
+      duration: remaining,
+      builder: (context, value, _) {
+        final seconds = value <= 0 ? 0 : value.ceil();
+        return Text(
+          l10n.autoRetryCountdown(status.attempt, status.maxRetries, seconds),
+          style: style,
+        );
+      },
+    );
+  }
+}
+
 class LoadingIndicator extends StatefulWidget {
   const LoadingIndicator({
     super.key,
@@ -3511,7 +3669,7 @@ class _LoadingIndicatorState extends State<LoadingIndicator>
 /// Goals:
 /// - Make streaming output feel less "chunky" by smoothing size growth.
 /// - Respect reduce-motion settings.
-class _StreamingAssistantMessageMotion extends StatelessWidget {
+class _StreamingAssistantMessageMotion extends StatefulWidget {
   const _StreamingAssistantMessageMotion({
     required this.enabled,
     required this.child,
@@ -3521,8 +3679,20 @@ class _StreamingAssistantMessageMotion extends StatelessWidget {
   final Widget child;
 
   @override
+  State<_StreamingAssistantMessageMotion> createState() =>
+      _StreamingAssistantMessageMotionState();
+}
+
+class _StreamingAssistantMessageMotionState
+    extends State<_StreamingAssistantMessageMotion> {
+  final _contentKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled) return child;
+    // Reparent the same content when motion stops, retaining table gestures
+    // and offsets without leaving an AnimatedSize on completed messages.
+    final child = KeyedSubtree(key: _contentKey, child: widget.child);
+    if (!widget.enabled) return child;
 
     return AnimatedSize(
       key: const ValueKey('streaming-assistant-message-motion'),
@@ -4233,20 +4403,11 @@ class _ChainOfThoughtToolStepState extends State<_ChainOfThoughtToolStep> {
     final fg = _chatSurfaceForegroundPalette(context);
     final settings = context.watch<SettingsProvider>();
     final approvalService = context.watch<ToolApprovalService>();
-    ToolApprovalRequest? pendingRequest;
-    if (widget.part.id.isNotEmpty &&
-        approvalService.isPending(widget.part.id)) {
-      pendingRequest = approvalService.pendingRequests[widget.part.id];
-    } else {
-      for (final request in approvalService.pendingRequests.values) {
-        if (request.toolName == widget.part.toolName) {
-          pendingRequest = request;
-          break;
-        }
-      }
-    }
-    final isPendingApproval = pendingRequest != null;
-    final approvalRequest = pendingRequest;
+    final approvalRequest = pendingApprovalRequestFor(
+      approvalService,
+      widget.part,
+    );
+    final isPendingApproval = approvalRequest != null;
 
     final icon = _isAskUser
         ? Icon(
@@ -4499,23 +4660,13 @@ class _ToolCallItemState extends State<_ToolCallItem> {
       );
     }
 
-    // Check if this tool call is pending approval
+    // Check if this tool call is pending approval.
     final approvalService = context.watch<ToolApprovalService>();
-    final isPendingApproval =
-        widget.part.loading &&
-        approvalService.pendingRequests.values.any(
-          (req) => req.toolName == widget.part.toolName,
-        );
-    // Find the matching approval request
-    String? pendingToolCallId;
-    if (isPendingApproval) {
-      try {
-        final req = approvalService.pendingRequests.values.firstWhere(
-          (req) => req.toolName == widget.part.toolName,
-        );
-        pendingToolCallId = req.toolCallId;
-      } catch (_) {}
-    }
+    final approvalRequest = pendingApprovalRequestFor(
+      approvalService,
+      widget.part,
+    );
+    final isPendingApproval = approvalRequest != null;
 
     return IosCardPress(
       borderRadius: BorderRadius.circular(16),
@@ -4662,7 +4813,7 @@ class _ToolCallItemState extends State<_ToolCallItem> {
               ),
             ],
             // Approval action buttons
-            if (isPendingApproval && pendingToolCallId != null) ...[
+            if (approvalRequest != null) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -4674,7 +4825,7 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                       onTap: () => _showDenyDialog(
                         context,
                         approvalService,
-                        pendingToolCallId!,
+                        approvalRequest.toolCallId,
                       ),
                     ),
                   ),
@@ -4684,7 +4835,8 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                       label: l10n.toolApprovalApprove,
                       color: fg.accent,
                       filled: true,
-                      onTap: () => approvalService.approve(pendingToolCallId!),
+                      onTap: () =>
+                          approvalService.approve(approvalRequest.toolCallId),
                     ),
                   ),
                 ],

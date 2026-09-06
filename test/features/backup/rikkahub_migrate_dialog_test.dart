@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:Cuplivo/core/database/business_preferences.dart';
 
+import 'package:Cuplivo/core/providers/auto_snapshot_provider.dart';
 import 'package:Cuplivo/core/providers/backup_provider.dart';
 import 'package:Cuplivo/core/providers/backup_reminder_provider.dart';
 import 'package:Cuplivo/core/providers/s3_backup_provider.dart';
@@ -42,6 +43,13 @@ Future<void> _pumpBackupPage(
         ChangeNotifierProvider<SettingsProvider>.value(value: settings),
         ChangeNotifierProvider<ChatService>.value(value: chatService),
         ChangeNotifierProvider<BackupReminderProvider>.value(value: reminder),
+      ChangeNotifierProvider<AutoSnapshotProvider>(
+        create: (_) => AutoSnapshotProvider(
+          preferences: businessPrefs,
+          chatService: chatService,
+          autoLoad: false,
+        ),
+      ),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -77,6 +85,13 @@ Future<void> _pumpDesktopBackupPane(
           ),
         ),
         ChangeNotifierProvider<BackupReminderProvider>.value(value: reminder),
+      ChangeNotifierProvider<AutoSnapshotProvider>(
+        create: (_) => AutoSnapshotProvider(
+          preferences: businessPrefs,
+          chatService: chatService,
+          autoLoad: false,
+        ),
+      ),
         ChangeNotifierProvider<BackupProvider>(
           create: (_) => BackupProvider(
             preferences: businessPrefs,
@@ -135,6 +150,23 @@ void _expectMigrateDialogShown(WidgetTester tester) {
   expect(find.textContaining('join the Cuplivo QQ group'), findsOneWidget);
 }
 
+Future<void> _openMigrationChooser(
+  WidgetTester tester,
+  String optionLabel,
+) async {
+  final summary = find.text('Migrate Data');
+  await tester.scrollUntilVisible(
+    summary,
+    120,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(summary);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(optionLabel));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -161,8 +193,16 @@ void main() {
         final settings = SettingsProvider(preferences: businessPrefs);
         await _pumpBackupPage(tester, settings: settings);
 
+        final summary = find.text('Migrate Data');
+        await tester.scrollUntilVisible(
+          summary,
+          120,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(summary);
+        await tester.pumpAndSettle();
         expect(find.text('Import from RikkaHub'), findsOneWidget);
-        _expectAbove(tester, 'Import Backup File', 'Import from RikkaHub');
         _expectAbove(
           tester,
           'Import from RikkaHub',
@@ -180,9 +220,7 @@ void main() {
       final settings = SettingsProvider(preferences: businessPrefs);
       await _pumpBackupPage(tester, settings: settings);
 
-      await tester.tap(find.text('Import from RikkaHub'));
-      await tester.pumpAndSettle();
-
+      await _openMigrationChooser(tester, 'Import from RikkaHub');
       _expectMigrateDialogShown(tester);
     });
 
@@ -208,8 +246,7 @@ void main() {
       final settings = SettingsProvider(preferences: businessPrefs);
       await _pumpBackupPage(tester, settings: settings);
 
-      await tester.tap(find.text('Import from RikkaHub'));
-      await tester.pumpAndSettle();
+      await _openMigrationChooser(tester, 'Import from RikkaHub');
       await tester.tap(find.text(_migrateUrl));
       await tester.pumpAndSettle();
 
@@ -223,8 +260,7 @@ void main() {
       final settings = SettingsProvider(preferences: businessPrefs);
       await _pumpBackupPage(tester, settings: settings);
 
-      await tester.tap(find.text('Import from RikkaHub'));
-      await tester.pumpAndSettle();
+      await _openMigrationChooser(tester, 'Import from RikkaHub');
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
 
@@ -242,18 +278,7 @@ void main() {
       final settings = SettingsProvider(preferences: businessPrefs);
       await _pumpDesktopBackupPane(tester, settings: settings);
 
-      final button = find.text('Import from RikkaHub');
-      await tester.scrollUntilVisible(
-        button,
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      expect(button, findsOneWidget);
-
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-
+      await _openMigrationChooser(tester, 'Import from RikkaHub');
       _expectMigrateDialogShown(tester);
     });
   });

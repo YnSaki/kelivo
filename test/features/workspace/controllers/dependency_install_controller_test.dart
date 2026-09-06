@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:Cuplivo/core/models/workspace.dart';
 import 'package:Cuplivo/core/services/workspace/linux_sandbox_service.dart';
+import 'package:Cuplivo/core/services/workspace/workspace_terminal_native_bridge.dart';
 import 'package:Cuplivo/features/workspace/controllers/dependency_install_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -76,6 +77,14 @@ void main() {
       pref: pref,
     );
 
+    // The pump acquires its keep-screen-on hold first, so the first
+    // install starts asynchronously; wait for it instead of asserting in
+    // the same frame.
+    await _pumpUntil(
+      () =>
+          controller.statusFor(wsId, WorkspaceDependencyIds.nodejs) ==
+          DepInstallStatus.installing,
+    );
     expect(
       controller.statusFor(wsId, WorkspaceDependencyIds.nodejs),
       DepInstallStatus.installing,
@@ -288,6 +297,11 @@ void main() {
       hostPath: '/ws',
       pref: pref,
     );
+    await _pumpUntil(
+      () =>
+          controller.statusFor(wsId, WorkspaceDependencyIds.git) ==
+          DepInstallStatus.installing,
+    );
     expect(
       controller.statusFor(wsId, WorkspaceDependencyIds.git),
       DepInstallStatus.installing,
@@ -337,5 +351,282 @@ void main() {
     expect(fake.order, containsAll([WorkspaceDependencyIds.git, 'git2']));
     // Each workspace's install must run against its own rootfs path.
     expect(fake.hostPaths, containsAll(['/ws_a', '/ws_b']));
+  });
+
+  test('base reinstall stops the workspace terminal before mutation', () async {
+    final events = <String>[];
+    final controller = DependencyInstallController(
+      beforeBaseMutation: (hostPath) async {
+        events.add('stop:$hostPath');
+      },
+      installer:
+          ({
+            required workspaceHostPath,
+            required depId,
+            required pref,
+            onProgress,
+          }) async {
+            events.add('install:$workspaceHostPath:$depId');
+          },
+    );
+
+    controller.enqueue(
+      workspaceId: wsId,
+      depId: WorkspaceDependencyIds.base,
+      hostPath: '/ws',
+      pref: pref,
+    );
+    await _pumpUntil(
+      () =>
+          controller.statusFor(wsId, WorkspaceDependencyIds.base) ==
+          DepInstallStatus.idle,
+    );
+
+    expect(events, <String>['stop:/ws', 'install:/ws:base']);
+  });
+
+  test('base reinstall is cancelled when terminal stop fails', () async {
+    var installerCalled = false;
+    final controller = DependencyInstallController(
+      beforeBaseMutation: (_) async => throw StateError('stop failed'),
+      installer:
+          ({
+            required workspaceHostPath,
+            required depId,
+            required pref,
+            onProgress,
+          }) async {
+            installerCalled = true;
+          },
+    );
+
+    controller.enqueue(
+      workspaceId: wsId,
+      depId: WorkspaceDependencyIds.base,
+      hostPath: '/ws',
+      pref: pref,
+    );
+    await _pumpUntil(
+      () =>
+          controller.statusFor(wsId, WorkspaceDependencyIds.base) ==
+          DepInstallStatus.idle,
+    );
+
+    expect(installerCalled, isFalse);
+    expect(
+      controller.takeCompleted(wsId)[WorkspaceDependencyIds.base],
+      isA<WorkspaceTerminalStopException>(),
+    );
+  });
+
+  group('keep-screen-on queue hold', () {
+    test('spans the whole queue and survives listeners detaching', () async {
+      final holds = <bool>[];
+      final fake = _FakeInstaller()
+        ..gate[WorkspaceDependencyIds.git] = Completer<void>()
+        ..gate[WorkspaceDependencyIds.python] = Completer<void>();
+      final controller = DependencyInstallController(
+        installer: fake.call,
+        keepScreenOn: (hold) async => holds.add(hold),
+      );
+
+      // No observer ever attaches (standing in for a detail page already
+      // popped): the queue must still keep the screen on by itself.
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.git,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.python,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      await _pumpUntil(() => holds.contains(true));
+      expect(holds, [true]);
+
+      // Between dependencies the hold must not flicker: queue still busy.
+      fake.gate[WorkspaceDependencyIds.git]!.complete();
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.git) ==
+            DepInstallStatus.idle,
+      );
+      expect(holds, [true]);
+
+      // Last dependency finishes: hold releases exactly once.
+      fake.gate[WorkspaceDependencyIds.python]!.complete();
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.python) ==
+            DepInstallStatus.idle,
+      );
+      expect(holds, [true, false]);
+    });
+
+    test('releases on runner failure even without any listener', () async {
+      final holds = <bool>[];
+      final fake = _FakeInstaller()
+        ..failures[WorkspaceDependencyIds.nodejs] = 'apt lock held';
+      final controller = DependencyInstallController(
+        installer: fake.call,
+        keepScreenOn: (hold) async => holds.add(hold),
+      );
+
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.nodejs,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      await _pumpUntil(() => holds.contains(false));
+      expect(holds, [true, false]);
+      expect(
+        controller.takeCompleted(wsId)[WorkspaceDependencyIds.nodejs],
+        isA<StateError>(),
+      );
+    });
+
+    test('acquires once per pump and composes across workspaces', () async {
+      final holds = <bool>[];
+      final fake = _FakeInstaller()
+        ..gate[WorkspaceDependencyIds.git] = Completer<void>()
+        ..gate['git2'] = Completer<void>();
+      final controller = DependencyInstallController(
+        installer: fake.call,
+        keepScreenOn: (hold) async => holds.add(hold),
+      );
+
+      controller.enqueue(
+        workspaceId: 'ws_a',
+        depId: WorkspaceDependencyIds.git,
+        hostPath: '/ws_a',
+        pref: pref,
+      );
+      controller.enqueue(
+        workspaceId: 'ws_b',
+        depId: 'git2',
+        hostPath: '/ws_b',
+        pref: pref,
+      );
+      await _pumpUntil(() => fake.concurrent == 2);
+      // Two concurrent pumps -> two acquires; the service refcount keeps the
+      // flag until the last release (composition with the terminal hold).
+      expect(holds, [true, true]);
+
+      fake.gate[WorkspaceDependencyIds.git]!.complete();
+      fake.gate['git2']!.complete();
+      await _pumpUntil(
+        () =>
+            controller.statusFor('ws_a', WorkspaceDependencyIds.git) ==
+                DepInstallStatus.idle &&
+            controller.statusFor('ws_b', 'git2') == DepInstallStatus.idle,
+      );
+      expect(holds, [true, true, false, false]);
+    });
+
+    test('a failing keep-screen-on switch never aborts the install', () async {
+      final fake = _FakeInstaller()
+        ..gate[WorkspaceDependencyIds.git] = Completer<void>();
+      final controller = DependencyInstallController(
+        installer: fake.call,
+        keepScreenOn: (hold) async => throw StateError('no activity'),
+      );
+
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.git,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.git) ==
+            DepInstallStatus.installing,
+      );
+      expect(
+        controller.statusFor(wsId, WorkspaceDependencyIds.git),
+        DepInstallStatus.installing,
+      );
+      fake.gate[WorkspaceDependencyIds.git]!.complete();
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.git) ==
+            DepInstallStatus.idle,
+      );
+      expect(fake.order, [WorkspaceDependencyIds.git]);
+      expect(
+        controller.takeCompleted(wsId)[WorkspaceDependencyIds.git],
+        isNull,
+      );
+    });
+
+    test('an enqueue during the async release runs in a fresh pump', () async {
+      // Regression (review): the pump used to await `keepScreenOn(false)`
+      // BEFORE releasing worker ownership, so a dependency enqueued while
+      // that release was in flight landed in a queue the finishing pump was
+      // about to delete — it stayed idle forever. The first release is
+      // gated to widen that window deterministically.
+      final holds = <bool>[];
+      final gateRelease = Completer<void>();
+      var releases = 0;
+      final fake = _FakeInstaller()
+        ..gate[WorkspaceDependencyIds.git] = Completer<void>();
+      final controller = DependencyInstallController(
+        installer: fake.call,
+        keepScreenOn: (hold) async {
+          holds.add(hold);
+          if (!hold) {
+            releases++;
+            if (releases == 1) await gateRelease.future;
+          }
+        },
+      );
+
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.git,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.git) ==
+            DepInstallStatus.installing,
+      );
+      fake.gate[WorkspaceDependencyIds.git]!.complete();
+      // The drain finished and the release is in flight, still gated.
+      await _pumpUntil(() => holds.contains(false));
+
+      controller.enqueue(
+        workspaceId: wsId,
+        depId: WorkspaceDependencyIds.python,
+        hostPath: '/ws',
+        pref: pref,
+      );
+      gateRelease.complete();
+      await _pumpUntil(
+        () =>
+            controller.statusFor(wsId, WorkspaceDependencyIds.python) ==
+            DepInstallStatus.idle,
+      );
+      expect(fake.order, [
+        WorkspaceDependencyIds.git,
+        WorkspaceDependencyIds.python,
+      ]);
+      expect(
+        controller.statusFor(wsId, WorkspaceDependencyIds.python),
+        DepInstallStatus.idle,
+      );
+      expect(
+        controller.takeCompleted(wsId)[WorkspaceDependencyIds.python],
+        isNull,
+      );
+      // Holds stay balanced: one acquire/release per queue the controller
+      // actually ran.
+      expect(holds, [true, false, true, false]);
+    });
   });
 }

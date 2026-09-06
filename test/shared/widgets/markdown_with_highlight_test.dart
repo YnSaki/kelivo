@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:Cuplivo/shared/widgets/markdown_line_lexer.dart';
 import 'package:Cuplivo/utils/markdown_code_scanner.dart';
@@ -354,6 +355,56 @@ Widget _markdownHarness(
   );
 }
 
+/// [Text.rich] wraps the provided span in a style-merge [TextSpan]; descend
+/// through single-child wrapper spans to the span [CodeHighlightView] built.
+TextSpan _codeHighlightRootSpan(WidgetTester tester, Finder richTextFinder) {
+  var span = tester.widget<RichText>(richTextFinder).text as TextSpan;
+  while (span.text == null &&
+      span.children?.length == 1 &&
+      span.children!.single is TextSpan &&
+      (span.children!.single as TextSpan).text == null) {
+    span = span.children!.single as TextSpan;
+  }
+  return span;
+}
+
+Widget _selectableMarkdownHarness(
+  String text, {
+  double? width,
+  Map<String, Object>? preferences,
+  required void Function(String?) onSelection,
+}) {
+  SharedPreferences.setMockInitialValues({});
+  businessPrefs = BusinessPreferences.memoryForTests(preferences ?? {});
+  final markdown = MarkdownWithCodeHighlight(text: text);
+  return ChangeNotifierProvider(
+    create: (_) => SettingsProvider(preferences: businessPrefs),
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: width == null
+            ? SelectionArea(
+                onSelectionChanged: (selection) =>
+                    onSelection(selection?.plainText),
+                child: markdown,
+              )
+            : Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: width,
+                  child: SelectionArea(
+                    onSelectionChanged: (selection) =>
+                        onSelection(selection?.plainText),
+                    child: markdown,
+                  ),
+                ),
+              ),
+      ),
+    ),
+  );
+}
+
 void _overrideMarkdownTablePlatform(TargetPlatform platform) {
   markdownTableTargetPlatformOverride = platform;
   addTearDown(() => markdownTableTargetPlatformOverride = null);
@@ -519,13 +570,81 @@ Inline ***strong emphasis*** text.
       expect(find.textContaining('strong emphasis'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(SelectableHighlightView),
-          matching: find.textContaining('***'),
+          of: find.byType(CodeHighlightView),
+          matching: find.textContaining('***', findRichText: true),
         ),
         findsOneWidget,
       );
     },
   );
+
+  testWidgets('paragraph selection keeps line breaks through streaming', (
+    tester,
+  ) async {
+    // The incremental blocks path only engages for streaming text of 512+
+    // chars, so the paragraph fill is padded past that threshold. Sentences
+    // are joined with a space and none of them trails the blank line, so the
+    // original text has nothing the renderer would trim in either path.
+    final text =
+        '${List.filled(10, 'First paragraph with enough text to engage incremental blocks.').join(' ')}\n\nSecond paragraph.';
+    final streaming = ValueNotifier(true);
+    addTearDown(streaming.dispose);
+    String? selected;
+    await tester.pumpWidget(
+      _settingsHarness(
+        onSettingsReady: (_) {},
+        child: SelectionArea(
+          onSelectionChanged: (content) => selected = content?.plainText,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: streaming,
+              builder: (_, value, _) =>
+                  MarkdownWithCodeHighlight(text: text, streaming: value),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final value in [true, false]) {
+      streaming.value = value;
+      await tester.pumpAndSettle();
+      final region = tester.state<SelectableRegionState>(
+        find.byType(SelectableRegion),
+      );
+      region.selectAll(SelectionChangedCause.keyboard);
+      await tester.pumpAndSettle();
+      expect(selected, text, reason: 'streaming=$value');
+      region.clearSelection();
+      await tester.pump();
+
+      // A drag across the gap must include the same break as Select All.
+      final first = _paragraphContaining('First paragraph');
+      final second = _paragraphContaining('Second paragraph');
+      final start = first.localToGlobal(const Offset(1, 8));
+      final end = second.localToGlobal(Offset(second.size.width - 1, 8));
+      for (final reverse in [true, false]) {
+        // Separate the gestures so reversing at the previous endpoint does
+        // not become a double click and select a word instead of a range.
+        await tester.pump(const Duration(milliseconds: 400));
+        final gesture = await tester.startGesture(
+          reverse ? end : start,
+          kind: ui.PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveTo(reverse ? start : end);
+        await tester.pump();
+        await gesture.up();
+        await gesture.removePointer();
+        await tester.pumpAndSettle();
+        expect(selected, text, reason: 'streaming=$value reverse=$reverse');
+        region.clearSelection();
+        await tester.pump();
+      }
+    }
+  }, variant: TargetPlatformVariant.desktop());
 
   testWidgets(
     'MarkdownWithCodeHighlight renders grouped raw citation metadata as separate capsules',
@@ -941,6 +1060,165 @@ Inline ***strong emphasis*** text.
       ),
     );
     expect(scrollView.physics, isA<ClampingScrollPhysics>());
+  });
+
+  for (final longReply in [false, true]) {
+    testWidgets(
+      'streaming table preserves its offset and active drag (long=$longReply)',
+      (tester) async {
+        _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+        await tester.binding.setSurfaceSize(const Size(800, 1600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final prefix = longReply ? '${'Intro text. ' * 50}\n\n' : '';
+        final text = ValueNotifier(
+          '$prefix| A | B | C | D | E |\n'
+          '| --- | --- | --- | --- | --- |\n| apple',
+        );
+        addTearDown(text.dispose);
+        await tester.pumpWidget(_streamingMarkdownHarness(text, width: 320));
+        await tester.pump();
+        final viewport = find.byKey(
+          const ValueKey('markdown-table-horizontal-scroll'),
+        );
+        final scroll = find.descendant(
+          of: viewport,
+          matching: find.byType(Scrollable),
+        );
+        final state = tester.state<ScrollableState>(scroll);
+        await tester.drag(viewport, const Offset(-100, 0));
+        await tester.pumpAndSettle();
+        final offset = state.position.pixels;
+        expect(offset, greaterThan(50));
+
+        text.value += ' banana';
+        await tester.pump();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, offset);
+        expect(
+          find.textContaining('apple banana', findRichText: true),
+          findsWidgets,
+        );
+
+        final gesture = await tester.startGesture(tester.getCenter(viewport));
+        await gesture.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        final duringDrag = state.position.pixels;
+        text.value += ' cherry';
+        await tester.pump();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, duringDrag);
+        await gesture.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        expect(state.position.pixels, greaterThan(duringDrag));
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
+  testWidgets(
+    'table offset survives stream growth, block close and completion',
+    (tester) async {
+      _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+      var text =
+          '| A | B | C | D | E |\n'
+          '| --- | --- | --- | --- | --- |\n| apple';
+      Future<void> render({bool streaming = true}) async {
+        await tester.pumpWidget(
+          _markdownHarness(text, width: 320, streaming: streaming),
+        );
+        await tester.pump();
+      }
+
+      await render();
+      final viewport = find.byKey(
+        const ValueKey('markdown-table-horizontal-scroll'),
+      );
+      final scroll = find.descendant(
+        of: viewport,
+        matching: find.byType(Scrollable),
+      );
+      final state = tester.state<ScrollableState>(scroll);
+      await tester.drag(viewport, const Offset(-100, 0));
+      await tester.pumpAndSettle();
+      final offset = state.position.pixels;
+      expect(offset, greaterThan(50));
+
+      // Cross the old whole-document / incremental rendering threshold.
+      text += ' | ${'wide ' * 100} | C | D | E |';
+      expect(text.length, greaterThan(512));
+      await render();
+      expect(tester.state<ScrollableState>(scroll), same(state));
+      expect(state.position.pixels, offset);
+      for (final suffix in ['\n', '\nFollowing paragraph']) {
+        text += suffix;
+        await render();
+        expect(tester.state<ScrollableState>(scroll), same(state));
+        expect(state.position.pixels, offset);
+      }
+      await render(streaming: false);
+      expect(tester.state<ScrollableState>(scroll), same(state));
+      expect(state.position.pixels, offset);
+      expect(
+        find.textContaining('Following paragraph', findRichText: true),
+        findsWidgets,
+      );
+
+      text = text.replaceFirst('apple', 'replacement');
+      await render(streaming: false);
+      expect(tester.state<ScrollableState>(scroll).position.pixels, 0);
+      expect(
+        find.textContaining('replacement', findRichText: true),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets('appending to a table reuses the earlier table and its offset', (
+    tester,
+  ) async {
+    _overrideMarkdownTablePlatform(TargetPlatform.iOS);
+    const header =
+        '| A | B | C | D | E |\n'
+        '| --- | --- | --- | --- | --- |\n';
+    final text = ValueNotifier(
+      '$header| apple | B | C | D | E |\n\n$header| banana',
+    );
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_streamingMarkdownHarness(text, width: 320));
+    await tester.pump();
+    final viewports = find.byKey(
+      const ValueKey('markdown-table-horizontal-scroll'),
+    );
+    expect(viewports, findsNWidgets(2));
+    final states = <ScrollableState>[];
+    for (var i = 0; i < 2; i++) {
+      states.add(
+        tester.state<ScrollableState>(
+          find.descendant(
+            of: viewports.at(i),
+            matching: find.byType(Scrollable),
+          ),
+        ),
+      );
+      await tester.drag(viewports.at(i), Offset(-80.0 * (i + 1), 0));
+      await tester.pumpAndSettle();
+    }
+    final offsets = states.map((state) => state.position.pixels).toList();
+    expect(offsets.first, greaterThan(0));
+    expect(offsets.last, greaterThan(offsets.first));
+    final cached = tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
+
+    text.value += ' cherry';
+    await tester.pump();
+    expect(tester.widget(find.byType(GptMarkdown).first), same(cached));
+    for (var i = 0; i < 2; i++) {
+      final state = tester.state<ScrollableState>(
+        find.descendant(of: viewports.at(i), matching: find.byType(Scrollable)),
+      );
+      expect(state, same(states[i]));
+      expect(state.position.pixels, offsets[i]);
+    }
   });
 
   testWidgets(
@@ -1552,23 +1830,26 @@ const greet = (name) => {
             .map((widget) => widget.text.toPlainText())
             .join('\n');
         final codeText = tester
-            .widgetList<SelectableText>(
+            .widgetList<RichText>(
               find.descendant(
-                of: find.byType(SelectableHighlightView),
-                matching: find.byType(SelectableText),
+                of: find.byType(CodeHighlightView),
+                matching: find.byType(RichText),
               ),
             )
-            .map((widget) => widget.textSpan?.toPlainText() ?? widget.data)
+            .map((widget) => widget.text.toPlainText())
             .join('\n');
         final blockquote = find.byKey(const ValueKey('markdown-blockquote'));
         final blockquoteCodeText = tester
-            .widgetList<SelectableText>(
+            .widgetList<RichText>(
               find.descendant(
                 of: blockquote,
-                matching: find.byType(SelectableText),
+                matching: find.descendant(
+                  of: find.byType(CodeHighlightView),
+                  matching: find.byType(RichText),
+                ),
               ),
             )
-            .map((widget) => widget.textSpan?.toPlainText() ?? widget.data)
+            .map((widget) => widget.text.toPlainText())
             .join('\n');
 
         expect(allText, isNot(contains('| 混合')), reason: frame);
@@ -1577,7 +1858,7 @@ const greet = (name) => {
         expect(
           find.descendant(
             of: blockquote,
-            matching: find.byType(SelectableHighlightView),
+            matching: find.byType(CodeHighlightView),
           ),
           findsOneWidget,
           reason: frame,
@@ -1608,13 +1889,13 @@ const greet = (name) => {
       await tester.pump();
 
       final codeText = tester
-          .widgetList<SelectableText>(
+          .widgetList<RichText>(
             find.descendant(
-              of: find.byType(SelectableHighlightView),
-              matching: find.byType(SelectableText),
+              of: find.byType(CodeHighlightView),
+              matching: find.byType(RichText),
             ),
           )
-          .map((widget) => widget.textSpan?.toPlainText() ?? widget.data)
+          .map((widget) => widget.text.toPlainText())
           .join('\n');
 
       expect(codeText, contains('> ```bash'));
@@ -1637,13 +1918,13 @@ final value = "$foo$";
       await tester.pump();
 
       final codeText = tester
-          .widgetList<SelectableText>(
+          .widgetList<RichText>(
             find.descendant(
-              of: find.byType(SelectableHighlightView),
-              matching: find.byType(SelectableText),
+              of: find.byType(CodeHighlightView),
+              matching: find.byType(RichText),
             ),
           )
-          .map((widget) => widget.textSpan?.toPlainText() ?? widget.data)
+          .map((widget) => widget.text.toPlainText())
           .join('\n');
 
       expect(_findMathWidget(), findsNothing);
@@ -1802,7 +2083,7 @@ $code
     await tester.pumpAndSettle();
 
     expect(find.byType(Image), findsNothing);
-    expect(find.textContaining('graph TD'), findsOneWidget);
+    expect(find.textContaining('graph TD', findRichText: true), findsOneWidget);
 
     await tester.tap(find.text('Image'));
     await tester.pumpAndSettle();
@@ -1871,7 +2152,10 @@ A-->
       await tester.tap(find.text('Code'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('graph TD'), findsOneWidget);
+      expect(
+        find.textContaining('graph TD', findRichText: true),
+        findsOneWidget,
+      );
     },
   );
 
@@ -2024,7 +2308,10 @@ A-->B
 
       expect(find.text('Generating image'), findsNothing);
       expect(find.byType(Image), findsNothing);
-      expect(find.textContaining('graph TD'), findsOneWidget);
+      expect(
+        find.textContaining('graph TD', findRichText: true),
+        findsOneWidget,
+      );
       expect(find.text('Open Preview'), findsNothing);
     },
   );
@@ -2174,6 +2461,185 @@ A-->B
       await tester.pump();
 
       expect(_findMathWidget(), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    r'MarkdownWithCodeHighlight renders nested ovalbox and operatorname expressions',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+标签\(\textbf{\small\colorbox{white}{\textcolor{#AEC6CF}{\ovalbox{\textcolor{#AEC6CF}{\textbf{示例文字}}}}}}\) 
+函数\(\operatorname{Function}\left(x\right)\)
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(find.textContaining(r'\ovalbox'), findsNothing);
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    r'MarkdownWithCodeHighlight parses operatorname with scripts and limits',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(
+          r'$\operatorname{lim}_{x\to 0}$ 与 $\operatorname{sin}^2 x$',
+        ),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+    },
+  );
+
+  testWidgets(r'MarkdownWithCodeHighlight renders ovalbox with math content', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _markdownHarness(r'''
+$$\ovalbox{1+\frac{1}{2}}$$
+'''),
+    );
+    await tester.pump();
+
+    final mathWidgets = _mathWidgets(tester);
+    expect(mathWidgets, hasLength(1));
+    expect(mathWidgets.single.parseError, isNull);
+    expect(find.textContaining(r'\ovalbox'), findsNothing);
+  });
+
+  for (final entry in <String, String>{
+    'equation': r'a^2+b^2=c^2',
+    'align': r'a&=b\\c&=d',
+    'gather': r'a=b\\c=d',
+  }.entries) {
+    testWidgets(
+      r'MarkdownWithCodeHighlight renders dollar-wrapped ${entry.key} math environment',
+      (tester) async {
+        await tester.pumpWidget(
+          _markdownHarness(
+            'Before\n\n\$\$\\begin{${entry.key}}\n${entry.value}\n\\end{${entry.key}}\$\$\n\nAfter',
+          ),
+        );
+        await tester.pump();
+
+        final mathWidgets = _mathWidgets(tester);
+        expect(mathWidgets, hasLength(1));
+        expect(mathWidgets.single.parseError, isNull);
+        expect(mathWidgets.single.mathStyle, MathStyle.display);
+        expect(find.textContaining(r'\begin'), findsNothing);
+        expect(find.textContaining('Before'), findsOneWidget);
+        expect(find.textContaining('After'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'MarkdownWithCodeHighlight renders a tagged equation environment',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+$$
+\begin{equation}
+f(x) = x^2\tag{Pythagoras}
+\end{equation}
+$$
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(1));
+      expect(mathWidgets.single.parseError, isNull);
+      expect(find.textContaining(r'\tag'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'MarkdownWithCodeHighlight renders complex operatorname expressions from issue 960',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+$\operatorname{Var}\left( \frac{1}{n}\sum_{i=1}^n a_i X_i \right)$
+
+$\operatorname{Var}\left( \prod_{j=1}^m \exp\left( \beta_j Z_j \right) \right)$
+
+$\operatorname{Var}\left( \hat{\theta}_{\mathrm{MLE}} \right)$
+
+$\operatorname{Var}_{\theta}\left( \frac{\partial}{\partial \theta} \log L(\theta; \mathbf{x}) \right)$
+
+$\operatorname{Var}\left( \sqrt{n}\left( \bar{X} - \mu \right) \right)$
+
+$\operatorname{Var}\left( \frac{1}{N} \sum_{k=1}^{N} \left( f(X_k) - \frac{1}{N}\sum_{j=1}^{N} f(X_j) \right)^2 \right)$
+'''),
+      );
+      await tester.pump();
+
+      final widgets = _mathWidgets(tester);
+      expect(widgets, hasLength(6));
+      expect(widgets.map((widget) => widget.parseError), everyElement(isNull));
+      expect(find.textContaining(r'\operatorname'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'MarkdownWithCodeHighlight preserves spaced starred command arguments',
+    (tester) async {
+      await tester.pumpWidget(
+        _markdownHarness(r'''
+\[x=1\tag *{A,B}\]
+
+\[\operatorname *{arg\,max}_{x} f(x)\]
+'''),
+      );
+      await tester.pump();
+
+      final mathWidgets = _mathWidgets(tester);
+      expect(mathWidgets, hasLength(2));
+      expect(
+        mathWidgets.map((widget) => widget.parseError),
+        everyElement(isNull),
+      );
+      expect(_encodedMathTex(tester).first, contains('A,B'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'display math block overlays the chat background without an opaque plate',
+    (tester) async {
+      await tester.pumpWidget(_markdownHarness(r'$$E = mc^2$$'));
+      await tester.pump();
+
+      expect(
+        find.ancestor(
+          of: _findMathWidget(),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.color == Colors.transparent &&
+                widget.padding == const EdgeInsets.all(4),
+          ),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -2467,14 +2933,14 @@ $$
     'MarkdownWithCodeHighlight keeps unknown TeX as raw-text fallback',
     (tester) async {
       await tester.pumpWidget(
-        _markdownHarness(r'$$\begin{equation}x\end{equation}$$'),
+        _markdownHarness(r'$$\begin{document}x\end{document}$$'),
       );
       await tester.pump();
 
       final mathWidgets = _mathWidgets(tester);
       expect(mathWidgets, hasLength(1));
       expect(mathWidgets.single.parseError, isNotNull);
-      expect(find.textContaining(r'\begin{equation}'), findsOneWidget);
+      expect(find.textContaining(r'\begin{document}'), findsOneWidget);
     },
   );
 
@@ -2498,16 +2964,16 @@ $$
   );
 
   testWidgets(
-    r'MarkdownWithCodeHighlight keeps \tag{\alpha} untouched for fallback',
+    r'MarkdownWithCodeHighlight renders \tag{\alpha} labels without fallback',
     (tester) async {
       await tester.pumpWidget(_markdownHarness(r'$$\tag{\alpha} x = y$$'));
       await tester.pump();
 
       final mathWidgets = _mathWidgets(tester);
       expect(mathWidgets, hasLength(1));
-      expect(mathWidgets.single.parseError, isNotNull);
-      // The fallback shows the ORIGINAL tex, not the rewritten approximation.
-      expect(find.textContaining(r'\tag{\alpha}'), findsOneWidget);
+      expect(mathWidgets.single.parseError, isNull);
+      expect(_encodedMathTex(tester).first, contains(r'\alpha'));
+      expect(find.textContaining(r'\tag{\alpha}'), findsNothing);
     },
   );
 
@@ -2922,8 +3388,17 @@ $$
       await tester.pump();
 
       expect(_findMathWidget(), findsOneWidget);
-      expect(find.textContaining(r'$a'), findsOneWidget);
-      expect(find.textContaining(r'b$'), findsOneWidget);
+      final tableText = tester
+          .widgetList<RichText>(
+            find.descendant(
+              of: find.byType(Table),
+              matching: find.byType(RichText),
+            ),
+          )
+          .map((widget) => widget.text.toPlainText())
+          .join('\n');
+      expect(tableText, contains(r'$a'));
+      expect(tableText, contains(r'b$'));
     },
   );
 
@@ -2964,15 +3439,18 @@ final price = "$12";
       await tester.pump();
 
       expect(_findMathWidget(), findsNothing);
-      expect(find.textContaining(r'final price = "$12";'), findsOneWidget);
+      expect(
+        find.textContaining(r'final price = "$12";', findRichText: true),
+        findsOneWidget,
+      );
     },
   );
 
-  testWidgets('SelectableHighlightView 为已注册语言生成高亮 span', (tester) async {
+  testWidgets('CodeHighlightView 为已注册语言生成高亮 span', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: SelectableHighlightView(
+          body: CodeHighlightView(
             'final value = 1;',
             language: 'dart',
             theme: {},
@@ -2981,15 +3459,14 @@ final price = "$12";
       ),
     );
 
-    final richText = tester.widget<SelectableText>(find.byType(SelectableText));
-    final root = richText.textSpan!;
+    final root = _codeHighlightRootSpan(tester, find.byType(RichText));
     final children = root.children ?? const <InlineSpan>[];
 
     expect(children, isNotEmpty);
     expect(children.length, greaterThan(1));
   });
 
-  testWidgets('SelectableHighlightView 同内容父级重建时复用高亮 span', (tester) async {
+  testWidgets('CodeHighlightView 同内容父级重建时复用高亮 span', (tester) async {
     late StateSetter rebuild;
 
     await tester.pumpWidget(
@@ -2998,7 +3475,7 @@ final price = "$12";
           body: StatefulBuilder(
             builder: (context, setState) {
               rebuild = setState;
-              return const SelectableHighlightView(
+              return const CodeHighlightView(
                 'final value = 1;',
                 language: 'dart',
                 theme: {},
@@ -3009,48 +3486,44 @@ final price = "$12";
       ),
     );
 
-    final before = tester
-        .widget<SelectableText>(find.byType(SelectableText))
-        .textSpan!
-        .children;
+    final before = _codeHighlightRootSpan(
+      tester,
+      find.byType(RichText),
+    ).children;
 
     rebuild(() {});
     await tester.pump();
 
-    final after = tester
-        .widget<SelectableText>(find.byType(SelectableText))
-        .textSpan!
-        .children;
+    final after = _codeHighlightRootSpan(
+      tester,
+      find.byType(RichText),
+    ).children;
 
     expect(identical(before, after), isTrue);
   });
 
-  testWidgets(
-    'SelectableHighlightView skips synchronous highlighting on demand',
-    (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SelectableHighlightView(
-              'final value = 1;',
-              language: 'dart',
-              theme: {},
-              enableHighlight: false,
-            ),
+  testWidgets('CodeHighlightView skips synchronous highlighting on demand', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CodeHighlightView(
+            'final value = 1;',
+            language: 'dart',
+            theme: {},
+            enableHighlight: false,
           ),
         ),
-      );
+      ),
+    );
 
-      final richText = tester.widget<SelectableText>(
-        find.byType(SelectableText),
-      );
-      final root = richText.textSpan!;
-      final children = root.children ?? const <InlineSpan>[];
+    final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+    final children = root.children ?? const <InlineSpan>[];
 
-      expect(children, hasLength(1));
-      expect((children.single as TextSpan).text, 'final value = 1;');
-    },
-  );
+    expect(children, hasLength(1));
+    expect((children.single as TextSpan).text, 'final value = 1;');
+  });
 
   testWidgets(
     'MarkdownWithCodeHighlight highlights unclosed code fences after streaming stops',
@@ -3063,13 +3536,13 @@ final value = 1;
       );
       await tester.pump();
 
-      final richText = tester.widget<SelectableText>(
+      final root = _codeHighlightRootSpan(
+        tester,
         find.descendant(
-          of: find.byType(SelectableHighlightView),
-          matching: find.byType(SelectableText),
+          of: find.byType(CodeHighlightView),
+          matching: find.byType(RichText),
         ),
       );
-      final root = richText.textSpan!;
       final children = root.children ?? const <InlineSpan>[];
 
       expect(children.length, greaterThan(1));
@@ -3092,6 +3565,273 @@ void main() {}
     expect(find.byTooltip('Copy'), findsOneWidget);
     expect(find.text('dart'), findsOneWidget);
   });
+
+  testWidgets(
+    'CodeHighlightView keeps intraword underscores literal in markdown fences (issue #662)',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'identity is {assistant_name} based on {model_name}',
+              language: 'markdown',
+              theme: {
+                'emphasis': TextStyle(fontStyle: FontStyle.italic),
+                'strong': TextStyle(fontWeight: FontWeight.bold),
+              },
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+
+      expect(
+        spans.where((span) => span.style.fontStyle == FontStyle.italic),
+        isEmpty,
+      );
+      expect(
+        spans.map((span) => span.text).join(),
+        contains('{assistant_name} based on {model_name}'),
+      );
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView keeps flanking-valid underscore emphasis italic',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'a _b_ c and a_b_c\n'
+              '（_好_） and 爱_好_吗 and 文件_name_文件\n'
+              'α _β_ γ and α_β_γ\n'
+              'привет_мир_тест\n'
+              '\u0301_x_\u0302 and \u0301 _y_ \u0302',
+              language: 'markdown',
+              theme: {'emphasis': TextStyle(fontStyle: FontStyle.italic)},
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+      final italicTexts = spans
+          .where((span) => span.style.fontStyle == FontStyle.italic)
+          .map((span) => span.text)
+          .toList();
+
+      // Flanking-valid: spaced word, CJK punctuation (（）), Greek word and
+      // spacing-adjacent combining marks still italic.
+      expect(italicTexts, contains('_b_'));
+      expect(italicTexts, contains('_β_'));
+      expect(italicTexts, contains('_y_'));
+      // Exactly one italic pair `_好_`: the valid （_好_）, never an extra one
+      // from intraword CJK (爱_好_吗).
+      expect(italicTexts.where((t) => t == '_好_'), hasLength(1));
+      // Below must render literal: no italic span containing these fragments.
+      expect(italicTexts.where((t) => t.contains('name')), isEmpty);
+      expect(italicTexts.where((t) => t.contains('_α_')), isEmpty);
+      expect(spans.map((span) => span.text).join(), contains('爱_好_吗'));
+      expect(spans.map((span) => span.text).join(), contains('文件_name_文件'));
+      expect(spans.map((span) => span.text).join(), contains('α_β_γ'));
+      expect(
+        spans.map((span) => span.text).join(),
+        contains('привет_мир_тест'),
+      );
+      expect(
+        spans.map((span) => span.text).join(),
+        contains('\u0301_x_\u0302'),
+      );
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView keeps flanking-valid strong bold and literal __',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'a **b** c a __b__ c\n'
+              'a__b__c and α__β__γ and α __β__ γ',
+              language: 'markdown',
+              theme: {'strong': TextStyle(fontWeight: FontWeight.bold)},
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+      final boldTexts = spans
+          .where(
+            (span) =>
+                (span.style.fontWeight ?? FontWeight.normal) == FontWeight.bold,
+          )
+          .map((span) => span.text)
+          .toList();
+
+      expect(boldTexts, contains('**b**'));
+      expect(boldTexts, contains('__b__'));
+      expect(boldTexts, contains('__β__'));
+      // Intraword __ is literal: no bold span asserting a__b__c content.
+      expect(boldTexts.where((t) => t == '__b__'), hasLength(1));
+      expect(boldTexts.where((t) => t == '__β__'), hasLength(1));
+      expect(spans.map((span) => span.text).join(), contains('a__b__c'));
+      expect(spans.map((span) => span.text).join(), contains('α__β__γ'));
+    },
+  );
+
+  testWidgets('CodeHighlightView requires a space or tab after ATX hashes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CodeHighlightView(
+            '# Heading\n#hashtag\n#\tTabHeading',
+            language: 'markdown',
+            theme: {
+              'section': TextStyle(
+                color: Color(0xff990000),
+                fontWeight: FontWeight.bold,
+              ),
+            },
+          ),
+        ),
+      ),
+    );
+
+    final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+    final spans = _collectResolvedTextSpans(root);
+    final boldTexts = spans
+        .where(
+          (span) =>
+              (span.style.fontWeight ?? FontWeight.normal) == FontWeight.bold,
+        )
+        .map((span) => span.text)
+        .toList();
+
+    expect(boldTexts, contains('# Heading'));
+    expect(boldTexts, contains('#\tTabHeading'));
+    expect(boldTexts, isNot(contains('#hashtag')));
+  });
+
+  testWidgets(
+    'CodeHighlightView md alias uses the CommonMark markdown grammar',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'a_b_c',
+              language: 'md',
+              theme: {
+                'emphasis': TextStyle(fontStyle: FontStyle.italic),
+                'section': TextStyle(fontWeight: FontWeight.bold),
+              },
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+
+      expect(
+        spans.where((span) => span.style.fontStyle == FontStyle.italic),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView keeps dart comment italics after grammar registration',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              '// note\nfinal value = 1;',
+              language: 'dart',
+              theme: {'comment': TextStyle(fontStyle: FontStyle.italic)},
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+      final italicTexts = spans
+          .where((span) => span.style.fontStyle == FontStyle.italic)
+          .map((span) => span.text)
+          .toList();
+
+      expect(italicTexts, isNotEmpty);
+      expect(italicTexts.any((t) => t.contains('note')), isTrue);
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView keeps asciidoc a__b__c underscore emphasis styled (regression control)',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'a__b__c',
+              language: 'asciidoc',
+              theme: {'emphasis': TextStyle(fontStyle: FontStyle.italic)},
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+      final italicTexts = spans
+          .where((span) => span.style.fontStyle == FontStyle.italic)
+          .map((span) => span.text)
+          .join();
+
+      expect(italicTexts, contains('_b_'));
+      expect(spans.map((span) => span.text).join(), contains('a__b__c'));
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView keeps asciidoc intraword underscore emphasis styled (no markdown flanking)',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: CodeHighlightView(
+              'snake_case_word',
+              language: 'asciidoc',
+              theme: {'emphasis': TextStyle(fontStyle: FontStyle.italic)},
+            ),
+          ),
+        ),
+      );
+
+      final root = _codeHighlightRootSpan(tester, find.byType(RichText));
+      final spans = _collectResolvedTextSpans(root);
+      final italicTexts = spans
+          .where((span) => span.style.fontStyle == FontStyle.italic)
+          .map((span) => span.text)
+          .join();
+
+      expect(italicTexts, contains('_case_'));
+      expect(
+        spans.map((span) => span.text).join(),
+        contains('snake_case_word'),
+      );
+    },
+  );
 
   testWidgets(
     'MarkdownWithCodeHighlight keeps details tags literal in html code blocks',
@@ -3290,7 +4030,7 @@ line3
         tester.getTopLeft(find.text('dart')).dx,
         lessThan(tester.getTopLeft(find.byIcon(Lucide.ChevronRight)).dx),
       );
-      expect(find.textContaining('line3'), findsNothing);
+      expect(find.textContaining('line3', findRichText: true), findsNothing);
       expect(find.textContaining('folded'), findsNothing);
 
       await tester.tap(find.text('dart'));
@@ -3299,7 +4039,7 @@ line3
       expect(find.text('Expand'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
       expect(find.byIcon(Lucide.ChevronRight), findsNothing);
-      expect(find.textContaining('line3'), findsOneWidget);
+      expect(find.textContaining('line3', findRichText: true), findsOneWidget);
     },
   );
 
@@ -3337,7 +4077,7 @@ fade3
         find.byKey(const ValueKey('code-block-collapsed-tail-fade')),
         findsNothing,
       );
-      expect(find.textContaining('fade3'), findsOneWidget);
+      expect(find.textContaining('fade3', findRichText: true), findsOneWidget);
     },
   );
 
@@ -3362,7 +4102,7 @@ exact2
         find.byKey(const ValueKey('code-block-collapsed-tail-fade')),
         findsNothing,
       );
-      expect(find.textContaining('exact2'), findsOneWidget);
+      expect(find.textContaining('exact2', findRichText: true), findsOneWidget);
     },
   );
 
@@ -3387,7 +4127,10 @@ disable3
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('disable3'), findsOneWidget);
+      expect(
+        find.textContaining('disable3', findRichText: true),
+        findsOneWidget,
+      );
 
       await settings.setAutoCollapseCodeBlockLines(2);
       await settings.setAutoCollapseCodeBlock(true);
@@ -3395,26 +4138,32 @@ disable3
 
       expect(find.text('Expand'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
-      expect(find.textContaining('disable3'), findsNothing);
+      expect(find.textContaining('disable3', findRichText: true), findsNothing);
 
       await settings.setAutoCollapseCodeBlock(false);
       await tester.pumpAndSettle();
 
       expect(find.text('Expand'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
-      expect(find.textContaining('disable3'), findsOneWidget);
+      expect(
+        find.textContaining('disable3', findRichText: true),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('dart'));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Lucide.ChevronRight), findsOneWidget);
-      expect(find.textContaining('disable3'), findsNothing);
+      expect(find.textContaining('disable3', findRichText: true), findsNothing);
 
       await tester.tap(find.text('dart'));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Lucide.ChevronRight), findsNothing);
-      expect(find.textContaining('disable3'), findsOneWidget);
+      expect(
+        find.textContaining('disable3', findRichText: true),
+        findsOneWidget,
+      );
     },
   );
 
@@ -3460,7 +4209,7 @@ alpha4
 
     expect(find.text('Expand'), findsNothing);
     expect(find.text('Collapse'), findsNothing);
-    expect(find.textContaining('alpha4'), findsOneWidget);
+    expect(find.textContaining('alpha4', findRichText: true), findsOneWidget);
 
     await tester.tap(find.text('dart'));
     await tester.pumpAndSettle();
@@ -3521,7 +4270,7 @@ press4
 
       expect(find.text('Expand'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
-      expect(find.textContaining('press4'), findsOneWidget);
+      expect(find.textContaining('press4', findRichText: true), findsOneWidget);
 
       final collapseGesture = await tester.startGesture(
         tester.getCenter(find.text('dart')),
@@ -3907,7 +4656,10 @@ void main() {
       expect(plainText, contains('这里是折叠内容的第一段。'));
       expect(plainText, contains('details 内的 Markdown 列表'));
       expect(
-        find.textContaining("print('code block inside details');"),
+        find.textContaining(
+          "print('code block inside details');",
+          findRichText: true,
+        ),
         findsOneWidget,
       );
       expect(plainText, isNot(contains('<details>')));
@@ -5062,13 +5814,13 @@ $$
       await tester.pump();
 
       final codeText = tester
-          .widgetList<SelectableText>(
+          .widgetList<RichText>(
             find.descendant(
-              of: find.byType(SelectableHighlightView),
-              matching: find.byType(SelectableText),
+              of: find.byType(CodeHighlightView),
+              matching: find.byType(RichText),
             ),
           )
-          .map((widget) => widget.textSpan?.toPlainText() ?? widget.data ?? '')
+          .map((widget) => widget.text.toPlainText())
           .join('\n');
 
       expect(codeText, contains(r'Get-Content D:\ComfyUI\'));
@@ -5121,21 +5873,218 @@ $$
         await tester.pump();
         expect(
           find.descendant(
-            of: find.byType(SelectableHighlightView),
-            matching: find.textContaining('not-a-closer'),
+            of: find.byType(CodeHighlightView),
+            matching: find.textContaining('not-a-closer', findRichText: true),
           ),
           findsOneWidget,
           reason: source,
         );
         expect(
           find.descendant(
-            of: find.byType(SelectableHighlightView),
-            matching: find.textContaining('following'),
+            of: find.byType(CodeHighlightView),
+            matching: find.textContaining('following', findRichText: true),
           ),
           findsOneWidget,
           reason: source,
         );
       }
+    },
+  );
+
+  testWidgets(
+    'MarkdownWithCodeHighlight renders no SelectableText once wrapped in SelectionArea',
+    (tester) async {
+      _overrideMarkdownTablePlatform(TargetPlatform.windows);
+      await tester.pumpWidget(
+        _selectableMarkdownHarness(
+          '''
+Intro paragraph text.
+
+```dart
+const answer = 42;
+```
+
+| Name | Value |
+| - | - |
+| Alpha | Beta |
+''',
+          width: 600,
+          onSelection: (_) {},
+        ),
+      );
+      await tester.pump();
+
+      // The whole markdown tree must own a single selection context: no
+      // nested SelectableText (code block / table cell) may exist below it.
+      expect(find.byType(SelectableText), findsNothing);
+      expect(find.byType(CodeHighlightView), findsOneWidget);
+      final tableRichText = tester.widgetList<RichText>(
+        find.descendant(
+          of: find.byType(Table),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(tableRichText, isNotEmpty);
+    },
+  );
+
+  testWidgets(
+    'CodeHighlightView registers to the enclosing SelectionArea (no nested context)',
+    (tester) async {
+      final selected = <String>[];
+      await tester.pumpWidget(
+        ChangeNotifierProvider(
+          create: (_) => SettingsProvider(preferences: businessPrefs),
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: SelectionArea(
+                onSelectionChanged: (s) =>
+                    selected.add(s?.plainText ?? '<cleared>'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('Before the code block.'),
+                    CodeHighlightView('const answer = 42;'),
+                    Text('After the code block.'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // A drag that crosses the code block must be reported by the enclosing
+      // SelectionArea and must include the code text (the old
+      // SelectableText.rich owned its own context and would wall the selection
+      // off at the code block; a bare RichText would not register at all).
+      final start = tester.getTopLeft(find.text('Before the code block.'));
+      final end =
+          tester.getBottomRight(
+            find.textContaining('const answer = 42', findRichText: true),
+          ) -
+          const Offset(1, 1);
+      final gesture = await tester.startGesture(
+        start,
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(30, 10));
+      await tester.pump();
+      await gesture.moveTo(end);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(selected, isNotEmpty);
+      expect(
+        selected.last,
+        contains('Before the code block.'),
+        reason: 'selection: ${selected.last}',
+      );
+      expect(
+        selected.last,
+        contains('const answer = 42'),
+        reason: 'selection: ${selected.last}',
+      );
+    },
+  );
+
+  testWidgets('SelectionArea drag selects table cell content', (tester) async {
+    final selected = <String>[];
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => SettingsProvider(preferences: businessPrefs),
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SelectionArea(
+              onSelectionChanged: (s) =>
+                  selected.add(s?.plainText ?? '<cleared>'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Before the table.'),
+                  SizedBox(
+                    width: 340,
+                    child: Table(
+                      defaultColumnWidth: const FixedColumnWidth(170),
+                      defaultVerticalAlignment:
+                          TableCellVerticalAlignment.middle,
+                      children: const [
+                        TableRow(
+                          children: [
+                            Text.rich(TextSpan(text: 'Alpha')),
+                            Text.rich(TextSpan(text: 'Beta')),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final start = tester.getTopLeft(find.text('Before the table.'));
+    final end = tester.getCenter(
+      find.textContaining('Alpha', findRichText: true),
+    );
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(30, 10));
+    await tester.pump();
+    await gesture.moveTo(end);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(selected, isNotEmpty);
+    expect(
+      selected.last,
+      contains('Before the table.'),
+      reason: 'selection: ${selected.last}',
+    );
+    expect(
+      selected.last,
+      contains('Alpha'),
+      reason: 'selection: ${selected.last}',
+    );
+  });
+
+  testWidgets(
+    'MarkdownWithCodeHighlight excludes the table toolbar label from selection',
+    (tester) async {
+      _overrideMarkdownTablePlatform(TargetPlatform.windows);
+      await tester.pumpWidget(
+        _markdownHarness('''
+| Name | Value |
+| - | - |
+| Alpha | Beta |
+''', width: 600),
+      );
+      await tester.pump();
+
+      final selectionContainers = find.ancestor(
+        of: find.text('Table'),
+        matching: find.byType(SelectionContainer),
+      );
+      expect(
+        tester
+            .widgetList<SelectionContainer>(selectionContainers)
+            .any((widget) => widget.delegate == null),
+        isTrue,
+        reason: 'toolbar label must sit under a disabled selection container',
+      );
     },
   );
 }

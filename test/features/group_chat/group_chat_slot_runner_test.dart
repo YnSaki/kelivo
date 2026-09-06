@@ -196,6 +196,7 @@ void main() {
       Map<String, dynamic>? extraBody,
       bool stream = true,
       String? requestId,
+      String? conversationId,
       bool allowImagesApiRouting = true,
       bool ocrActive = false,
       String Function(int received, int requested)? partialImageNotice,

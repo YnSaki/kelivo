@@ -1,5 +1,15 @@
 # Cuplivo Domain Glossary
 
+## Provider Management (供应商管理)
+
+- **内置供应商 (built-in provider)**: One of the 12 statically seeded providers (`_builtInProviderKeysInOrder`, `settings_provider.dart:71`). Guaranteed to appear in the providers list even with no persisted config — a config-less built-in resolves to `ProviderConfig.defaultsFor` (never implicitly persisted on read paths). Known parallel surface: the static seed list vs `defaultsFor`'s `defaultEnabled` heuristic — keep in sync.
+- **隐藏内置供应商 (hidden built-in)**: A built-in the user removed from the providers list (issue #295). Implemented as a hidden-keys set, never as config deletion: the persisted `ProviderConfig` (apiKey, models, name/avatar, ...) is preserved, so restore-defaults brings back exactly what was there. Custom providers are NOT hideable — they get true delete (data destroyed deliberately, as today).
+- **删除 ≠ 隐藏 (delete vs hide)**: In batch delete (mobile) and row context menu (desktop), custom providers are deleted while built-ins are hidden — one gesture, per-key semantics; confirm copy states both counts (删除 N 自定义 / 隐藏 M 内置). Batch enable/disable is explicitly out of scope for #295.
+- **隐藏状态键 (hidden key)**: `hidden_builtin_providers_v1` — JSON array of built-in keys, stored via `BusinessPreferences` (SQLite KV). Rides `settings.json` backup + `settings_meta.json` LWW automatically (snapshot-based export); NOT added to `mergeableKeys` (LWW scalar, hide/unhide both propagate), NOT local-only. Old backups (key absent) fall back to fill-absent → nothing hidden.
+- **隐藏后不可见表面 (exclusion surfaces)**: a hidden built-in must vanish from the mobile providers list builder (`_providers()`), the desktop pane `base()` list, and BOTH model-select-sheet payload builders (`model_select_sheet.dart` ~line 429 & ~2023) — its config still exists, so any `providerConfigs` iteration otherwise leaks it back into model pickers. Provider group map + order are kept, so restore keeps position. Hide clears all selections referencing the key via the same helper as `removeProviderConfig` (`_clearSelectionsForProvider`). `stats_page` is NOT an exclusion surface: historical usage labels may still name a hidden provider (history, not a management surface). **Load-time reconcile**: `_load` re-clears any model selection (current/title/translate/ocr/summary/suggestion/compress/proactive care + pinned) whose provider is hidden — a cross-device backup/merge restore merges the hidden set and each selection independently (scalar LWW), and since the config lives on, nothing else would ever clear it.
+- **恢复默认供应商 (restore built-ins)**: Restore-ALL footer entry under the provider list on both surfaces, rendered only when ≥1 built-in is hidden; unhides all, keeps configs. No per-provider unhide UI.
+- **桌面无批量选择 (desktop has no batch select)**: The desktop providers surface (`providers_pane.dart`, master-detail pane) has no multi-select mode — per-row right-click context menu is the established interaction; built-ins get a "隐藏内置供应商" danger item there, customs keep Delete. Deliberately NOT a mobile-stretched batch bar.
+
 ## Web Conversation Styles
 
 - **Web 对话样式 (Web conversation style)**: A declarative
@@ -21,6 +31,95 @@
   `ColorScheme`/semantic tokens. A Web conversation style consumes those as
   defaults and only decorates three Web chat surfaces; it cannot recolor app
   navigation, settings, Flutter-rendered messages, or the viewport background.
+
+## Web Chat Secure Origin (Web 对话安全来源)
+
+- **Contract**: the interactive Web chat shell never runs from a `file://`
+  origin — ADR-0043 ("the chat shell never uses a `file://` origin"). The
+  origin must be an origin the app trusts (HTTPS-like), mapping ONLY packaged
+  app assets (e.g. Windows' `deny` folder access), never an arbitrary disk
+  path, and it must grant no read access to the host bundle.
+- **Per-platform mechanism**:
+  - **Windows**: assets copied to a temp cache tree, served via WebView2
+    HTTPS virtual host `cuplivo-web-chat.invalid` with resource access kind
+    `deny` (`prepareWindowsWebChatShell` + `addVirtualHostNameMapping`).
+  - **Android**: webview_flutter_android's built-in `https://appassets.androidplatform.net`
+    custom scheme (`AndroidWebChatView.kt` `WEB_CHAT_ORIGIN`), source
+    allowlist `setOf(WEB_CHAT_ORIGIN)`.
+  - **iOS/macOS — NOT COMPLIANT (known gap)**: currently
+    `loadFlutterAsset()` → `WKWebView loadFileURL(allowingReadAccessTo: ...)`
+    = `file://` origin plus an explicit read-access grant — the opposite of
+    Windows' `deny`. No WKWebView equivalent of virtual-host mapping exists,
+    so the compliant fix is a local-loopback HTTP server (dart:io
+    `HttpServer` on `127.0.0.1` serving the archived web assets; iOS ATS
+    exempts localhost, macOS needs `com.apple.security.network.server`).
+- **Failure signature**: `{component: web_conversation_viewport, code:
+  shell_ready_timeout, renderRevision: null}`. On the non-compliant file://
+  path, `app.mjs`'s module graph (`type="module"` + `import from
+  "./protocol.mjs"`) dies silently under the strict CSP — sub-resource
+  errors never surface because `onWebResourceError` is main-frame-only
+  (viewport `isForMainFrame != true return`), the `ready` post (`app.mjs`
+  line 3174, module top-level) never fires, and the 10s init timer fails to
+  `shell_ready_timeout`. `web_chat_platform.dart` still advertises iOS as
+  supported — paperwork support, not verified support.
+- **Scope rule**: PDF export rides the Web pipeline, so a secure origin is its
+  precondition. Implemented: Windows (WebView2 `PrintToPdf`) and Android
+  (dedicated WebView handed to the system print UI). macOS/iOS PDF waits for
+  the secure-origin fix; Linux stays excluded (no WebView in the app). On
+  un-implemented platforms the export row stays visible and answers with an
+  explicit "Windows and Android only" notice — never silent.
+- **Web 对话打印模式 (web chat print mode)**: the PDF export path loads the
+  SAME shell document through the secure origin with a `?mode=print` (or
+  equivalent static branch) and drives only its snapshot→DOM render path —
+  no interactive protocol, action gate, streaming patches, virtual scroll,
+  or gesture handling. Single rendering codebase: print output shares the
+  interactive viewport's DOM component markers and (ADR-0049) style
+  resolution, and reuses `mediaRegistry` for local-attachment data URLs.
+  Platform capture then runs the browser print path offstage (Windows WebView2
+  `PrintToPdf`; Android `createPrintDocumentAdapter` through the system print
+  UI).
+- **PDF export (issue #293)**: rides the Web pipeline — v1 entry is the
+  existing message export sheet plus a "PDF" format row + the share-bar
+  PDF button (single/batch selection, reusing its thinking/tool-card
+  toggles and save flow); fixed A4 page size and 14 mm margins from the
+  print settings, `@page` CSS aligned to the same values (no
+  user-configurable page options); conversation-batch PDF and configurable
+  page size are follow-ups. Implemented: Windows capture via a
+  `PrintToPdf` bridge in VENDORED webview_windows (repo precedent and the
+  only route that reuses the one WebView2 secure-origin instance; the
+  package has zero print API upstream), and Android through a dedicated
+  offscreen WebView plus the official system print UI. macOS/iOS PDF waits on
+  the secure-origin fix; Linux is excluded. Un-implemented platforms show the
+  row but answer with an explicit "Windows and Android only" notice.
+
+## Web Viewport Touch Ownership (移动触摸主权)
+
+- **移动触摸主权 (mobile touch ownership)**: On Android/iOS the platform
+  WebView owns panning inside the Web conversation viewport. Flutter's gesture
+  arena only arbitrates the split: the vertical drag recognizer registered on
+  the Android platform view wins verticals and hands the pointer stream to the
+  native view; horizontals stay in Flutter so `InteractiveDrawer` keeps its
+  full-area swipe gesture; taps resolve at pointer-up. The persistent
+  **scroll-stop lock** is therefore never armed by a touch-origin
+  `stopScrolling` call on mobile — every call carries its origin
+  (`'touch'`/`'pointer'`/`'programmatic'`) and only `'touch'` is exempt;
+  programmatic/桥接/mouse-pointer calls keep the lock, which remains for the
+  virtual-window clamp and desktop/legacy pointer paths.
+- **迟发指针流 (delayed pointer stream)**: The Android platform view receives
+  the native touch stream only after the arena resolves (the vertical
+  recognizer winning means ~18px of movement already happened), so after the
+  handover the shell must never re-fight the live Chromium pan with a position
+  replay or `preventDefault` — that replay is precisely the "jelly" kick on
+  Android and the "page never pans" state on iOS WebKit.
+- **保留面 (preserved surfaces)**: `renderBlocked` during scroll, per-frame
+  `viewportMetrics`, and the 16ms streaming flush are deliberate and stay;
+  programmatic `clampVirtualScroll` (virtual-window loading) still arms the
+  scroll-stop lock; the Kotlin `flingScroll(0,0)` momentum cancel and all
+  stop-scroll call sites are retained.
+- **Not a Flutter-owned viewport**: The web timeline is its own DOM scroller
+  (ADR-0043). "Flutter owns the viewport" is false — only the vertical/horizontal
+  gesture arbitration happens in Flutter's arena, which is why the per-touch
+  compensation stack (this glossary's topic, ADR-0052) is thin on purpose.
 
 ## Title Preset System
 - **Hash Fingerprint matching**: `detect()` uses `trim()` only (conservative), exact character match after stripping leading/trailing whitespace.
@@ -130,18 +229,18 @@
 
 ## Incremental Backup (Experimental)
 
-- **Data scope**: Chat data (conversations + messages + toolEvents + geminiThoughtSigs). Optionally includes files (upload/, images/, avatars/, fonts/) when `includeFiles=true`, filtered by mtime >= since. `skills/` is always included regardless of `includeFiles` (see Skill System).
+- **Data scope**: Chat data (conversations + messages + toolEvents + geminiThoughtSigs). Section-wise file payloads per the run’s `BackupContentScope` (上传附件/生成的图片/头像字体/工作区/技能), filtered by mtime >= since. See ADR-0051.
 - **Filtering unit**: Message-level (`message.timestamp >= since`). Conversations created before `since` are still included if they have recent messages; only those messages are exported. Uses `updatedAt` as a fast pre-filter to skip inactive conversations. See `docs/adr/0002-conversation-level-incremental-filtering.md`.
 - **File naming**: `cuplivo_incr_<export_ts_YYYYMMDD-HHmmss-ffffff>_<since_ts_YYYYMMDD-HHmmss>.zip`. The `cuplivo_incr_` prefix is the single identification mechanism for the restore path.
 - **Restore behavior**: `cuplivo_incr_` prefix detected → skip the "Overwrite/Merge" dialog entirely → force `RestoreMode.merge` at both UI and DataSync layers.
 - **Date source**: `BackupReminderProvider.lastBackupTime` for the [↻] shortcut. If null, fallback to 30 days ago. User can always override via `showDatePicker()`.
 - **`includeSettings`**: Default `true`. Not yet persisted (planned for a future PR).
-- **`includeFiles`**: Default follows the config's `includeFiles` toggle. Files are filtered by `lastModifiedSync() >= since`. Not persisted.
+- **Scope**: The incremental dialog exposes the SAME 6-bit grid as the full-backup section (`SegmentedToggleMulti`, 能力 look; mobile sheet 2 列×3 行, desktop dialog 3 列) and writes the chosen scope back to both channel configs (persisted) — full, incremental and LAN sync share one scope (see ADR-0051).
 - **Architecture**: Incremental backup is NOT a mode toggle on full backup — it's a separate independent action. `BackupProvider.incrementalBackup(IncrementalBackupConfig)` and `S3BackupProvider.incrementalBackup(IncrementalBackupConfig)` are new methods that don't modify existing `backup()`.
-- **UI placement**: Desktop & Mobile. Each target (WebDAV, S3, Local) gets its own incremental section within its existing card, with date picker + [↻] shortcut + settings toggle + includeFiles toggle + separate action button.
+- **UI placement**: Desktop & Mobile. The incremental entry lives on the hero card (增量备份 outlined button next to 立即备份 and 从备份恢复); the dialog shows date picker + [↻] shortcut + the unified content-scope grid + update-backup-time toggle.
 - **User-visible behaviors**:
   - Export filename always starts with `cuplivo_incr_`
-  - Export includes settings if `includeSettings=true`, includes files if `includeFiles=true` (filtered by mtime)
+  - Export includes section-wise payloads per the run’s `BackupContentScope` (settings.json assistant keys ride the chats bit; files filtered by mtime; legacy runs map `includeSettings`/`includeFiles` as before — ADR-0051)
   - Import automatically skips mode selection for `cuplivo_incr_` files
   - Empty export (0 conversations matched) shows a confirmation warning before producing the file
 
@@ -174,6 +273,27 @@
 - **Flat scalar settings**: restored only if absent locally — an existing local preference is preserved (per the "仅添加不存在的数据" contract).
 - **Structured JSON keys** (`provider_configs_v1`, `assistant_memories_v1`, `mcp_servers_v1`, `asr_services_v1`, `pinned_models_v1`, tags/maps, groups): merged per-structure; the backup wins on conflicts (dedup by id where applicable).
 - **Provider proxy is device-local**: within `provider_configs_v1`, a provider that already exists locally keeps its 6 proxy fields (`proxyEnabled/Type/Host/Port/Username/Password`) from the backup NEVER — local values win; a legacy local config with no proxy block at all is forced to the app's no-proxy defaults instead of adopting the backup's proxy. Brand-new providers imported by the merge keep their backup proxy as-is (nothing local to preserve). (issue #512) LAN sync rides the same merge path, so a sync peer's proxy never lands on the device either; overwrite restore still imports proxy settings wholesale.
+
+## Backup Page Layout (备份页布局, issue #306)
+
+- **备份渠道 (backup channel)**: 本地 / WebDAV / S3, the three backup destinations. A channel's enabled status is DERIVED, never stored (no `enabled` flag):
+  - WebDAV enabled ⇔ `url` non-empty (username/password optional — public servers need no auth).
+  - S3 enabled ⇔ `endpoint` + `bucket` + `accessKeyId` + `secretAccessKey` all non-empty (region/sessionToken/prefix have defaults, not part of the rule).
+  - 本地 always enabled (nothing to configure).
+  - An unconfigured channel stays visible (status shown as 未配置, dimmed with a grey dot) in every destination surface — tapping it opens the config form (the enable path).
+- **备份目的地 (BackupDestination)**: the hero card's 本地/WebDAV/S3 segmented picker (`SegmentedToggle`, 模型类型 look) holds ONE row with the WHOLE lifecycle on the selected destination — 立即备份 (filled primary, text `onPrimary`) + 增量备份 (outlined) + 从备份恢复 (outlined). An unconfigured destination segment taps through to the channel config dialog; saving a config auto-selects that channel. Segments carry readiness dots (green = configured incl. 本地, grey = unconfigured) — the same dot language as the channel rows.
+- **New page structure (mobile `backup_page.dart` + desktop `backup_pane.dart`, same decisions)**:
+  1. **英雄卡 (hero)**: status headline (`No Backup Yet` / 数据已有备份 + last-backup detail) + destination picker + one-row lifecycle actions; 从备份恢复 follows the selected destination (本地 → pick `.zip` + mode dialog; WebDAV/S3 → remote list when configured, config dialog when not). The reminder-due state NEVER swaps this card — it only adds a row on the reminder card.
+  2. **局域网同步 first** — no "导出与同步" section header at all (LAN sync is its own card); the 数据迁移 (搬家) entry row follows right after (in its own section card, NOT a bare transparent row).
+  3. **数据迁移 (move house)**: ONE row (title 数据迁移 / Migrate Data; subtitle explains the bidirectional range) → centered dialog as a NOT FLAT list: no group headers, no tinted sub-groups, direction semantics live in each row's own label — 导出 (action-style label 导出 Kelivo 兼容备份 + subtitle 生成可供旧版 Kelivo 或旧版 Cuplivo 导入的完整备份 → `kelivoLegacy` whole-pack export) followed by four 从…导入 rows (新版 Kelivo / RikkaHub / Cherry Studio / ChatBox). All labels/subtitles wrap up to 2 lines (never truncate). The old "导出 Kelivo 兼容备份" card and the four-source chooser are merged here; rare actions are one tap deep, never a fold.
+  4. **备份内容 (BackupContentScope)**: 6-section multi-select grid (`SegmentedToggleMulti`, the model 能力 look): 聊天记录及助手 / 设置项 / 附件(upload+images) / 工作区 / 技能 / 字体与头像(fonts+avatars). Column count: mobile 2 列×3 行 (`backup_page` + incremental bottom sheet), desktop 3 列 (`backup_pane` + incremental centered dialog) — the 3-column 2-row grid was too cramped on phone widths. A range/boundary note: settings.json is SECTION-WISE by key whitelist (assistant keys ride the chats bit), `settings_meta.json` carries only the written keys, and the OLD rule "skills/ always packed" is gone — skills follow the 技能 bit. See ADR-0051.
+  5. **备份提醒**: switch + 频率/时间 rows; when DUE (`shouldShowReminder`) exactly one EXTRA row is prepended (warning dot + 该备份了 + last-backup time) — no component is replaced. Owns the 常驻显示备份入口 switch (`backup_reminder_entry_always_v1`, default ON) controlling the home quick entry's visibility.
+  6. **备份渠道管理**: WebDAV/S3 rows in their own card (status dot + 已启用/未配置, shared `BackupActionRow` on BOTH shells — no page-private channel row widget), tap → config form (mobile bottom sheet / desktop centered dialog with `maxWidth: 480`; shell wrapped in `Dialog` on desktop so TextFields keep a Material ancestor).
+- **Backup content scope is ONE model**: `BackupContentScope` (6 bools) lives in both `WebDavConfig` and `S3Config` (`content` field); UI applies every change to BOTH channels (persisted via settings.json round-trip). The incremental dialog exposes the same 6-grid (replacing the old 包含设置/包含文件 switches) and writes the chosen scope back to the channel configs — full, incremental and LAN sync share it. Legacy `includeChats`/`includeFiles` remain as DERIVED getters + JSON keys for old builds; old runs fall back on absent scope.
+- **Kelivo-兼容导出 ignores the scope** (always whole-pack — the legacy importer needs the full settings/chats shape). LAN sync zip stays whole-pack too (modern peers use their own delta; included sections are unchanged).
+- **Restore-side section gate (恢复端分片门控)**: the restore path applies the SAME section split as the exporter — assistant-owned keys (`assistants_v1`/`assistant_memories_v1`) ride the chats bit, everything else rides the settings bit. This also covers whole-pack legacy zips, whose single settings.json carries both sections; the legacy `ocr_enabled_v1` mapping follows the chats bit and the key is always stripped afterwards.
+- **首页快捷入口 (home quick entry)**: ONE fixed row occupying the same slot as the update notice entry — mobile drawer bottom bar (above the update row, which sits above the user row) and desktop sidebar bottom (directly above the update row; `desktopTopicsOnly` never renders it, same one-entry-per-config rule as the update entry). Visibility = 常驻开关 `backup_reminder_entry_always_v1` (default ON) OR due: ON → always visible; OFF → only while `shouldShowReminder`; OFF + reminder disabled → the entry disappears entirely (备份页 still reachable via 设置→数据). Layout: 常驻 single line = icon + 数据备份 (title fixed natural width, never squeezed) + relative time (`backupEntryRelativeTimeLabel`, right-aligned, ellipsizes first under pressure) + chevron. When DUE the row NEVER morphs — only gains a SECOND line (该备份了 · 上次备份 {time} in relative time, full row width, NO trailing time so it never duplicates) and the icon turns warning (no tall card, no snooze — session-snoozing was deleted with the old banner; `shouldShowReminder` clears on the next completed backup or a disabled reminder). The drawer bottom cluster is NOT covered by any overlay fade (the iOS-style bottom fade was deleted — the list does not scroll under the bottom bar). Mobile tap → push `BackupPage`; desktop tap → `DesktopSettingsNavigationBus.openBackup()` (settings tab → backup pane).
+- **UI vocabulary reuses 模型类型/能力 segment styles**: the destination picker and the scope grid are the shared `SegmentedToggle`/`SegmentedToggleMulti` widgets (extracted from `model_detail_sheet` + desktop `model_edit_dialog`, which now also use the shared copy).
 
 ## Markdown Batch Export (批量导出 Markdown)
 
@@ -258,6 +378,12 @@
 - **UI shell**: Dual-shell, same content — centered Dialog on desktop, bottom sheet on mobile (same pattern as `ImageCompressionDialog` / `UpdateChangelogDialog`).
 - **Responses API native image generation (Responses 原生图像生成)**: Distinct from the Images API routing above. When the provider uses the Responses API (`useResponseApi == true`), the model can emit image output natively as output items of type `image_generation_call` (OpenAI) or `openrouter:image_generation` (OpenRouter), whose `result` carries base64 image data — possibly a full `data:` URL — rendered as saved local images. No `/images/generations` or `/images/edits` call is involved. Non-streaming responses must still scan the `output` array for image items even when `output_text` is present; the text short-circuit would otherwise drop the image.
 
+## Memory Tools (记忆工具)
+
+- **Status vs data split (状态与数据划分)**: Memory tool returns follow two distinct contracts. **Status returns** (`create_memory`, `edit_memory`, `delete_memory`) are typed JSON confirmation objects mirroring `_toolError`: `{"type":"memory_created","id":5}`, `{"type":"memory_edited","id":5}`, `{"type":"memory_deleted","id":7}` — a parseable terminal signal the model can recognize as the call having succeeded (issue #584; the historical Kelivo infinite-create loop was a missing success signal: create/edit echoed an unmarked `<record>` XML indistinguishable from the injected context block). **Data return** (`read_memory`) stays `<memories>` XML — its format is deliberately identical to the system-injected memories block (`message_builder_service.dart`), because edit/delete descriptions reference ids "shown in the `<memories>` context"; the success-signal problem does not apply to data payloads.
+- **No content echo**: Status success confirmations never echo the stored content — the model just sent it; the assigned id is the only new information. Echoing invites weak models to re-process the content and costs tokens. Error paths keep the full `_toolError` `{type,error,message,tool,instruction}` shape unchanged.
+- **Landing point**: `_handleMemoryToolCall` in `tool_handler_service.dart` is the single dispatcher. Proactive-care decision flow and group-chat director build their own handlers and never expose memory tools; handoff children run the same `ToolHandlerService`. Tool descriptions and the fixed Memory Tool system block do NOT describe return formats (deliberate — the typed JSON is self-describing; no prompt churn).
+
 ## Skill System
 
 ### Core Concept
@@ -274,7 +400,7 @@
   - GitHub URL: User pastes a `github.com/{owner}/{repo}[/tree/{branch}[/sub/path]]` URL. App downloads the repo archive ZIP from `github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip` (no API rate limit, no auth for public repos), then reuses the same ZIP import pipeline (scan for all `SKILL.md` at any depth, multi-select dialog if >1 found). If a subpath is specified, the scan is scoped to that subdirectory. Private/missing repos return 404 → localized "not found or private" error. GitHub only — no GitLab/generic git hosts.
 - **Update**: Re-import with the same name overwrites the directory. Atomic write handles crash safety.
 - **Delete**: `SkillManager.deleteSkill(name)` removes the directory. Removes from all assistants' `skillIds` (orphan cleanup).
-- **Export**: Included in backup via `_packZipSync` — `skills/` directory packed independently of `includeFiles`, always included. Incremental backup uses mtime ≥ since filtering (same mechanism as upload/avatars/images/fonts).
+- **Export**: Included in backup via `_packZipSync` — `skills/` directory now follows the scope’s 技能 bit (the old “always packed” rule is gone, ADR-0051). Incremental backup uses mtime >= since filtering (same mechanism as upload/avatars/images/fonts).
 
 ### System Prompt Injection
 
@@ -311,8 +437,8 @@
 
 ### Backup Integration
 
-- `skills/` directory is always included in backup ZIPs — NOT gated by `includeFiles`. Rationale: skill files are small (pure text) and fundamental to assistant behavior. Incremental backup filters by mtime via existing `_addDirectoryToZip(since:)`.
-- Restore: `_restoreFromBackupFile` restores `skills/` unconditionally (independent of `includeFiles`, symmetric with export): overwrite = wipe local `skills/` then copy all entries; merge = per-file newer-wins — a backup entry replaces the local copy only when strictly newer (`backup mtime > local mtime`), ties/older keep local. File mtimes are preserved from the ZIP entry `lastModTime` via `_extractZipSync`, making the comparison self-contained (no `since` needed) and bidirectional-sync safe (a peer with a newer local edit is never regressed). `SkillManager` discovers restored skills on next `listSkills()`. The incremental scope preview (`analyzeIncrementalScope`) counts `skills/` files unconditionally for the same reason.
+- `skills/` directory is gated by the scope’s 技能 bit (once “always included”; changed for the 6-section `BackupContentScope`, ADR-0051). Incremental backup filters by mtime via existing `_addDirectoryToZip(since:)`.
+- Restore: `_restoreFromBackupFile` restores `skills/` symmetrically with the export scope bit (independent of the legacy `includeFiles` getter): overwrite = wipe local `skills/` then copy all entries; merge = per-file newer-wins — a backup entry replaces the local copy only when strictly newer (`backup mtime > local mtime`), ties/older keep local. File mtimes are preserved from the ZIP entry `lastModTime` via `_extractZipSync`, making the comparison self-contained (no `since` needed) and bidirectional-sync safe (a peer with a newer local edit is never regressed). `SkillManager` discovers restored skills on next `listSkills()`. The incremental scope preview (`analyzeIncrementalScope`) counts `skills/` files only when the skill bit is on (mirroring the pack).
 
 ### Relationship to Existing Concepts
 
@@ -326,7 +452,7 @@
 - **Groups (three collapsible groups)**: **本地工具** (platform-dependent local-tool toggles — the same rows as 助手设置 → 本地工具, minus the workspace row; Android 10 / iOS 9 / desktop 7 as of the Device Local Tools port, see the Device Local Tools section below; default collapsed), **MCP 服务器** (connected-server toggles + select-all/clear-all in the group header row, only while the group is expanded; empty-state hint; default expanded), **Workspace** (bound-workspace row + Android-only terminal row; group-header trailing manage → `WorkspaceListPage`; default expanded). Collapse state is session-scoped only (shared `CollapsibleGroupsMixin`).
 - **Row styles are platform-split, mirroring each platform's original server UI**: desktop popover uses compact 40px rows with hover highlight and a check marker (the deleted `mcp_servers_popover` style); mobile sheet uses card rows with switch (+ tools-count tag for MCP), the deleted `mcp_assistant_sheet` style. The shared `ToolToggleRow` remains in use only by the skills sheet.
 - **Bound workspace row**: shows the assistant's bound workspace (strict `workspaceId` resolution — same as `WorkspaceToolsService._boundWorkspace`, no default fallback) or 未绑定工作区. Tap opens the shared bind sheet (`showWorkspaceBindSheet`, extracted from assistant settings; writes `{workspaceEnabled, workspaceId}` atomically). Dual-shell: mobile bottom sheet / desktop centered dialog; a module-level guard ignores re-entrant calls while a sheet/dialog is open (fixes stacked-popup repeats; the settings tab funnels through the same guarded entry). The workspace list renders only while `workspaceEnabled` is on — otherwise a hint line ("开启工作区后选择") is shown. On desktop, hub navigation actions (bind dialog, McpPage, WorkspaceListPage) close the popover first via `ToolsHubContent.onClose` — the popover's full-screen dismiss barrier would otherwise sit above the dialog/route and intercept clicks.
-- **Terminal row**: Android only (hidden on iOS/desktop — Workspace Terminal is Android-only per ADR-0032). The hub performs only cheap synchronous preconditions (workspace enabled && bound && !readOnly); deeper gate evaluation (runtime/base/broken) is left to `WorkspaceTerminalPage` itself (parity with the workspace detail page's terminal entry).
+- **Terminal row**: Android only (hidden on iOS/desktop — Workspace Terminal is Android-only per ADR-0054). The hub performs only cheap synchronous preconditions (workspace enabled && bound && !readOnly); deeper gate evaluation (runtime/base/broken) is left to `WorkspaceTerminalPage` itself (parity with the workspace detail page's terminal entry).
 - **Button visibility & highlight**: the button shows for every tool-capable model (group chat still hidden) — it is the discovery entry for local tools even when nothing is enabled yet (issue #546: availability, not enablement, drives visibility). It highlights (active state) when any of (MCP connected∩selected, local tools enabled, workspace enabled).
 - **Row pitch (行距)**: inter-row gap inside each group is 6px in BOTH shells (mobile sheet + desktop popover) — the shared `SizedBox(height: 6)` between rows (issue #546); the card/row style itself stays platform-split. MCP and local-tools rows deliberately share the same row widgets so heights match by construction.
 
@@ -353,8 +479,9 @@
 - **Model-facing presentation (`/workspace`)**: The workspace LOCAL tools surface (per-assistant bound workspace; filesystem tools + Linux sandbox shell) presents ONE vocabulary to the model: `/workspace/rel/path`, where `/workspace` is the root of the bound workspace (same directory the shell's guest cwd `/workspace` resolves to). Tool definitions, prompt reminders, inputs, and result echoes are translated by `WorkspaceToolsService` + `workspace_path_presentation.dart`; inputs accept ONLY `/workspace/...` — canonical `@alias/...` is rejected with a hint (strict mode; recorded tool calls from before this presentation existed now fail on replay). **SAF mounts extend the vocabulary**: `/workspace/.mounts/<alias>/rel` ↔ `@<alias>/rel` (parse + present, unknown aliases rejected; `.mounts` is a reserved shadowed dotdir — ADR-0037). The canonical wire format stays the internal identity format (markers, backups, ADR-0022); `kelivo_fetch` keeps its own legacy `@default/...` vocabulary.
 - **Linux sandbox (mobile shell)**: The **Shell tool** (model-facing, one-shot) runs commands in a Linux guest via MethodChannel `cuplivo/linux_sandbox` (`isSupported`/`getAbi`/`installBase`/`extractRootfs`(Android)/`exec` → `{exitCode, stdout, stderr, timedOut}`, 128K-char cap). Not the human **Workspace Terminal**. **Android**: proot + per-workspace Ubuntu base 24.04 rootfs downloaded into `<ws>/.sandbox/linux` (mirrors: official/tuna/aliyun/custom), staged apt (recover dpkg state → update → install). **iOS**: embedded iSH-ARM64 userland emulator (OpenMinis/ish-arm64 fork, GPL-3.0 — see `ios/sandbox/NOTICE`; asbestos engine is an interpreter, no JIT) with ONE shared Alpine aarch64 rootfs in fakefs format at `Application Support/linux-sandbox/alpine-rootfs` — the iSH kernel boots exactly ONCE per app process, so per-workspace rootfs is impossible; instead each workspace host dir is `fakefs_bind_mount`-ed onto guest `/workspace` at exec time (rebind on workspace switch). Rootfs ships as a bundled zip (`ios/sandbox/resources/alpine-rootfs.zip`, generated by `tools/ios_rootfs/prepare_alpine_fakefs.py`, committed); install = offline extraction; reinstall while booted → `booted_restart_required` (relaunch). Dependencies use apk on iOS (python3 py3-pip / nodejs npm / git / build-base; mirrors rewrite `/etc/apk/repositories` for the pinned Alpine version). iSH static libs are built from source by `ios/sandbox/build_ish.sh` (pinned upstream SHA; macOS+Xcode+LLVM; outputs gitignored; CI iOS job runs it before `flutter build ios`). Guest crashes are contained (signal guards park the guest thread, never abort the app). **iOS guest DNS**: the guest resolves via a host-side file `Library/CuplivoSandbox/dns/resolv.conf` file-level bind-mounted onto guest `/etc/resolv.conf` at boot — rewritten at boot AND on system resolver changes (SCDynamicStore watcher on `State:/Network/Global/DNS`, `CuplivoISHKernel.m`), so Wi‑Fi ↔ 蜂窝 / VPN switches are followed without a relaunch; loopback system servers (VPN/ad-block local resolvers — unreachable from the guest's own emulated network stack) are filtered, and the hardcoded public fallback (`1.1.1.1` / `8.8.8.8` / `223.5.5.5`, not user-configurable in v1, issue #463) is always appended (musl rotates through nameservers). Android's proot sandbox shares the host network stack and has no resolver gap. Model contract identical to Android (`/workspace` cwd mapping, timeouts, approval flow). **Extra binds**: Android exec/PTY payloads accept a `binds` list; only the current workspace's SAF mirrors bind at `/workspace/.mounts/<alias>`, always rw and governed by that workspace's file/shell tool permissions. See `docs/adr/0035-ios-linux-sandbox-ish.md`.
 - **沙箱系统目录 (Sandbox system directory)**: The host-side mirror of the guest root filesystem — Android: per-workspace proot rootfs `<ws>/.sandbox/linux`; iOS: the shared fakefs tree `Application Support/linux-sandbox/alpine-rootfs/data` (guest `/`, ONE tree for ALL workspaces). This is where "安装依赖" installs land (`/usr/bin/python3`, `/usr/lib/...`), and it is NOT visible in the workspace file browser (which shows only the user file tree; `.sandbox` is a hidden dotdir, and the iOS rootfs lives outside the workspace entirely). The workspace detail page exposes it via a "沙箱系统目录" nav row → read-only `SandboxFilesPage`: guest-style addressing (breadcrumb root `/`), dotfiles ALWAYS visible (system viewer, no toggle), preview + download only (no upload/delete/markers/wire paths — mutations would corrupt the app-managed rootfs). Excluded from backup/sync and never exposed to the model: the model's vocabulary stays `/workspace` (the bound workspace), guest `/` is not a tool surface.
-- **Workspace Terminal (工作区终端)**: The human-facing full-screen interactive PTY for one workspace's Linux sandbox. Android only in v1. Independent of `shellEnabled`; may run concurrently with the model Shell tool. Not a panel (that name is Live Panel). See `docs/adr/0032-workspace-terminal-android-pty.md`.
-- **Terminal Session**: The single live guest login bash attached to a host PTY while the Workspace Terminal page is on screen. Popping the page ends it.
+- **Workspace Terminal (工作区终端)**: The Android-only human-facing full-screen interface to one workspace's Linux sandbox. It attaches to that workspace's Terminal Session and may leave and later reattach without changing the running shell. It is independent of `shellEnabled`, may run concurrently with the model Shell tool, and is not a panel (that name is Live Panel). See `docs/adr/0054-termux-owned-workspace-terminal-sessions.md`.
+- **Terminal Session**: One live guest login Shell together with its PTY, terminal screen, cursor and scroll history. A workspace owns at most one Terminal Session; different workspaces may own sessions concurrently. The session can outlive its Workspace Terminal page when the workspace opts in.
+- **Terminal session lifecycle (终端会话生命周期)**: Three nested guarantees: **page-attached** (the Workspace Terminal is visible), **app-internal persistence** (leaving the page keeps the session until the app task ends), and optional **persistent keep-alive** (the session may survive removal of the app task while the process remains alive). Force-stop, process death and device reboot end every tier. “软件启动时打开 Linux 沙箱” creates the app-internal session after workspace and SAF initialization; it is not device boot autostart.
 - **read trailing-slash tolerance**: `kelivo_read` alone tolerates ONE trailing slash on its `path` argument (stripped before resolution, treated as a directory). Every other tool keeps the strict rejection — identity-bearing paths (markers, move/write destinations) never gain ambiguous spellings. This is an ergonomic tolerance, not a wire-format change.
 - **grep pagination**: `kelivo_grep` accepts `offset` (default 0) and `limit` (default 100, max 500). Pagination requires a DETERMINISTIC scan: entries are sorted by name at every level before depth-first descent, so a given offset/limit window is stable across calls. Stateless — the model re-scans with a larger offset; the max-500 total bounds token-burn pagination loops.
 - **grep context**: `kelivo_grep` accepts `before_context` + `after_context` (default 0, each capped at 5). Match lines use `path:line: text`; context lines use ripgrep's `path-line-text` hyphen marker so the model can distinguish them. Context lines count into the pagination window (offset stability preserved by the deterministic walk).
@@ -503,6 +630,8 @@
 - **Mobile client sheet**: Port and PIN fields are stacked full-width (side-by-side was too cramped, issue #182). The sheet's own close action only fires when the exchange returned empty (`LanSyncPhase.noData`). After a received zip, `_restoreAndRestart` never pops the sheet — the dialog/sheet IS the mask (see Write-window mask).
 - **Write-window mask (写入遮罩)**: On a received zip, `_restoreAndRestart` keeps the sync dialog/sheet mounted — its non-dismissible barrier is the full-screen mask: the user can neither chat nor exit the flow while merge-restore + provider refresh run. The Android back button / Esc are blocked too, via `PopScope(canPop: restoreProgress == null)` on all three dialog/sheet surfaces (`barrierDismissible`/`isDismissible` do NOT intercept back — only PopScope does). `RestoreProgress` (stage + determinate fraction, optional `DataSync` restore `onProgress` callback — null for backup page/pane/S3 paths, which stay unchanged) is mirrored onto both `LanSyncServer`/`LanSyncClient` notifiers and rendered as stage text + `LinearProgressIndicator`: determinate on the file-copy stage (`N/M 个文件 · 共 X MB`, fraction clamped monotonic **within the file-copy stage** — never regresses at directory boundaries; the bar restarts per stage, with the stage-label change as the reset cue), per-conversation counter during chat merge, indeterminate elsewhere. Notifications are throttled (~100 ms) in `_setRestoreProgress` — stage changes, indeterminate stages, the final step and the null clear always pass. On success the non-dismissible restart dialog takes over the screen; on failure the dialog/sheet shows a localized error + exception + a single close action (**close-with-error, never rethrow** — a restore failure is not a transport error; merge is idempotent so redoing the sync is safe) and the received temp zip is deleted when the section is disposed (best-effort — a locked file is swallowed, not an unhandled error). App-kill protection is deliberately out of scope: the mask itself is the safety signal.
 - **File payload preview (文件信息预览)**: `SyncPlan` carries optional `serverFileCount`/`serverFileSizeBytes`; the initiator computes its own outbound payload in `negotiate()` the same way. Modern peers: counts come from the exact per-file delta (`computeFileDelta` against the peer's manifest). Old peers: `DataSync.countFilesForSince` (`mtime ≥ since` stat walk). `buildPlanSummary` renders "将发送 N 个文件（X MB）/ 将接收 M 个文件（Y MB）" lines only when the count is known and > 0 — and renders them for a **file-only** sync (all conversations identical) instead of the "no changes" line. **Known latency trade-off (accepted)**: the SERVER's manifest walk runs inside the client's 30 s `/sync/plan` HTTP timeout; stat-only walks take 1-5 s for typical trees, but a pathological tree (10⁵+ files) could exceed it — accepted, since packing such a tree takes minutes anyway and the mask + progress bar already cover the user experience. The client's own walk happens after the response and is not under that timeout.
+- **Sync Priority (同步优先级)**: A per-session conflict-direction bit chosen by the initiator before starting a sync: three modes — **auto** (default, current fixed-policy merge, zero behavior change), **local wins** (本机优先; conflicts keep the local copy, peer-exclusive data still merges in) and **peer wins** (对方优先; conflicts adopt the peer copy, local-exclusive data is kept). It is a **merge-direction** bit, NOT `RestoreMode.overwrite` — merge-only semantics (fill-absent, union) stay always on; only the winner of an id-conflict flips. It rides the plan request as `SyncIndex.syncPriority` (`'initiatorWins' | 'serverWins' | null`); the server echoes the accepted value in `SyncPlan.syncPriority` — the client applies its chosen direction **only when the server echoed an identical non-null value**, otherwise both sides fall back to auto (mixed-version symmetry; old peers and unknown values degrade silently, `debugPrint` only). Per category: assistants (field-level winner), scalar settings (direction overrides LWW), structured lists (id-conflict winner; unions preserved), conversation metadata (winner's row replaces loser's, exempting `id`/`createdAt`/`messageIds`). **A non-auto session forces a settings-only exchange** even when there is no chat/file delta (identical message IDs but different system prompts = no zip today, so the chosen direction would never apply): both peers pack a settings/assistants-only zip (`includeChats`/`includeFiles` off) so `_restoreAndRestart` runs and the direction reaches the merge. Excluded: message content edits (ID-skip stays, tracked in issue #620), files (strictly-newer-wins stays), deletion tombstones (advisory stays), sync forks (union stays, fork-copy materialization tracked in issue #621). Session-only, never persisted, not a device property. See `docs/adr/0052-sync-priority-direction-bit.md`.
+- **Conversation metadata direction (会话元数据传播)**: With `local wins`/`peer wins`, a conversation present on both devices with a different local copy gets its **13 mutable fields** (title, isPinned, mcpServerIds, assistantId, parentConversationId, truncateIndex, versionSelections, summary, lastSummarizedMessageCount, chatSuggestions, conversationKind, workspaceDirectoryOverrides, updatedAt) replaced wholesale by the winner's row; `id`, `createdAt` and `messageIds` are exempt — the loser's exclusive messages survive because `messageIds` stays locally managed as the append-union, and `updatedAt` takes `max(winner row, local)` so the sort key never regresses below either side's activity. **Metadata-only conflicts** (message-ID lists identical, rows differ) are detected in confirmed non-auto sessions via `SyncIndex.conversationRows` and flagged as `SyncConvPlan.metadataOnly`; both peers then ship the row WITHOUT its messages (`IncrementalBackupConfig.metadataOnlyConversationIds`), and the merge's row-replace runs even for zero-message incoming rows. Detection exempts `id`/`createdAt`/`updatedAt`/`messageIds` and skips group conversations; auto sessions stay byte-identical (no flags, no rows). Unchanged in auto mode (both directions freeze metadata today, ID-skip).
 
 ### Flagged Ambiguities
 
@@ -938,6 +1067,8 @@
 - **Render session (渲染会话)**: One ordered lifetime of a viewport bound to one conversation. Results and actions from an older render session are stale and must not affect the active conversation.
 - **Conversation-scoped fallback (会话级回退)**: A process-local choice that keeps one conversation on the Flutter viewport after a Web viewport failure or an unsupported MultiAI surface. It is not persisted.
 - **Rich content block (富内容块)**: An independently rendered unit inside a message, such as Markdown, code, math, Mermaid, SVG, HTML preview, an attachment, reasoning, or a tool card. Failure of one block does not invalidate the surrounding message.
+- **Web chat shell (Web 壳)**: The versioned bundled HTML/JS surface (`assets/web_chat/`, currently `web-chat-v19`) that a platform WebView renders inside the Web conversation viewport. It owns only DOM presentation, local interaction, and viewport scroll; it is a presentation layer, never a second chat client.
+- **Shell origin (壳加载源)**: The URL origin from which the Web chat shell is loaded by the platform WebView — Windows: WebView2 HTTPS virtual host (`cuplivo-web-chat.invalid`), Android: `appassets.androidplatform.net` (secure asset origin), Darwin (iOS/macOS): loopback HTTP served by the in-process `LocalWebChatShellServer` with asset keys mapped to `/assets/...` paths. It is never a `file://` origin (ADR-0043; Darwin path in ADR-0051).
 
 ## Fork Conversation (创建分支)
 

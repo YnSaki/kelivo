@@ -440,9 +440,12 @@ class HomePageController extends ChangeNotifier {
       chatService: _chatService,
       contextProvider: _context,
       preferences: _context.read<BusinessPreferences>(),
-      ocrHandler: (imagePaths) =>
-          _ocrService.getOcrTextForImages(imagePaths, _context),
-      geminiThoughtSignatureHandler: _appendGeminiThoughtSignatureForApi,
+      ocrHandler: (imagePaths, {requestId}) => _ocrService.getOcrTextForImages(
+        imagePaths,
+        _context,
+        requestId: requestId,
+      ),
+      geminiThoughtSignatureProvider: _geminiThoughtSignatureForApi,
     );
     _messageBuilderService.ocrTextWrapper = _ocrService.wrapOcrBlock;
     _generationController = GenerationController(
@@ -1236,6 +1239,7 @@ class HomePageController extends ChangeNotifier {
       parts.add(answeredPart);
     }
     _streamController.setToolParts(message.id, parts);
+    streamingContentNotifier.notifyToolHeightChanged(message.id);
     notifyListeners();
 
     await _viewModel.continueAssistantMessageAfterToolAnswer(
@@ -2111,6 +2115,33 @@ class HomePageController extends ChangeNotifier {
     );
   }
 
+  Future<void> exportSelectedAsPdf() async {
+    final convo = currentConversation;
+    if (convo == null) return;
+
+    final selected = _selectedCollapsedMessages();
+    if (selected.isEmpty) {
+      final l10n = AppLocalizations.of(_context)!;
+      showAppSnackBar(
+        _context,
+        message: l10n.homePageSelectMessagesToShare,
+        type: NotificationType.info,
+      );
+      return;
+    }
+
+    final showThinkingTools = _showThinkingTools;
+    final showThinkingContent = _showThinkingContent;
+    cancelSelection();
+    await exportChatMessagesPdf(
+      _context,
+      conversation: convo,
+      messages: selected,
+      showThinkingAndToolCards: showThinkingTools,
+      expandThinkingContent: showThinkingContent,
+    );
+  }
+
   void cancelSelection() {
     _selecting = false;
     _selectedItems.clear();
@@ -2907,15 +2938,8 @@ class HomePageController extends ChangeNotifier {
     }
   }
 
-  String _appendGeminiThoughtSignatureForApi(
-    ChatMessage message,
-    String content,
-  ) {
-    return _streamController.appendGeminiThoughtSignatureForApi(
-      message,
-      content,
-    );
-  }
+  String? _geminiThoughtSignatureForApi(ChatMessage message) =>
+      _streamController.geminiThoughtSignatureForApi(message);
 
   Future<void> _onMcpChanged() async {
     // Kept for potential future use

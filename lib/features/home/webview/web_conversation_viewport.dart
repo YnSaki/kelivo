@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as winweb;
@@ -19,8 +19,10 @@ import '../../../theme/app_semantic_colors.dart';
 import '../../../utils/sandbox_path_resolver.dart';
 import '../controllers/conversation_viewport_port.dart';
 import 'android_web_chat_view.dart';
+import 'local_web_chat_shell_server.dart';
 import 'web_chat_protocol.dart';
 import 'web_chat_remote_media.dart';
+import 'web_chat_shell_cache.dart';
 import 'web_chat_snapshot.dart';
 
 typedef WebChatActionHandler =
@@ -59,24 +61,11 @@ class WebConversationViewport extends StatefulWidget {
 
 class _WebConversationViewportState extends State<WebConversationViewport> {
   static const Duration _initializationTimeout = Duration(seconds: 10);
-  static const String _windowsVirtualHost = 'cuplivo-web-chat.invalid';
   static const String _webView2Url =
       'https://developer.microsoft.com/microsoft-edge/webview2/';
-  static const List<String> _windowsAssets = <String>[
-    'index.html',
-    'styles.css',
-    'app.mjs',
-    'protocol.mjs',
-    'vendor/marked.min.js',
-    'vendor/purify.min.js',
-    'vendor/highlight.min.js',
-    'vendor/github.min.css',
-    'vendor/katex.min.js',
-    'vendor/katex.min.css',
-    'vendor/auto-render.min.js',
-  ];
 
   WebViewController? _flutterController;
+  LocalWebChatShellServer? _shellServer;
   AndroidWebChatController? _androidController;
   winweb.WebviewController? _windowsController;
   StreamSubscription<dynamic>? _windowsMessageSubscription;
@@ -257,16 +246,16 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
         );
       },
     );
-    final shell = await _prepareWindowsShell();
+    final shell = await prepareWindowsWebChatShell();
     await controller.addVirtualHostNameMapping(
-      _windowsVirtualHost,
+      webChatWindowsVirtualHost,
       shell.parent.path,
       winweb.WebviewHostResourceAccessKind.deny,
     );
     _windowsController = controller;
     final shellUri = Uri(
       scheme: 'https',
-      host: _windowsVirtualHost,
+      host: webChatWindowsVirtualHost,
       path: '/index.html',
       queryParameters: <String, String>{'platform': 'windows'},
     );
@@ -274,39 +263,62 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
   }
 
   Future<void> _initializeFlutterWebView(int generation) async {
-    final controller =
-        WebViewController(
-            onPermissionRequest: (request) => unawaited(request.deny()),
-          )
-          ..setJavaScriptMode(JavaScriptMode.unrestricted)
-          ..setBackgroundColor(const Color(0x00000000))
-          ..setNavigationDelegate(
-            NavigationDelegate(
-              onNavigationRequest: (request) {
-                if (!request.isMainFrame || _isLocalShellUrl(request.url)) {
-                  return NavigationDecision.navigate;
-                }
-                unawaited(_openExternalUrl(request.url));
-                return NavigationDecision.prevent;
-              },
-              onWebResourceError: (error) {
-                if (error.isForMainFrame != true) return;
-                debugPrint(
-                  'WebConversationViewport: shell resource failed: '
-                  '${error.errorCode}',
-                );
-                _fail(generation, 'resource_${error.errorCode}');
-              },
-            ),
-          )
-          ..addJavaScriptChannel(
-            'CuplivoChat',
-            onMessageReceived: (message) =>
-                _handleBridgeMessage(message.message),
+    // The shell must load from a loopback HTTP origin (ADR-0051): a
+    // `file://` document origin is opaque on WebKit and blocks the shell's
+    // ES-module graph, so it can never signal `ready`.
+    LocalWebChatShellServer server;
+    try {
+      server = await LocalWebChatShellServer.acquire();
+    } catch (error) {
+      debugPrint(
+        'WebConversationViewport: shell server failed '
+        '(${error.runtimeType})',
+      );
+      _fail(generation, 'shell_server_failed');
+      return;
+    }
+    if (_isStale(generation)) return;
+    _shellServer = server;
+    final controller = WebViewController(
+      onPermissionRequest: (request) => unawaited(request.deny()),
+    );
+    // Ordering matters: every channel/setting registration must complete
+    // before the navigation is issued so `window.CuplivoChat` exists for the
+    // shell's first `ready`.
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.setBackgroundColor(const Color(0x00000000));
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onNavigationRequest: (request) {
+          if (!request.isMainFrame || _isLocalShellUrl(request.url)) {
+            return NavigationDecision.navigate;
+          }
+          unawaited(_openExternalUrl(request.url));
+          return NavigationDecision.prevent;
+        },
+        onWebResourceError: (error) {
+          if (error.isForMainFrame != true) return;
+          debugPrint(
+            'WebConversationViewport: shell resource failed: '
+            '${error.errorCode}',
           );
+          _fail(generation, 'resource_${error.errorCode}');
+        },
+      ),
+    );
+    await controller.addJavaScriptChannel(
+      'CuplivoChat',
+      onMessageReceived: (message) => _handleBridgeMessage(message.message),
+    );
+    await controller.setOnConsoleMessage((message) {
+      debugPrint(
+        'WebConversationViewport: web console ${message.level.name}: '
+        '${message.message}',
+      );
+    });
     if (_isStale(generation)) return;
     _flutterController = controller;
-    await controller.loadFlutterAsset('assets/web_chat/index.html');
+    await controller.loadRequest(server.shellUri);
   }
 
   Future<void> _handleAndroidViewCreated(int viewId, int generation) async {
@@ -349,113 +361,18 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
     }
   }
 
-  bool _isLocalShellUrl(String url) =>
-      url.startsWith('file:') ||
-      url.startsWith('data:') ||
-      url.startsWith('about:') ||
-      url.startsWith('https://$_windowsVirtualHost/') ||
-      url.startsWith('https://appassets.androidplatform.net/');
-
-  Future<File> _prepareWindowsShell() async {
-    final temp = await getTemporaryDirectory();
-    final directory = Directory(
-      '${temp.path}${Platform.pathSeparator}cuplivo_web_chat_$webChatAssetVersion',
-    );
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final relativeAssets = <String>{
-      ..._windowsAssets,
-      for (final asset in manifest.listAssets())
-        if (asset.startsWith('assets/web_chat/vendor/fonts/'))
-          asset.substring('assets/web_chat/'.length),
-    };
-    final index = File('${directory.path}${Platform.pathSeparator}index.html');
-    if (await _windowsCacheIsComplete(directory, relativeAssets)) {
-      await _cleanupOldWindowsCaches(directory);
-      return index;
-    }
-    if (await directory.exists()) {
-      await directory.delete(recursive: true);
-    }
-    await directory.create(recursive: true);
-    for (final relative in relativeAssets) {
-      final data = await rootBundle.load('assets/web_chat/$relative');
-      final output = File(
-        '${directory.path}${Platform.pathSeparator}'
-        '${relative.replaceAll('/', Platform.pathSeparator)}',
-      );
-      await output.parent.create(recursive: true);
-      await output.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-      );
-    }
-    final mermaid = await rootBundle.load('assets/mermaid.min.js');
-    await File(
-      '${directory.path}${Platform.pathSeparator}mermaid.min.js',
-    ).writeAsBytes(
-      mermaid.buffer.asUint8List(mermaid.offsetInBytes, mermaid.lengthInBytes),
-    );
-    final marker = File('${directory.path}${Platform.pathSeparator}.complete');
-    final temporaryMarker = File(
-      '${directory.path}${Platform.pathSeparator}.complete.tmp',
-    );
-    await temporaryMarker.writeAsString(webChatAssetVersion, flush: true);
-    await temporaryMarker.rename(marker.path);
-    await _cleanupOldWindowsCaches(directory);
-    return index;
-  }
-
-  Future<bool> _windowsCacheIsComplete(
-    Directory directory,
-    Set<String> relativeAssets,
-  ) async {
-    if (!await directory.exists()) return false;
-    final marker = File('${directory.path}${Platform.pathSeparator}.complete');
-    try {
-      if (!await marker.exists() ||
-          await marker.readAsString() != webChatAssetVersion) {
-        return false;
-      }
-      for (final relative in <String>{...relativeAssets, 'mermaid.min.js'}) {
-        final file = File(
-          '${directory.path}${Platform.pathSeparator}'
-          '${relative.replaceAll('/', Platform.pathSeparator)}',
-        );
-        if (!await file.exists() || await file.length() == 0) return false;
-      }
+  bool _isLocalShellUrl(String url) {
+    if (url.startsWith('file:') ||
+        url.startsWith('data:') ||
+        url.startsWith('about:') ||
+        url.startsWith('https://$webChatWindowsVirtualHost/') ||
+        url.startsWith('https://appassets.androidplatform.net/')) {
       return true;
-    } catch (error) {
-      debugPrint(
-        'WebConversationViewport: Windows cache validation failed '
-        '(${error.runtimeType})',
-      );
-      return false;
     }
-  }
-
-  Future<void> _cleanupOldWindowsCaches(Directory activeDirectory) async {
-    final parent = activeDirectory.parent;
-    try {
-      await for (final entity in parent.list(followLinks: false)) {
-        if (entity is! Directory || entity.path == activeDirectory.path) {
-          continue;
-        }
-        final name = entity.path.split(Platform.pathSeparator).last;
-        if (!name.startsWith('cuplivo_web_chat_')) continue;
-        try {
-          await entity.delete(recursive: true);
-        } catch (error) {
-          debugPrint(
-            'WebConversationViewport: old Windows cache cleanup failed '
-            '(${error.runtimeType})',
-          );
-        }
-      }
-    } catch (error) {
-      debugPrint(
-        'WebConversationViewport: Windows cache scan failed '
-        '(${error.runtimeType})',
-      );
-    }
+    final server = _shellServer;
+    if (server == null) return false;
+    final uri = Uri.tryParse(url);
+    return uri != null && server.isLocalShellUri(uri);
   }
 
   void _handleBridgeMessage(String raw) {
@@ -644,14 +561,19 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
           'webp' => 'image/webp',
           'svg' when source.kind == WebChatMediaSourceKind.bundledAsset =>
             'image/svg+xml',
+          'ttf' => 'font/ttf',
+          'otf' => 'font/otf',
+          'ttc' => 'font/collection',
           _ => null,
         };
         if (mime == null) {
           throw const WebChatProtocolException('unsupported media type');
         }
+        final isFontMime = mime.startsWith('font/');
         final bytes = switch (source.kind) {
           WebChatMediaSourceKind.localFile => await _readLocalMedia(
             source.value,
+            maxBytes: isFontMime ? webChatFontMaxBytes : webChatMediaMaxBytes,
           ),
           WebChatMediaSourceKind.bundledAsset => await _readBundledMedia(
             source.value,
@@ -674,6 +596,15 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
         debugPrint(
           'WebConversationViewport: discarded inactive media response',
         );
+        // The payload never arrived: tell the shell so it can cancel the
+        // pending request and retry when the source becomes active again.
+        await _sendEnvelope(<String, dynamic>{
+          'type': 'mediaError',
+          'renderSessionId': requestSessionId,
+          'conversationId': requestConversationId,
+          'handle': handle,
+          'code': 'inactive',
+        });
         return;
       }
       final payload = <String, dynamic>{
@@ -715,18 +646,21 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
     }
   }
 
-  Future<Uint8List> _readLocalMedia(String path) async {
+  Future<Uint8List> _readLocalMedia(
+    String path, {
+    int maxBytes = webChatMediaMaxBytes,
+  }) async {
     final resolvedPath = SandboxPathResolver.fix(path);
     final file = File(resolvedPath);
     if (!await file.exists()) {
       throw const FileSystemException('media file does not exist');
     }
     final length = await file.length();
-    if (length > 16 * 1024 * 1024) {
+    if (length > maxBytes) {
       throw const WebChatProtocolException('local media exceeds size limit');
     }
     final bytes = await file.readAsBytes();
-    if (bytes.length > 16 * 1024 * 1024) {
+    if (bytes.length > maxBytes) {
       throw const WebChatProtocolException('local media exceeds size limit');
     }
     return bytes;
@@ -888,7 +822,7 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
   }
 
   Future<void> _sendViewportCommand(Map<String, dynamic> command) async {
-    await _stopWebScrolling();
+    await _stopWebScrolling('programmatic');
     await _sendEnvelope(command);
   }
 
@@ -902,13 +836,15 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
     }
   }
 
-  Future<void> _stopWebScrolling() async {
+  Future<void> _stopWebScrolling(String origin) async {
     if (!_ready) return;
     try {
       if (Platform.isAndroid) {
-        await _androidController?.stopScrolling();
+        await _androidController?.stopScrolling(origin);
       } else {
-        await _runWebJavaScript('window.CuplivoWeb?.stopScrolling?.();');
+        await _runWebJavaScript(
+          'window.CuplivoWeb?.stopScrolling?.(${jsonEncode(origin)});',
+        );
       }
     } catch (error) {
       debugPrint(
@@ -1087,7 +1023,11 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
     }
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (PointerDownEvent _) => unawaited(_stopWebScrolling()),
+      onPointerDown: (PointerDownEvent event) => unawaited(
+        _stopWebScrolling(
+          event.kind == ui.PointerDeviceKind.touch ? 'touch' : 'pointer',
+        ),
+      ),
       child: Stack(
         fit: StackFit.expand,
         children: [

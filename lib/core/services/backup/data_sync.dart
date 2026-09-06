@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 
+import 'backup_activity_gate.dart';
 import '../../models/assistant.dart';
 import '../../models/backup.dart';
 import '../../models/chat_message.dart';
@@ -22,6 +23,7 @@ import '../deleted_records_store.dart';
 import '../mcp/kelivo_filesystem/kelivo_filesystem_server.dart'
     show isSafeWireSegment;
 import '../sync/lan_sync_models.dart' show FileManifestEntry;
+import '../workspace/workspace_terminal_native_bridge.dart';
 import '../../database/business_preferences.dart';
 import '../../database/business_key_registry.dart';
 import 'kelivo_image_settings_mapper.dart';
@@ -110,12 +112,16 @@ enum BackupFormat {
 class DataSync {
   final ChatService chatService;
   final Future<Set<String>> Function(String type)? _localIdResolver;
+  final Future<void> Function() _stopWorkspaceTerminals;
   final BusinessPreferences _preferences;
   DataSync({
     required this.chatService,
     required this._preferences,
     this._localIdResolver,
-  });
+    Future<void> Function()? stopWorkspaceTerminals,
+  }) : _stopWorkspaceTerminals =
+           stopWorkspaceTerminals ??
+           WorkspaceTerminalNativeBridge.instance.stopAllSessions;
 
   // Kelivo's legacy chats.json importer only accepts version 1 (or a missing
   // field); anything else is rejected with FormatException. The legacy
@@ -257,7 +263,28 @@ class DataSync {
     }
   }
 
+  /// Runs [action] while holding the cross-feature backup activity gate, so
+  /// an auto snapshot never overlaps a backup/restore/export and vice versa.
+  /// The gate is a FIFO exclusive permit; nested calls along the same async
+  /// chain (e.g. `backupToWebDav` -> `prepareBackupFile`) re-enter safely.
+  Future<T> _gated<T>(Future<T> Function() action) =>
+      BackupActivityGate.scoped(action);
+
   Future<File> prepareBackupFile(
+    WebDavConfig cfg, {
+    IncrementalBackupConfig? incremental,
+    BackupStageCallback? onStage,
+    BackupFormat format = BackupFormat.jsonl,
+  }) => _gated(
+    () => _prepareBackupFile(
+      cfg,
+      incremental: incremental,
+      onStage: onStage,
+      format: format,
+    ),
+  );
+
+  Future<File> _prepareBackupFile(
     WebDavConfig cfg, {
     IncrementalBackupConfig? incremental,
     BackupStageCallback? onStage,
@@ -285,28 +312,52 @@ class DataSync {
     File? messagesTmp;
     File? legacyChatsTmp;
     File? deletedJsonTmp;
+    // Effective content scope. Kelivo-legacy exports are always whole-pack
+    // (their importer needs the full settings/chats shape).
+    final scope = format == BackupFormat.kelivoLegacy
+        ? const BackupContentScope()
+        : incremental?.effectiveScope ?? cfg.content;
+    // Scope-mode splits settings.json into section-wise payloads (assistant
+    // keys ride the chats bit). Legacy incremental runs (contentScope == null)
+    // keep the old contract: settings.json appears iff includeSettings.
+    final explicitScope =
+        format == BackupFormat.kelivoLegacy ||
+        incremental == null ||
+        incremental.contentScope != null;
     try {
       // --- Step 1: Prepare temp files that need ChatService (main isolate) ---
-      // settings.json — full backup always includes settings
-      if (incremental == null || incremental.includeSettings) {
+      // settings.json — section-aware: assistant keys ride the chats bit,
+      // everything else rides the settings bit.
+      if (explicitScope ? scope.anySettings : scope.settings) {
         final payloads = await _exportSettingsPayloads();
+        var settingsMap = payloads.settings;
+        var settingsMeta = payloads.updatedAt;
+        if (!scope.chatsAndAssistants || !scope.settings) {
+          final split = _splitSettingsSections(
+            settingsMap,
+            settingsMeta,
+            scope,
+          );
+          settingsMap = split.settings;
+          settingsMeta = split.updatedAt;
+        }
         settingsTmp = await _writeTempText(
           workDir,
           '_bk_settings.json',
-          jsonEncode(payloads.settings),
+          jsonEncode(settingsMap),
         );
-        if (payloads.updatedAt.isNotEmpty && format == BackupFormat.jsonl) {
+        if (settingsMeta.isNotEmpty && format == BackupFormat.jsonl) {
           settingsMetaTmp = await _writeTempText(
             workDir,
             '_bk_settings_meta.json',
-            jsonEncode(payloads.updatedAt),
+            jsonEncode(settingsMeta),
           );
         }
       }
 
       // chats payload — JSONL streams by default; single v1 blob for the
       // Kelivo-legacy format (whose importer cannot read JSONL).
-      if (cfg.includeChats) {
+      if (scope.chatsAndAssistants) {
         if (format == BackupFormat.kelivoLegacy) {
           legacyChatsTmp = await _exportChatsToLegacyFile(
             workDir,
@@ -332,7 +383,7 @@ class DataSync {
       }
 
       // deleted.json — id-only tombstones for sync/backup (origin='local' only)
-      if (cfg.includeChats) {
+      if (scope.chatsAndAssistants) {
         try {
           final deletedJson = await buildDeletedJson(chatService.repo.db);
           deletedJsonTmp = await _writeTempText(
@@ -360,9 +411,6 @@ class DataSync {
       final messagesPath = messagesTmp?.path;
       final legacyChatsPath = legacyChatsTmp?.path;
       final deletedJsonPath = deletedJsonTmp?.path;
-      final effectiveIncludeFiles = isIncremental
-          ? incremental.includeFiles
-          : cfg.includeFiles;
 
       // --- Step 2: Run CPU-heavy ZIP packing in a separate isolate ---
       onStage?.call(BackupStage.packing);
@@ -378,7 +426,7 @@ class DataSync {
           messagesPath: messagesPath,
           legacyChatsPath: legacyChatsPath,
           deletedJsonPath: deletedJsonPath,
-          includeFiles: effectiveIncludeFiles,
+          scope: scope,
           since: packSince,
           includeFilePaths: packIncludeFilePaths,
           uploadDirPath: uploadDirPath,
@@ -513,7 +561,7 @@ class DataSync {
     String? messagesPath,
     String? legacyChatsPath,
     String? deletedJsonPath,
-    required bool includeFiles,
+    required BackupContentScope scope,
     required String uploadDirPath,
     required String avatarsDirPath,
     required String imagesDirPath,
@@ -565,30 +613,25 @@ class DataSync {
         _addFileToZip(writer, deletedJsonPath, 'deleted.json');
       }
 
-      // skills/ — always included, independent of includeFiles
-      _addDirectoryToZip(
-        writer,
-        skillsDirPath,
-        'skills',
-        since: since,
-        includeFilePaths: includeFilePaths,
-        manifestOut: manifest,
-      );
-
-      // files under upload/, images/, avatars/
-      if (includeFiles) {
+      // skills/ — scope-gated (the "always included" rule was dropped when
+      // the backup content scope split into 6 sections).
+      if (scope.skills) {
         _addDirectoryToZip(
           writer,
-          uploadDirPath,
-          'upload',
+          skillsDirPath,
+          'skills',
           since: since,
           includeFilePaths: includeFilePaths,
           manifestOut: manifest,
         );
+      }
+
+      // files under upload/, images/ (附件)
+      if (scope.attachments) {
         _addDirectoryToZip(
           writer,
-          avatarsDirPath,
-          'avatars',
+          uploadDirPath,
+          'upload',
           since: since,
           includeFilePaths: includeFilePaths,
           manifestOut: manifest,
@@ -601,6 +644,18 @@ class DataSync {
           includeFilePaths: includeFilePaths,
           manifestOut: manifest,
         );
+      }
+
+      // fonts/ + avatars/ (字体与头像)
+      if (scope.fontsAndAvatars) {
+        _addDirectoryToZip(
+          writer,
+          avatarsDirPath,
+          'avatars',
+          since: since,
+          includeFilePaths: includeFilePaths,
+          manifestOut: manifest,
+        );
         _addDirectoryToZip(
           writer,
           fontsDirPath,
@@ -609,9 +664,12 @@ class DataSync {
           includeFilePaths: includeFilePaths,
           manifestOut: manifest,
         );
-        // workspaces/ — user content; dot-prefixed entries (e.g.
-        // .fetch_cache/) are excluded from backup/sync (one dotfile rule,
-        // same as the server's glob/grep convention).
+      }
+
+      // workspaces/ — user content; dot-prefixed entries (e.g.
+      // .fetch_cache/) are excluded from backup/sync (one dotfile rule,
+      // same as the server's glob/grep convention).
+      if (scope.workspaces) {
         _addDirectoryToZip(
           writer,
           workspacesDirPath,
@@ -958,6 +1016,14 @@ class DataSync {
     WebDavConfig cfg, {
     IncrementalBackupConfig? incremental,
     BackupStageCallback? onStage,
+  }) => _gated(
+    () => _backupToWebDav(cfg, incremental: incremental, onStage: onStage),
+  );
+
+  Future<void> _backupToWebDav(
+    WebDavConfig cfg, {
+    IncrementalBackupConfig? incremental,
+    BackupStageCallback? onStage,
   }) async {
     final file = await prepareBackupFile(
       cfg,
@@ -1123,6 +1189,15 @@ class DataSync {
     BackupFileItem item, {
     RestoreMode mode = RestoreMode.overwrite,
     RestoreProgressCallback? onProgress,
+  }) => _gated(
+    () => _restoreFromWebDav(cfg, item, mode: mode, onProgress: onProgress),
+  );
+
+  Future<void> _restoreFromWebDav(
+    WebDavConfig cfg,
+    BackupFileItem item, {
+    RestoreMode mode = RestoreMode.overwrite,
+    RestoreProgressCallback? onProgress,
   }) async {
     // Stream the download to a file instead of buffering in memory.
     final client = http.Client();
@@ -1181,9 +1256,32 @@ class DataSync {
     WebDavConfig cfg, {
     RestoreMode mode = RestoreMode.overwrite,
     RestoreProgressCallback? onProgress,
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
+  }) => _gated(
+    () => _restoreFromLocalFile(
+      file,
+      cfg,
+      mode: mode,
+      onProgress: onProgress,
+      precedence: precedence,
+    ),
+  );
+
+  Future<void> _restoreFromLocalFile(
+    File file,
+    WebDavConfig cfg, {
+    RestoreMode mode = RestoreMode.overwrite,
+    RestoreProgressCallback? onProgress,
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
   }) async {
     if (!await file.exists()) throw Exception('备份文件不存在');
-    await _restoreFromBackupFile(file, cfg, mode: mode, onProgress: onProgress);
+    await _restoreFromBackupFile(
+      file,
+      cfg,
+      mode: mode,
+      onProgress: onProgress,
+      precedence: precedence,
+    );
   }
 
   // ===== Internal helpers =====
@@ -1332,7 +1430,7 @@ class DataSync {
     final allConvs = chatService.getAllCompleteConversations();
     final since = config.since;
     final sinceCheck = config.sinceCheck;
-    final includeFiles = config.includeFiles;
+    final scope = config.effectiveScope;
 
     final newConvs = <Conversation>[];
     final updatedConvs = <Conversation>[];
@@ -1361,10 +1459,7 @@ class DataSync {
     newConvs.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     updatedConvs.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
-    final counted = await _countFilesForSince(
-      since,
-      includeFiles: includeFiles,
-    );
+    final counted = await _countFilesForSince(since, scope: scope);
 
     return IncrementalScope(
       newConversations: ConvRange(
@@ -1392,14 +1487,14 @@ class DataSync {
   /// actual zip payload.
   Future<({int fileCount, int totalBytes})> countFilesForSince(
     DateTime since,
-  ) => _countFilesForSince(since, includeFiles: true);
+  ) => _countFilesForSince(since, scope: const BackupContentScope());
 
   /// Shared implementation behind [countFilesForSince] and
-  /// [analyzeIncrementalScope]. When [includeFiles] is false only `skills/`
-  /// is counted, mirroring `_packZipSync`.
+  /// [analyzeIncrementalScope]. Counts each tree only when its section bit is
+  /// set, mirroring `_packZipSync`.
   Future<({int fileCount, int totalBytes})> _countFilesForSince(
     DateTime since, {
-    required bool includeFiles,
+    BackupContentScope scope = const BackupContentScope(),
   }) async {
     var fileCount = 0;
     var totalBytes = 0;
@@ -1431,16 +1526,20 @@ class DataSync {
       }
     }
 
-    if (includeFiles) {
+    if (scope.attachments) {
       await countDir(await _getUploadDir(), skipDot: false);
-      await countDir(await _getAvatarsDir(), skipDot: false);
       await countDir(await _getImagesDir(), skipDot: false);
+    }
+    if (scope.fontsAndAvatars) {
+      await countDir(await _getAvatarsDir(), skipDot: false);
       await countDir(await _getFontsDir(), skipDot: false);
+    }
+    if (scope.workspaces) {
       await countDir(await _getWorkspacesDir(), skipDot: true);
     }
-    // skills/ is always exported independent of includeFiles (see
-    // _packZipSync), so count it unconditionally to match the actual ZIP.
-    await countDir(await _getSkillsDir(), skipDot: false);
+    if (scope.skills) {
+      await countDir(await _getSkillsDir(), skipDot: false);
+    }
 
     return (fileCount: fileCount, totalBytes: totalBytes);
   }
@@ -1552,6 +1651,30 @@ class DataSync {
       if (ts != null) updatedAt[key] = ts;
     }
     return (settings: map, updatedAt: updatedAt);
+  }
+
+  /// Section-aware settings.json partition (backup content scope):
+  /// assistant-owned keys ride `chatsAndAssistants`, everything else rides
+  /// `settings`. The meta file only carries the written keys, so the LWW
+  /// merge stays key-exact with the payload.
+  ({Map<String, dynamic> settings, Map<String, int> updatedAt})
+  _splitSettingsSections(
+    Map<String, dynamic> settings,
+    Map<String, int> updatedAt,
+    BackupContentScope scope,
+  ) {
+    const assistantKeys = {'assistants_v1', 'assistant_memories_v1'};
+    final out = <String, dynamic>{};
+    final meta = <String, int>{};
+    for (final entry in settings.entries) {
+      final isAssistant = assistantKeys.contains(entry.key);
+      final bit = isAssistant ? scope.chatsAndAssistants : scope.settings;
+      if (!bit) continue;
+      out[entry.key] = entry.value;
+      final ts = updatedAt[entry.key];
+      if (ts != null) meta[entry.key] = ts;
+    }
+    return (settings: out, updatedAt: meta);
   }
 
   /// Local KV updated_at for [key], or null when the key has no business row
@@ -1699,15 +1822,23 @@ class DataSync {
     }
     var conversations = chatService.getAllCompleteConversations();
     final perConvSince = incremental?.conversationSince;
-    if (incremental != null && perConvSince != null) {
+    final metadataOnly = incremental?.metadataOnlyConversationIds;
+    if (incremental != null && (perConvSince != null || metadataOnly != null)) {
       // LAN-sync per-conversation mode: export exactly the conversations that
-      // have a delta on this device (presence in the map); conversations
-      // absent from the map are identical on both peers and skipped entirely.
-      // Each exported conversation is then scoped to its own fork-point
-      // timestamp in the messages loop below (null → one-sided conversation,
-      // exported in full). This removes the global-since over/under-inclusion.
+      // have a delta on this device (presence in the map) plus the
+      // metadata-only conflicts (issue #615 category D — identical message
+      // lists, different row: the row ships but its messages must never
+      // duplicate or drop). Conversations absent from both are identical on
+      // both peers and skipped entirely. Each exported conversation is then
+      // scoped to its own fork-point timestamp in the messages loop below
+      // (null → one-sided conversation, exported in full). This removes the
+      // global-since over/under-inclusion.
       conversations = conversations
-          .where((c) => perConvSince.containsKey(c.id))
+          .where(
+            (c) =>
+                (perConvSince?.containsKey(c.id) ?? false) ||
+                (metadataOnly?.contains(c.id) ?? false),
+          )
           .toList();
     } else if (incremental != null) {
       final sinceCheck = incremental.sinceCheck;
@@ -1753,20 +1884,30 @@ class DataSync {
         // Group transcripts are all-or-nothing: a partial message list would
         // corrupt member assistants' private context after restore.
         if (incremental != null && !c.isGroup) {
-          final perConv = incremental.conversationSince;
-          if (perConv != null) {
-            // Per-conversation window (LAN sync): null since = one-sided
-            // conversation whose whole transcript is the increment — export
-            // every message.
-            final convSince = perConv[c.id];
-            if (convSince != null) {
+          // Category D (issue #615): metadata-only rows ship WITHOUT their
+          // messages — the message-ID lists are identical on both peers, so
+          // carrying them would only duplicate (and never resolve anything).
+          if (metadataOnly?.contains(c.id) ?? false) {
+            msgs = const <ChatMessage>[];
+          } else {
+            final perConv = incremental.conversationSince;
+            if (perConv != null) {
+              // Per-conversation window (LAN sync): null since = one-sided
+              // conversation whose whole transcript is the increment — export
+              // every message.
+              final convSince = perConv[c.id];
+              if (convSince != null) {
+                msgs = _incrementalQualifiedMessages(
+                  msgs,
+                  (t) => convSince.isBefore(t) || convSince.isAtSameMomentAs(t),
+                );
+              }
+            } else if (c.createdAt.isBefore(incremental.since)) {
               msgs = _incrementalQualifiedMessages(
                 msgs,
-                (t) => convSince.isBefore(t) || convSince.isAtSameMomentAs(t),
+                incremental.sinceCheck,
               );
             }
-          } else if (c.createdAt.isBefore(incremental.since)) {
-            msgs = _incrementalQualifiedMessages(msgs, incremental.sinceCheck);
           }
         }
         for (final m in msgs) {
@@ -1851,13 +1992,18 @@ class DataSync {
   /// Memory is bounded by one conversation: each conversation's messages are
   /// accumulated then written via [ChatService.restoreConversationsBatch].
   /// Both overwrite and merge stream; merge keeps today's ID-skip semantics
-  /// (never LWW for chats). toolEvents/geminiSignatures ride inline per
-  /// message. Group chat metadata rides the chats_meta.json payload.
+  /// (never LWW for chats) — except conversation *metadata* direction (issue
+  /// #615): with [ConflictPrecedence.incomingWins] an already-existing
+  /// conversation row is replaced wholesale by the incoming copy (winner's
+  /// fields), while the message list stays the local append-union so the
+  /// loser's exclusive messages survive. toolEvents/geminiSignatures ride
+  /// inline per message. Group chat metadata rides the chats_meta.json payload.
   Future<void> _restoreChatsFromJsonl({
     required Directory extractDir,
     required Map<String, dynamic> chatsMeta,
     required RestoreMode mode,
     RestoreProgressCallback? onProgress,
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
   }) async {
     if (!chatService.initialized) await chatService.init();
     final conversationsFile = File(
@@ -1889,11 +2035,13 @@ class DataSync {
       onProgress?.call(const RestoreProgress(stage: RestoreStage.mergingChats));
     }
 
+    final existingConvsById = <String, Conversation>{};
     final existingConvIds = <String>{};
     final existingMsgIds = <String>{};
     if (mode == RestoreMode.merge) {
       for (final conv in chatService.getAllCompleteConversations()) {
         existingConvIds.add(conv.id);
+        existingConvsById[conv.id] = conv;
         existingMsgIds.addAll(
           chatService.getMessages(conv.id).map((m) => m.id),
         );
@@ -1965,9 +2113,41 @@ class DataSync {
               batchGeminiSigs[msg.id] = geminiSigsByMessageId[msg.id]!;
             }
           }
-        } else if (byConv.containsKey(c.id)) {
-          for (final msg in byConv[c.id]!) {
-            if (existingMsgIds.contains(msg.id)) continue;
+        } else if (existingConvIds.contains(c.id)) {
+          final incomingMsgs = byConv[c.id] ?? const <ChatMessage>[];
+          final exclusiveMsgs = <ChatMessage>[
+            for (final msg in incomingMsgs)
+              if (!existingMsgIds.contains(msg.id)) msg,
+          ];
+          // Conversation metadata direction (issue #615, category D): with
+          // incomingWins the winner's row replaces the loser's (id, createdAt
+          // and messageIds exempt). Runs even when the incoming payload
+          // carries NO messages for this conversation — a metadata-only row
+          // (identical message-ID lists, different row fields) ships without
+          // its messages, and must still apply the direction. messageIds is
+          // NOT a stored column: the DB derives it from message_rows, so the
+          // row-replace persists only the 13 row fields and the append path
+          // below owns ID-append + the updatedAt rider.
+          if (precedence == ConflictPrecedence.incomingWins) {
+            final local = existingConvsById[c.id];
+            await chatService.replaceConversationRow(
+              c.copyWith(
+                createdAt: local?.createdAt,
+                // The sort key must reflect the union's newest activity:
+                // never regress below either side's updatedAt (winning copy
+                // could be from a stale peer while the losing side holds
+                // newer local-exclusive activity — the #545 sort sink would
+                // otherwise re-appear). Incoming-exclusive message timestamps
+                // are lifted below by the rider in addMessageDirectly.
+                updatedAt:
+                    (local != null && local.updatedAt.isAfter(c.updatedAt))
+                    ? local.updatedAt
+                    : c.updatedAt,
+                messageIds: List.of(local?.messageIds ?? const <String>[]),
+              ),
+            );
+          }
+          for (final msg in exclusiveMsgs) {
             await chatService.addMessageDirectly(c.id, msg);
           }
         }
@@ -2059,6 +2239,7 @@ class DataSync {
     WebDavConfig cfg, {
     RestoreMode mode = RestoreMode.overwrite,
     RestoreProgressCallback? onProgress,
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
   }) async {
     // Incremental backup detection: cuplivo_incr_ prefix forces merge mode
     if (mode == RestoreMode.overwrite &&
@@ -2070,10 +2251,11 @@ class DataSync {
     // into RAM (the old approach called file.readAsBytes() which for a 600-800 MB
     // file would allocate a contiguous byte array of the same size).
     final tmp = await _ensureTempDir();
-    final extractDir = Directory(
-      p.join(tmp.path, 'restore_${DateTime.now().millisecondsSinceEpoch}'),
-    );
-    await extractDir.create(recursive: true);
+    // Uniqueness is OS-atomic (createTemp), NOT millisecond-derived: two
+    // concurrent restores in one process (e.g. LAN sync peers under test)
+    // must never share an extract dir, or their chats_meta/messages streams
+    // interleave and fail the count validation.
+    final extractDir = await tmp.createTemp('restore_');
 
     try {
       onProgress?.call(const RestoreProgress(stage: RestoreStage.extracting));
@@ -2088,6 +2270,9 @@ class DataSync {
       if (File(p.join(extractDir.path, 'manifest.json')).existsSync()) {
         throw KelivoV2BackupException();
       }
+      // Backup content scope: the channel's scope piece admits/declines each
+      // payload section (mirrors the exporter's gates).
+      final scope = cfg.content;
 
       // chats_meta.json sentinel → JSONL v2 format (issue #123)
       final chatsMetaFile = File(p.join(extractDir.path, 'chats_meta.json'));
@@ -2114,21 +2299,47 @@ class DataSync {
         }
       }
 
+      // An overwrite can replace workspace metadata and recursively delete
+      // the @workspaces tree. Stop process-owned terminals before the first
+      // settings/database/file write so a failure leaves local data intact.
+      if (mode == RestoreMode.overwrite) {
+        try {
+          await _stopWorkspaceTerminals();
+        } catch (error) {
+          if (error is WorkspaceTerminalStopException) rethrow;
+          throw WorkspaceTerminalStopException(error);
+        }
+      }
+
       // Restore settings
       Object? backupAssistantsRaw;
       Object? backupLegacyOcrEnabled;
       final settingsFile = File(p.join(extractDir.path, 'settings.json'));
-      if (await settingsFile.exists()) {
+      if (scope.anySettings && await settingsFile.exists()) {
         try {
           final txt = await settingsFile.readAsString();
           final map = jsonDecode(txt) as Map<String, dynamic>;
+          // Restore-side section gate (mirror of the exporter's
+          // `_splitSettingsSections`): assistant-owned keys ride the chats
+          // bit, everything else rides the settings bit. Whole-pack legacy
+          // zips carry BOTH sections in one settings.json — a partial scope
+          // must not smuggle in sections the user excluded.
+          const assistantKeys = {'assistants_v1', 'assistant_memories_v1'};
+          // Legacy global OCR toggle is an assistant-MIGRATION concern: it
+          // follows the chats bit and is always stripped afterwards, so the
+          // one-time per-assistant migration never re-runs on a later
+          // restore.
+          backupLegacyOcrEnabled = scope.chatsAndAssistants
+              ? map.remove('ocr_enabled_v1')
+              : null;
+          map.remove('ocr_enabled_v1');
+          for (final key in map.keys.toList()) {
+            final bit = assistantKeys.contains(key)
+                ? scope.chatsAndAssistants
+                : scope.settings;
+            if (!bit) map.remove(key);
+          }
           backupAssistantsRaw = map.remove('assistants_v1');
-          // Legacy global OCR toggle: capture it so assistants restored from a
-          // pre-v15 backup get the same ocrMode mapping as an in-place upgrade
-          // (true -> auto, false -> never). Never write it back into prefs, or
-          // the one-time per-assistant ocrMode migration would re-run and
-          // overwrite user per-assistant choices.
-          backupLegacyOcrEnabled = map.remove('ocr_enabled_v1');
           // Kelivo-originated backups carry upstream image-compression keys
           // (image_upload_quality_v1 et al.) instead of Cuplivo's native
           // one_click_compress_* keys. Translate them so the compression
@@ -2200,12 +2411,15 @@ class DataSync {
               if (mergeableKeys.contains(key)) {
                 // Special handling for mergeable configurations
                 if (key == 'provider_configs_v1' && existing.containsKey(key)) {
-                  // Merge provider configs per provider key. The backup wins
-                  // for all fields EXCEPT the proxy block, which is
-                  // device-local: an existing provider's proxy is composed
-                  // from its local block over the no-proxy defaults — the
-                  // backup's proxy never lands on the device (issue #512).
-                  // Brand-new providers keep their backup proxy.
+                  // Merge provider configs per provider key. Unless the local
+                  // side wins (issue #615), the backup wins for all fields
+                  // EXCEPT the proxy block, which is device-local: an existing
+                  // provider's proxy is composed from its local block over the
+                  // no-proxy defaults — the backup's proxy never lands on the
+                  // device (issue #512). Brand-new providers keep their backup
+                  // proxy. localWins flips the per-provider winner so the local
+                  // config survives the merge untouched (new providers still
+                  // get added from the backup).
                   try {
                     final existingConfigs =
                         jsonDecode(existing[key] as String)
@@ -2216,6 +2430,8 @@ class DataSync {
                     // Start from the local configs so providers absent from
                     // the backup survive the merge untouched.
                     final mergedConfigs = <String, dynamic>{...existingConfigs};
+                    final localWins =
+                        precedence == ConflictPrecedence.localWins;
                     for (final entry in newConfigs.entries) {
                       final providerKey = entry.key;
                       final incoming = entry.value;
@@ -2227,6 +2443,16 @@ class DataSync {
                         continue;
                       }
                       final localMap = local.cast<String, dynamic>();
+                      if (localWins) {
+                        // Local wins: incoming only fills fields the local
+                        // config lacks; the proxy block is implicitly local.
+                        final mergedLocal = <String, dynamic>{
+                          ...incoming.cast<String, dynamic>(),
+                          ...localMap,
+                        };
+                        mergedConfigs[providerKey] = mergedLocal;
+                        continue;
+                      }
                       // The proxy fields of an existing provider are composed
                       // from the local block (where present) over the
                       // no-proxy defaults — the backup's proxy never lands on
@@ -2264,18 +2490,21 @@ class DataSync {
                       _mergeJsonListById(
                         existing[key] as String,
                         newValue as String,
+                        precedence: precedence,
                       ),
                     );
                   } catch (_) {}
                 } else if (key == 'asr_services_v1' &&
                     existing.containsKey(key)) {
                   // Merge ASR services by id; prefer existing on conflicts
+                  // (incomingWins flips the winner per id, issue #615).
                   try {
                     await prefs.restoreSingle(
                       key,
                       _mergeJsonListById(
                         existing[key] as String,
                         newValue as String,
+                        precedence: precedence,
                       ),
                     );
                   } catch (_) {}
@@ -2304,7 +2533,9 @@ class DataSync {
                     // If merge fails, keep existing
                   }
                 } else if (key == 'assistant_tags_v1') {
-                  // Merge tag list by id; keep existing order, append new tags at end (incoming order)
+                  // Merge tag list by id; keep existing order, append new tags
+                  // at end (incoming order). incomingWins replaces the entry
+                  // content on id conflict (issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2326,13 +2557,17 @@ class DataSync {
                         tagById[id] = Map<String, dynamic>.from(e);
                       }
                     }
-                    // Add new tags that don't exist yet
+                    // Add new tags that don't exist yet; on id conflict,
+                    // incomingWins replaces the local entry in place.
                     for (final e in newList) {
                       if (e is Map && e['id'] != null) {
                         final id = e['id'].toString();
                         if (!tagById.containsKey(id)) {
                           tagById[id] = Map<String, dynamic>.from(e);
                           existingOrder.add(id);
+                        } else if (precedence ==
+                            ConflictPrecedence.incomingWins) {
+                          tagById[id] = Map<String, dynamic>.from(e);
                         }
                       }
                     }
@@ -2345,6 +2580,7 @@ class DataSync {
                   }
                 } else if (key == 'assistant_tag_map_v1') {
                   // Merge assistant->tag mapping; prefer existing on conflicts
+                  // (incomingWins flips the winner per key, issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2355,11 +2591,14 @@ class DataSync {
                     final newMap = (newStr == null || newStr.isEmpty)
                         ? <String, dynamic>{}
                         : (jsonDecode(newStr) as Map<String, dynamic>);
-                    final merged = <String, dynamic>{...newMap, ...existingMap};
+                    final merged = precedence == ConflictPrecedence.incomingWins
+                        ? <String, dynamic>{...existingMap, ...newMap}
+                        : <String, dynamic>{...newMap, ...existingMap};
                     await prefs.restoreSingle(key, jsonEncode(merged));
                   } catch (_) {}
                 } else if (key == 'assistant_tag_collapsed_v1') {
                   // Merge collapse states; prefer existing on conflicts
+                  // (incomingWins flips the winner per key, issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2370,11 +2609,13 @@ class DataSync {
                     final newMap = (newStr == null || newStr.isEmpty)
                         ? <String, dynamic>{}
                         : (jsonDecode(newStr) as Map<String, dynamic>);
-                    final merged = <String, dynamic>{...newMap, ...existingMap};
+                    final merged = precedence == ConflictPrecedence.incomingWins
+                        ? <String, dynamic>{...existingMap, ...newMap}
+                        : <String, dynamic>{...newMap, ...existingMap};
                     await prefs.restoreSingle(key, jsonEncode(merged));
                   } catch (_) {}
                 } else if (key == 'provider_groups_v1') {
-                  // Merge provider groups by id; keep existing order, append new groups at end (incoming order)
+                  // Merge provider groups by id; keep existing order, append new groups at end (incoming order). incomingWins replaces the entry content on id conflict (issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2401,6 +2642,9 @@ class DataSync {
                         if (!groupById.containsKey(id)) {
                           groupById[id] = Map<String, dynamic>.from(e);
                           existingOrder.add(id);
+                        } else if (precedence ==
+                            ConflictPrecedence.incomingWins) {
+                          groupById[id] = Map<String, dynamic>.from(e);
                         }
                       }
                     }
@@ -2411,6 +2655,7 @@ class DataSync {
                   } catch (_) {}
                 } else if (key == 'provider_group_map_v1') {
                   // Merge provider->group mapping; prefer existing on conflicts
+                  // (incomingWins flips the winner per key, issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2421,11 +2666,14 @@ class DataSync {
                     final newMap = (newStr == null || newStr.isEmpty)
                         ? <String, dynamic>{}
                         : (jsonDecode(newStr) as Map<String, dynamic>);
-                    final merged = <String, dynamic>{...newMap, ...existingMap};
+                    final merged = precedence == ConflictPrecedence.incomingWins
+                        ? <String, dynamic>{...existingMap, ...newMap}
+                        : <String, dynamic>{...newMap, ...existingMap};
                     await prefs.restoreSingle(key, jsonEncode(merged));
                   } catch (_) {}
                 } else if (key == 'provider_group_collapsed_v1') {
                   // Merge collapse states; prefer existing on conflicts
+                  // (incomingWins flips the winner per key, issue #615).
                   try {
                     final existingStr = (existing[key] ?? '') as String?;
                     final newStr = (newValue ?? '') as String?;
@@ -2436,28 +2684,43 @@ class DataSync {
                     final newMap = (newStr == null || newStr.isEmpty)
                         ? <String, dynamic>{}
                         : (jsonDecode(newStr) as Map<String, dynamic>);
-                    final merged = <String, dynamic>{...newMap, ...existingMap};
+                    final merged = precedence == ConflictPrecedence.incomingWins
+                        ? <String, dynamic>{...existingMap, ...newMap}
+                        : <String, dynamic>{...newMap, ...existingMap};
                     await prefs.restoreSingle(key, jsonEncode(merged));
                   } catch (_) {}
                 } else if ((key == 'providers_order_v1' ||
                         key == 'search_services_v1') &&
                     existing.containsKey(key)) {
                   // For these lists, prefer the imported version if different
-                  // This ensures new providers/services are properly ordered
-                  await prefs.restoreSingle(key, newValue);
+                  // (ensures new providers/services are properly ordered).
+                  // localWins keeps the local list (issue #615); incomingWins
+                  // keeps the incumbent replacing behavior.
+                  if (precedence != ConflictPrecedence.localWins) {
+                    await prefs.restoreSingle(key, newValue);
+                  }
                 } else {
                   // For new keys, add them
                   await prefs.restoreSingle(key, newValue);
                 }
-              } else if (existing.containsKey(key) && localMeta.isNotEmpty) {
+              } else if (existing.containsKey(key)) {
                 // LWW scalar merge (issue #123): supply the incoming value
                 // only when the backup's KV updated_at is strictly newer than
                 // the local KV updated_at. No meta on either side → legacy
-                // fill-absent behavior (the branch below).
-                final backupTs = localMeta[key];
-                final localTs = _localUpdatedAtFor(key);
-                if (backupTs != null && localTs != null && backupTs > localTs) {
+                // fill-absent behavior (the branch below). Direction overrides
+                // the clock (issue #615): localWins keeps the local value,
+                // incomingWins adopts the incoming value wholesale.
+                if (precedence == ConflictPrecedence.incomingWins) {
                   await prefs.restoreSingle(key, newValue);
+                } else if (precedence != ConflictPrecedence.localWins &&
+                    localMeta.isNotEmpty) {
+                  final backupTs = localMeta[key];
+                  final localTs = _localUpdatedAtFor(key);
+                  if (backupTs != null &&
+                      localTs != null &&
+                      backupTs > localTs) {
+                    await prefs.restoreSingle(key, newValue);
+                  }
                 }
               } else if (!existing.containsKey(key)) {
                 // For non-mergeable keys, only add if not existing
@@ -2496,7 +2759,7 @@ class DataSync {
 
       // Restore chats
       final chatsFile = File(p.join(extractDir.path, 'chats.json'));
-      if (cfg.includeChats &&
+      if (scope.chatsAndAssistants &&
           (await chatsFile.exists() || await chatsMetaFile.exists())) {
         if (isJsonlFormat) {
           await _restoreChatsFromJsonl(
@@ -2504,6 +2767,7 @@ class DataSync {
             chatsMeta: chatsMeta,
             mode: mode,
             onProgress: onProgress,
+            precedence: precedence,
           );
         } else {
           try {
@@ -2562,6 +2826,9 @@ class DataSync {
               );
               final existingConvs = chatService.getAllCompleteConversations();
               final existingConvIds = existingConvs.map((c) => c.id).toSet();
+              final existingConvsById = <String, Conversation>{
+                for (final cv in existingConvs) cv.id: cv,
+              };
 
               // Create a map of message IDs to avoid duplicates
               final existingMsgIds = <String>{};
@@ -2600,6 +2867,29 @@ class DataSync {
                   }
                 } else if (byConv.containsKey(c.id)) {
                   final newMessages = byConv[c.id]!;
+                  // Conversation metadata direction (issue #615, category D):
+                  // with incomingWins the winner's row replaces the loser's
+                  // (id, createdAt and messageIds exempt) — same semantics as
+                  // the JSONL branch: messageIds is derived from message_rows
+                  // (not stored), the append path owns ID-append + the rider.
+                  if (precedence == ConflictPrecedence.incomingWins) {
+                    final local = existingConvsById[c.id];
+                    await chatService.replaceConversationRow(
+                      c.copyWith(
+                        createdAt: local?.createdAt,
+                        // Same rule as the JSONL branch: the sort key must
+                        // never regress below either side's updatedAt.
+                        updatedAt:
+                            (local != null &&
+                                local.updatedAt.isAfter(c.updatedAt))
+                            ? local.updatedAt
+                            : c.updatedAt,
+                        messageIds: List.of(
+                          local?.messageIds ?? const <String>[],
+                        ),
+                      ),
+                    );
+                  }
                   for (final msg in newMessages) {
                     await chatService.addMessageDirectly(c.id, msg);
                   }
@@ -2728,6 +3018,7 @@ class DataSync {
           final merged = _mergeAssistantMaps(
             existingMaps,
             rawIncomingAssistants,
+            precedence: precedence,
           );
           // Local assistants always carry an explicit ocrMode; only
           // brand-new incoming assistants can still lack it.
@@ -2743,7 +3034,7 @@ class DataSync {
       }
 
       // Restore deleted.json markers (merge mode only — overwrite wipes local)
-      if (cfg.includeChats && mode == RestoreMode.merge) {
+      if (scope.chatsAndAssistants && mode == RestoreMode.merge) {
         final deletedFile = File(p.join(extractDir.path, 'deleted.json'));
         if (await deletedFile.exists()) {
           try {
@@ -2808,7 +3099,7 @@ class DataSync {
       // Restore files. File copying is best-effort: a single locked or unusual
       // file must not abort the whole restore — conversations and assistants
       // are already committed at this point.
-      if (cfg.includeFiles) {
+      if (scope.anyFiles) {
         var totalFiles = 0;
         var totalBytes = 0;
         var copiedFiles = 0;
@@ -2855,7 +3146,7 @@ class DataSync {
             // Overwrite mode: Delete existing directories and copy all
             // Restore upload directory
             final uploadSrc = Directory(p.join(extractDir.path, 'upload'));
-            if (await uploadSrc.exists()) {
+            if (scope.attachments && await uploadSrc.exists()) {
               final entries = _listFiles(uploadSrc);
               final dst = await _getUploadDir();
               if (await dst.exists()) {
@@ -2888,7 +3179,7 @@ class DataSync {
 
             // Restore images directory
             final imagesSrc = Directory(p.join(extractDir.path, 'images'));
-            if (await imagesSrc.exists()) {
+            if (scope.attachments && await imagesSrc.exists()) {
               final entries = _listFiles(imagesSrc);
               final dst = await _getImagesDir();
               if (await dst.exists()) {
@@ -2921,7 +3212,7 @@ class DataSync {
 
             // Restore avatars directory
             final avatarsSrc = Directory(p.join(extractDir.path, 'avatars'));
-            if (await avatarsSrc.exists()) {
+            if (scope.fontsAndAvatars && await avatarsSrc.exists()) {
               final entries = _listFiles(avatarsSrc);
               final dst = await _getAvatarsDir();
               if (await dst.exists()) {
@@ -2954,7 +3245,7 @@ class DataSync {
 
             // Restore managed local fonts directory
             final fontsSrc = Directory(p.join(extractDir.path, 'fonts'));
-            if (await fontsSrc.exists()) {
+            if (scope.fontsAndAvatars && await fontsSrc.exists()) {
               final entries = _listFiles(fontsSrc);
               final dst = await _getFontsDir();
               if (await dst.exists()) {
@@ -2990,7 +3281,7 @@ class DataSync {
             final workspacesSrc = Directory(
               p.join(extractDir.path, 'workspaces'),
             );
-            if (await workspacesSrc.exists()) {
+            if (scope.workspaces && await workspacesSrc.exists()) {
               final entries = _listFiles(workspacesSrc, skipDot: true);
               final dst = await _getWorkspacesDir();
               if (await dst.exists()) {
@@ -3028,7 +3319,7 @@ class DataSync {
             // a peer's stale copy forever.
             // Merge upload directory
             final uploadSrc = Directory(p.join(extractDir.path, 'upload'));
-            if (await uploadSrc.exists()) {
+            if (scope.attachments && await uploadSrc.exists()) {
               final entries = _listFiles(uploadSrc);
               final dst = await _getUploadDir();
               if (!await dst.exists()) {
@@ -3079,7 +3370,7 @@ class DataSync {
 
             // Merge images directory
             final imagesSrc = Directory(p.join(extractDir.path, 'images'));
-            if (await imagesSrc.exists()) {
+            if (scope.attachments && await imagesSrc.exists()) {
               final entries = _listFiles(imagesSrc);
               final dst = await _getImagesDir();
               if (!await dst.exists()) {
@@ -3126,7 +3417,7 @@ class DataSync {
 
             // Merge avatars directory
             final avatarsSrc = Directory(p.join(extractDir.path, 'avatars'));
-            if (await avatarsSrc.exists()) {
+            if (scope.fontsAndAvatars && await avatarsSrc.exists()) {
               final entries = _listFiles(avatarsSrc);
               final dst = await _getAvatarsDir();
               if (!await dst.exists()) {
@@ -3173,7 +3464,7 @@ class DataSync {
 
             // Merge managed local fonts directory
             final fontsSrc = Directory(p.join(extractDir.path, 'fonts'));
-            if (await fontsSrc.exists()) {
+            if (scope.fontsAndAvatars && await fontsSrc.exists()) {
               final entries = _listFiles(fontsSrc);
               final dst = await _getFontsDir();
               if (!await dst.exists()) {
@@ -3226,7 +3517,7 @@ class DataSync {
             final workspacesSrc = Directory(
               p.join(extractDir.path, 'workspaces'),
             );
-            if (await workspacesSrc.exists()) {
+            if (scope.workspaces && await workspacesSrc.exists()) {
               final entries = _listFiles(workspacesSrc, skipDot: true);
               final dst = await _getWorkspacesDir();
               if (!await dst.exists()) {
@@ -3276,8 +3567,8 @@ class DataSync {
         }
       }
 
-      // Restore skills/ -- always exported independent of includeFiles (see
-      // _packZipSync), so restore it symmetrically and unconditionally.
+      // Restore skills/ -- scope-gated (the "always included" rule was
+      // dropped with the 6-section backup content scope).
       // Best-effort like files/: a skill-file failure must not abort the
       // whole restore.
       var skillTotalFiles = 0;
@@ -3302,7 +3593,7 @@ class DataSync {
 
       try {
         final skillsSrc = Directory(p.join(extractDir.path, 'skills'));
-        if (await skillsSrc.exists()) {
+        if (scope.skills && await skillsSrc.exists()) {
           final entries = _listFiles(skillsSrc);
           final dst = await _getSkillsDir();
           if (mode == RestoreMode.overwrite && await dst.exists()) {
@@ -3375,7 +3666,15 @@ class DataSync {
     }
   }
 
-  static String _mergeJsonListById(String existingRaw, String incomingRaw) {
+  /// Merges two JSON-encoded lists keyed by `id`. By default the existing
+  /// entry wins on id conflict and brand-new ids are appended in incoming
+  /// order. `incomingWins` replaces the local entry in place on id conflict
+  /// (issue #615); `localWins` is the incumbent behavior.
+  static String _mergeJsonListById(
+    String existingRaw,
+    String incomingRaw, {
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
+  }) {
     final existingList = jsonDecode(existingRaw) as List;
     final incomingList = jsonDecode(incomingRaw) as List;
     final byId = <String, Map<String, dynamic>>{};
@@ -3393,6 +3692,13 @@ class DataSync {
       addIfNew(item);
     }
     for (final item in incomingList) {
+      final id = item is Map ? item['id']?.toString() : null;
+      if (id != null &&
+          byId.containsKey(id) &&
+          precedence == ConflictPrecedence.incomingWins) {
+        byId[id] = Map<String, dynamic>.from(item);
+        continue;
+      }
       addIfNew(item);
     }
 
@@ -3462,10 +3768,15 @@ class DataSync {
     return map;
   }
 
+  /// Merges assistant maps by id. Incoming fields win today (except non-empty
+  /// local avatar/background). `localWins` flips the per-field winner so the
+  /// local copy survives the merge (issue #615); brand-new assistant ids still
+  /// merge in wholesale.
   static List<Map<String, dynamic>> _mergeAssistantMaps(
     List<Map<String, dynamic>> existing,
-    List<Map<String, dynamic>> incoming,
-  ) {
+    List<Map<String, dynamic>> incoming, {
+    ConflictPrecedence precedence = ConflictPrecedence.auto,
+  }) {
     final assistantMap = <String, Map<String, dynamic>>{};
 
     // Seed map with existing assistants
@@ -3475,6 +3786,8 @@ class DataSync {
         assistantMap[id] = Map<String, dynamic>.from(a);
       }
     }
+
+    final localWins = precedence == ConflictPrecedence.localWins;
 
     // Merge with incoming assistants
     for (final a in incoming) {
@@ -3488,7 +3801,9 @@ class DataSync {
       }
 
       final local = assistantMap[id]!;
-      final merged = <String, dynamic>{...local, ...inc};
+      final merged = localWins
+          ? <String, dynamic>{...inc, ...local}
+          : <String, dynamic>{...local, ...inc};
 
       // Special rule: do not override existing non-empty avatar
       final localAvatar = (local['avatar'] ?? '').toString();

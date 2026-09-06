@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
+import 'package:system_fonts/system_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../main.dart';
@@ -61,6 +62,7 @@ import '../../chat/pages/html_preview_page.dart';
 import '../../chat/models/tool_ui_part.dart';
 import '../../chat/utils/message_visual_content.dart';
 import '../../chat/widgets/citation_sources_sheet.dart';
+import '../../chat/widgets/frosted/chat_frosted_backdrop.dart';
 import '../../search/widgets/search_settings_sheet.dart';
 import '../../model/widgets/model_select_sheet.dart';
 import '../../mcp/pages/mcp_page.dart';
@@ -614,7 +616,6 @@ class _HomePageState extends State<HomePage>
       ImageGenerationOptionsController();
   scroll_ctrl.ChatAutoFollowScrollController _scrollController =
       scroll_ctrl.ChatAutoFollowScrollController();
-  final BackdropKey _messageListBackdropKey = BackdropKey();
   final GlobalKey _inputBarKey = GlobalKey();
   final GlobalKey _selectionMiniMapKey = GlobalKey();
   final GlobalKey _selectionActionBarKey = GlobalKey();
@@ -951,9 +952,9 @@ class _HomePageState extends State<HomePage>
 
     return ChatInputOverlayLayout(
       topInset: _chatTopOverlayInset(context),
-      background: backgroundImageActive
-          ? _buildChatBackground(context, cs)
-          : null,
+      // The full-window artwork already sits behind the Scaffold
+      // (MobileBackgroundLayer); painting it again inside the body would only
+      // duplicate it in a box that shrinks with the keyboard.
       topBackground: backgroundImageActive
           ? _buildChatBackground(context, cs)
           : null,
@@ -1131,6 +1132,7 @@ class _HomePageState extends State<HomePage>
       onExportMarkdown: _controller.exportSelectedAsMarkdown,
       onExportTxt: _controller.exportSelectedAsTxt,
       onExportImage: _controller.exportSelectedAsImage,
+      onExportPdf: _controller.exportSelectedAsPdf,
       onDelete: () {
         unawaited(_handleDeleteSelectedMessages(context));
       },
@@ -1323,17 +1325,7 @@ class _HomePageState extends State<HomePage>
   }
 
   bool _assistantBackgroundActive(BuildContext context) {
-    final bgRaw =
-        (context.watch<AssistantProvider>().currentAssistant?.background ?? '')
-            .trim();
-    if (bgRaw.isEmpty) return false;
-    if (bgRaw.startsWith('http')) return true;
-    try {
-      final fixed = SandboxPathResolver.fix(bgRaw);
-      return File(fixed).existsSync();
-    } catch (_) {
-      return false;
-    }
+    return ChatBackdropSpec.resolve(context).active;
   }
 
   double _chatTopOverlayInset(BuildContext context) {
@@ -1507,6 +1499,14 @@ class _HomePageState extends State<HomePage>
         userAvatarValue: user.avatarValue,
         toolParts: _controller.toolParts,
       );
+      final webAppFont = _resolveWebChatFontFace(settings, forCode: false);
+      final webCodeFont = _resolveWebChatFontFace(settings, forCode: true);
+      for (final face in <WebChatFontFace?>[webAppFont, webCodeFont]) {
+        final source = face?.toMediaSource();
+        if (source != null && face!.path != null) {
+          snapshotMediaRegistry[webChatMediaHandle(face.path!)] = source;
+        }
+      }
       final retainedLiveMedia = <String, WebChatMediaSource>{
         for (final entry in _webMediaRegistry.entries)
           if (entry.value.messageIds.any(activeLiveMessageIds.contains))
@@ -1548,6 +1548,8 @@ class _HomePageState extends State<HomePage>
         topContentPadding: topContentPadding,
         bottomContentPadding: bottomContentPadding,
         activeLiveMessageIds: activeLiveMessageIds,
+        appWebFont: webAppFont,
+        codeWebFont: webCodeFont,
         remoteMediaHandles: <String, String>{
           for (final entry in mediaRegistry.entries)
             if (entry.value.kind == WebChatMediaSourceKind.remoteImage)
@@ -1705,10 +1707,7 @@ class _HomePageState extends State<HomePage>
       },
     );
 
-    return BackdropGroup(
-      backdropKey: _messageListBackdropKey,
-      child: messageList,
-    );
+    return messageList;
   }
 
   bool _webViewportRequested(SettingsProvider settings, String conversationId) {
@@ -1757,6 +1756,42 @@ class _HomePageState extends State<HomePage>
     _webActionEpoch++;
   }
 
+  /// Resolves the font face the web chat shell should use for body or code
+  /// text:
+  /// - Local imported fonts serve their file bytes through the media bridge
+  ///   (paths never cross the Web bridge).
+  /// - System fonts (desktop) serve the resolved font file the same way,
+  ///   since the settings store the file basename, not a CSS family name.
+  /// - Google fonts pass the family name through; the shell falls back to its
+  ///   default if the family is not installed on the host.
+  WebChatFontFace? _resolveWebChatFontFace(
+    SettingsProvider settings, {
+    required bool forCode,
+  }) {
+    final family = forCode ? settings.codeFontFamily : settings.appFontFamily;
+    if (family == null || family.isEmpty) return null;
+    final faceFamily = forCode
+        ? WebChatFontFace.codeFaceFamily
+        : WebChatFontFace.appFaceFamily;
+    final localPath = forCode
+        ? settings.codeFontLocalPath
+        : settings.appFontLocalPath;
+    if (localPath != null && localPath.isNotEmpty) {
+      return WebChatFontFace(family: faceFamily, path: localPath);
+    }
+    final isGoogle = forCode
+        ? settings.codeFontIsGoogle
+        : settings.appFontIsGoogle;
+    if (isGoogle) return WebChatFontFace(family: family);
+    if (!kIsWeb && PlatformUtils.isDesktopTarget) {
+      final path = SystemFonts().getFontMap()[family];
+      if (path != null) {
+        return WebChatFontFace(family: faceFamily, path: path);
+      }
+    }
+    return WebChatFontFace(family: family);
+  }
+
   Map<String, dynamic> _buildWebChatSnapshot({
     required BuildContext context,
     required String conversationId,
@@ -1773,41 +1808,25 @@ class _HomePageState extends State<HomePage>
     required double bottomContentPadding,
     required Set<String> activeLiveMessageIds,
     required Map<String, String> remoteMediaHandles,
+    WebChatFontFace? appWebFont,
+    WebChatFontFace? codeWebFont,
   }) {
     final l10n = AppLocalizations.of(context)!;
     final colors = Theme.of(context).colorScheme;
     final semantic = context.appColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final display = <String, dynamic>{
-      'userMarkdown': settings.enableUserMarkdown,
-      'assistantMarkdown': settings.enableAssistantMarkdown,
-      'reasoningMarkdown': settings.enableReasoningMarkdown,
-      'math': settings.enableMathRendering,
-      'dollarMath': settings.enableDollarLatex,
-      'wrapCode':
+    final display = webChatDisplay(
+      settings,
+      wrapCode:
           Platform.isMacOS ||
           Platform.isWindows ||
           Platform.isLinux ||
           settings.mobileCodeBlockWrap,
-      'collapsedCodeLines': settings.autoCollapseCodeBlock
-          ? settings.autoCollapseCodeBlockLines
-          : null,
-      'backgroundStyle': settings.chatMessageBackgroundStyle.name,
-      'backgroundOwner': 'flutter',
-      'isDark': isDark,
-      'showUserAvatar': settings.showUserAvatar,
-      'showUserName': settings.showUserName,
-      'showUserTimestamp': settings.showUserTimestamp,
-      'showUserMessageActions': settings.showUserMessageActions,
-      'showModelIcon': settings.showModelIcon,
-      'showModelName': settings.showModelName,
-      'showModelTimestamp': settings.showModelTimestamp,
-      'showTokenStats': settings.showTokenStats,
-      'autoCollapseThinking': settings.autoCollapseThinking,
-      'collapseThinkingSteps': settings.collapseThinkingSteps,
-      'showToolResultSummary': settings.showToolResultSummary,
-      'ttsActive': ttsActive,
-    };
+      isDark: isDark,
+      ttsActive: ttsActive,
+    );
+    if (appWebFont != null) display['appFont'] = appWebFont.toDisplayJson();
+    if (codeWebFont != null) display['codeFont'] = codeWebFont.toDisplayJson();
     final snapshot = const WebChatSnapshotBuilder().build(
       renderSessionId: _webRenderSessionId,
       conversationId: conversationId,
@@ -1827,120 +1846,13 @@ class _HomePageState extends State<HomePage>
       suggestions: suggestions,
       hasMoreBefore: _controller.chatController.hasMoreBefore,
       hasMoreAfter: _controller.chatController.hasMoreAfter,
-      strings: <String, String>{
-        'timeline': l10n.webChatTimelineLabel,
-        'loading': l10n.webChatLoading,
-        'empty': l10n.webChatEmptyConversation,
-        'user': l10n.webChatUser,
-        'assistant': l10n.webChatAssistant,
-        'tokens': l10n.webChatTokens,
-        'code': l10n.webChatCode,
-        'copyCode': l10n.webChatCopyCode,
-        'expandCode': l10n.codeBlockExpandButton,
-        'collapseCode': l10n.codeBlockCollapseButton,
-        'htmlPreview': l10n.webChatHtmlPreview,
-        'openHtmlPreview': l10n.htmlOpenFullScreenPreview,
-        'thinking': l10n.chatMessageWidgetThinking,
-        'reasoning': l10n.chatMessageWidgetDeepThinking,
-        'collapseThinkingSteps': l10n.chainOfThoughtCollapse,
-        'expandThinkingSteps': l10n.chainOfThoughtExpandSteps('{count}'),
-        'toolCall': l10n.webChatToolCall,
-        'toolResult': l10n.webChatToolResult,
-        'translation': l10n.webChatTranslation,
-        'contextDivider': l10n.homePageClearContext,
-        'unsupportedBlock': l10n.webChatUnsupportedBlock,
-        'copy': l10n.chatMessageWidgetCopyAsMarkdown,
-        'edit': l10n.messageMoreSheetEdit,
-        'resend': l10n.chatMessageWidgetResendTooltip,
-        'regenerate': l10n.chatMessageWidgetRegenerateTooltip,
-        'quote': l10n.chatMessageWidgetQuote,
-        'translate': l10n.chatMessageWidgetTranslateTooltip,
-        'speak': l10n.chatMessageWidgetSpeakTooltip,
-        'stop': l10n.chatMessageWidgetStopTooltip,
-        'more': l10n.chatMessageWidgetMoreTooltip,
-        'share': l10n.messageMoreSheetShare,
-        'fork': l10n.messageMoreSheetCreateBranch,
-        'select': l10n.messageMoreSheetSelectMessages,
-        'delete': l10n.messageMoreSheetDelete,
-        'multiAI': l10n.messageMoreSheetMultiAI,
-        'approve': l10n.toolApprovalApprove,
-        'deny': l10n.toolApprovalDeny,
-        'submit': l10n.askUserCardSubmit,
-        'customAnswer': l10n.askUserCardCustomHint,
-        'skip': l10n.askUserCardSkip,
-        'skipped': l10n.askUserCardSkipped,
-        'previousVersion': l10n.webChatPreviousVersion,
-        'nextVersion': l10n.webChatNextVersion,
-        'sources': l10n.chatMessageWidgetSearchResultsTitle,
-      },
-      theme: <String, String>{
-        'surface': _webCssColor(colors.surface),
-        'on-surface': _webCssColor(colors.onSurface),
-        'primary': _webCssColor(colors.primary),
-        'on-primary': _webCssColor(colors.onPrimary),
-        'secondary': _webCssColor(colors.secondary),
-        'error': _webCssColor(colors.error),
-        'card': _webCssColor(semantic.surfaceCard),
-        'surface-fill': _webCssColor(semantic.surfaceFill),
-        'code-body': _webCssColor(
-          colors.surfaceContainer.withValues(alpha: 0.90),
-        ),
-        'code-header': _webCssColor(
-          colors.surfaceContainerHighest.withValues(alpha: 0.90),
-        ),
-        'code-border': _webCssColor(colors.outlineVariant),
-        'code-header-text': _webCssColor(
-          colors.onSurfaceVariant.withValues(alpha: 0.72),
-        ),
-        'code-action': _webCssColor(
-          colors.onSurfaceVariant.withValues(alpha: 0.50),
-        ),
-        'outline': _webCssColor(colors.outlineVariant),
-        'outline-soft': _webCssColor(
-          colors.outlineVariant.withValues(alpha: isDark ? 0.24 : 0.18),
-        ),
-        'outline-frosted': _webCssColor(
-          colors.outlineVariant.withValues(alpha: 0.14),
-        ),
-        'outline-solid': _webCssColor(
-          colors.outlineVariant.withValues(alpha: 0.16),
-        ),
-        'user': _webCssColor(
-          colors.primary.withValues(alpha: isDark ? 0.15 : 0.08),
-        ),
-        'thinking': _webCssColor(
-          colors.primaryContainer.withValues(alpha: isDark ? 0.25 : 0.30),
-        ),
-        'frosted': _webCssColor(
-          isDark
-              // Matches the shared Flutter frosted message surface.
-              // color-gate: ignore
-              ? const Color(0xFF1C1C1E).withValues(alpha: 0.66)
-              : Colors.white.withValues(alpha: 0.66),
-        ),
-        'muted': _webCssColor(
-          colors.onSurface.withValues(alpha: isDark ? 0.56 : 0.50),
-        ),
-        'model-icon-background': _webCssColor(
-          colors.secondary.withValues(alpha: 0.10),
-        ),
-        'user-avatar-background': _webCssColor(
-          colors.primary.withValues(alpha: 0.10),
-        ),
-        'assistant-avatar-background': _webCssColor(
-          colors.primary.withValues(alpha: 0.10),
-        ),
-        'background-mask-top': _webCssColor(
-          colors.surface.withValues(
-            alpha: (0.20 * settings.chatBackgroundMaskStrength).clamp(0, 1),
-          ),
-        ),
-        'background-mask-bottom': _webCssColor(
-          colors.surface.withValues(
-            alpha: (0.50 * settings.chatBackgroundMaskStrength).clamp(0, 1),
-          ),
-        ),
-      },
+      strings: webChatUiStrings(l10n),
+      theme: webChatThemeColors(
+        colors: colors,
+        semantic: semantic,
+        isDark: isDark,
+        backgroundMaskStrength: settings.chatBackgroundMaskStrength,
+      ),
       appearance:
           settings.activeWebConversationStyle?.resolveAppearance(
             isDark: isDark,
@@ -2853,20 +2765,6 @@ class _HomePageState extends State<HomePage>
           ),
         ) ??
         false;
-  }
-
-  String _webCssColor(Color color) {
-    final value = color.toARGB32();
-    final alpha = (value >> 24) & 0xff;
-    final red = (value >> 16) & 0xff;
-    final green = (value >> 8) & 0xff;
-    final blue = value & 0xff;
-    if (alpha == 0xff) {
-      final rgb = value & 0x00ffffff;
-      return '#${rgb.toRadixString(16).padLeft(6, '0')}';
-    }
-    return 'rgba($red, $green, $blue, '
-        '${(alpha / 255).toStringAsFixed(3)})';
   }
 
   Widget _buildChatInputBar(BuildContext context, {required bool isTablet}) {

@@ -478,6 +478,9 @@ class _ModelSelectSheetState extends State<_ModelSelectSheet> {
     }
     final out = <String, dynamic>{};
     for (final key in keys) {
+      // Hidden built-in providers keep their config but must not surface
+      // in the model picker (issue #295).
+      if (settings.isProviderHidden(key)) continue;
       final cfg = settings.getProviderConfig(key, defaultName: key);
       out[key] = {
         'enabled': cfg.enabled,
@@ -2072,6 +2075,9 @@ class _DesktopModelSelectDialogBodyState
     }
     final out = <String, dynamic>{};
     for (final key in keys) {
+      // Hidden built-in providers keep their config but must not surface
+      // in the model picker (issue #295).
+      if (settings.isProviderHidden(key)) continue;
       final cfg = settings.getProviderConfig(key, defaultName: key);
       out[key] = {
         'enabled': cfg.enabled,

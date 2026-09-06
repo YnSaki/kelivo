@@ -21,7 +21,6 @@ import '../../../utils/utf16_safe_cut.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../chat/widgets/chat_message_widget.dart' show ToolUIPart;
-import '../../chat/utils/thinking_tag_parser.dart';
 import '../services/message_builder_service.dart';
 import '../services/message_generation_service.dart';
 import '../services/chat_suggestion_service.dart';
@@ -1311,6 +1310,7 @@ class HomeViewModel extends ChangeNotifier {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
 
@@ -1620,16 +1620,13 @@ class HomeViewModel extends ChangeNotifier {
         .replaceAll('{content}', content);
 
     try {
-      final raw = (await ChatApiService.generateText(
+      final title = (await ChatApiService.generateText(
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
-      // Strip <think>...</think> tags from models that include reasoning in output
-      final title = ThinkingTagParser.parseLegacyInlineBlocks(
-        raw,
-      ).visibleContent;
       if (title.isNotEmpty) {
         await _chatService.renameConversation(convo.id, title);
         if (currentConversation?.id == convo.id) {
@@ -1746,6 +1743,7 @@ class HomeViewModel extends ChangeNotifier {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
 
@@ -1827,6 +1825,7 @@ class HomeViewModel extends ChangeNotifier {
         messages: msgs,
         truncateIndex: collapsedTruncateIndex,
         locale: locale,
+        conversationId: conversationId,
         thinkingBudget: budget,
       );
       if (suggestions.isEmpty) return;
@@ -1921,6 +1920,7 @@ class HomeViewModel extends ChangeNotifier {
         userNickname: _contextProvider.read<UserProvider>().name,
         history: history,
         decisionPrompt: decisionPrompt,
+        conversationId: convo.id,
         fallbackThinkingBudget: settings.thinkingBudget,
       );
       if (newTime == null) {
@@ -2033,6 +2033,7 @@ class HomeViewModel extends ChangeNotifier {
         modelId: mdlId,
         assistant: assistant,
         apiMessages: apiMessages,
+        conversationId: convo.id,
         fallbackThinkingBudget: settings.thinkingBudget,
       );
       if (reply.isEmpty) {

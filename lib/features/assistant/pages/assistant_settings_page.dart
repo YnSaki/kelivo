@@ -460,30 +460,10 @@ class _TactileCardState extends State<_TactileCard> {
 
 Future<void> _createGroupChat(BuildContext context) async {
   final l10n = AppLocalizations.of(context)!;
-  final controller = TextEditingController();
   final name = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(l10n.groupChatCreate),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: InputDecoration(hintText: l10n.groupChatNameHint),
-        onSubmitted: (v) => Navigator.of(ctx).pop(v),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(l10n.groupChatCancel),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(controller.text),
-          child: Text(l10n.groupChatConfirm),
-        ),
-      ],
-    ),
+    builder: (_) => const _CreateGroupChatDialog(),
   );
-  controller.dispose();
   if (name == null || !context.mounted) return;
   final group = await context.read<GroupChatProvider>().createGroup(
     name: name.trim().isEmpty ? l10n.groupChatDefaultName : name.trim(),
@@ -494,6 +474,47 @@ Future<void> _createGroupChat(BuildContext context) async {
       builder: (_) => GroupChatSettingsPage(groupChatId: group.id),
     ),
   );
+}
+
+class _CreateGroupChatDialog extends StatefulWidget {
+  const _CreateGroupChatDialog();
+
+  @override
+  State<_CreateGroupChatDialog> createState() => _CreateGroupChatDialogState();
+}
+
+class _CreateGroupChatDialogState extends State<_CreateGroupChatDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return AlertDialog(
+      title: Text(l10n.groupChatCreate),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: InputDecoration(hintText: l10n.groupChatNameHint),
+        onSubmitted: (v) => Navigator.of(context).pop(v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.groupChatCancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: Text(l10n.groupChatConfirm),
+        ),
+      ],
+    );
+  }
 }
 
 Future<String?> _showAddAssistantSheet(BuildContext context) async {

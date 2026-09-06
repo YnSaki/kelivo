@@ -13,6 +13,7 @@ import '../models/token_usage.dart';
 import '../providers/download_progress_store.dart';
 import '../providers/settings_provider.dart';
 import 'api/chat_api_service.dart';
+import 'api/providers/gemini_thought_signature.dart';
 import 'chat/chat_service.dart';
 import 'workspace/linux_sandbox_service.dart';
 import 'streaming_content_notifier.dart';
@@ -56,6 +57,7 @@ typedef EngineChatStreamProvider =
       Map<String, dynamic>? extraBody,
       required bool stream,
       String? requestId,
+      String? conversationId,
       required bool allowImagesApiRouting,
       required bool ocrActive,
       String Function(int received, int requested)? partialImageNotice,
@@ -168,6 +170,7 @@ class GenerationSlotUiState {
     this.cachedTokens,
     this.durationMs = 0,
     this.truncationReason,
+    this.retryStatus,
   });
 
   final String reasoningText;
@@ -203,6 +206,9 @@ class GenerationSlotUiState {
 
   /// `max_tokens` / `context_exceeded` when the response was truncated.
   final String? truncationReason;
+
+  /// In-bubble auto-retry countdown, or null while generation proceeds.
+  final RetryStatus? retryStatus;
 }
 
 /// Live per-slot state (子代理面板 binding + live rendering).
@@ -381,6 +387,7 @@ class GenerationEngine extends ChangeNotifier {
     Map<String, dynamic>? extraBody,
     bool stream = true,
     String? requestId,
+    String? conversationId,
     bool allowImagesApiRouting = true,
     bool ocrActive = false,
     String Function(int received, int requested)? partialImageNotice,
@@ -400,6 +407,7 @@ class GenerationEngine extends ChangeNotifier {
       extraBody: extraBody,
       stream: stream,
       requestId: requestId,
+      conversationId: conversationId,
       allowImagesApiRouting: allowImagesApiRouting,
       ocrActive: ocrActive,
       partialImageNotice: partialImageNotice,
@@ -632,6 +640,11 @@ class GenerationEngine extends ChangeNotifier {
           cancelSlot(slot.assistantMessageId);
         }
       }
+      // Cancel the conversation-level requestId too: image-OCR runs inside
+      // message preparation BEFORE any slot starts, with the conversation id
+      // as its own requestId, so Stop must abort an in-progress (or backoff
+      // waiting) OCR as well.
+      ChatApiService.cancelRequest(id);
       // Abort any in-flight workspace download the stopped conversation was
       // running (its raw HttpClient is independent of the Dio CancelToken —
       // ADR-0036).
@@ -721,10 +734,23 @@ class GenerationEngine extends ChangeNotifier {
         extraBody: req.extraBody,
         stream: req.stream,
         requestId: slot.assistantMessageId,
+        conversationId: round.conversationId,
         allowImagesApiRouting: req.allowImagesApiRouting,
         ocrActive: req.ocrActive,
         partialImageNotice: req.partialImageNotice,
       )) {
+        if (chunk.retryPending != null) {
+          runtime.retryStatus = RetryStatus(
+            attempt: chunk.retryPending!.attempt,
+            maxRetries: chunk.retryPending!.maxRetries,
+            retryAt: chunk.retryPending!.deadlineAt(),
+          );
+          req.onUiState?.call(runtime.buildUiState());
+          continue;
+        }
+        if (chunk.retryAttemptStart) {
+          runtime.retryStatus = null;
+        }
         var chunkContent = chunk.content;
         if (chunkContent.isNotEmpty) {
           chunkContent = _captureGeminiThoughtSignature(chunkContent, runtime);
@@ -953,20 +979,31 @@ class GenerationEngine extends ChangeNotifier {
     dotAll: true,
   );
 
-  /// Capture and strip a Gemini thought signature from content; persists it
-  /// so follow-up API calls in the conversation can echo it.
+  /// Capture and strip a Gemini thought signature from content; persists the
+  /// normalized payload (bare JSON) so follow-up API calls in the conversation
+  /// can echo it without leaking the comment into message text.
   String _captureGeminiThoughtSignature(String content, _SlotRuntime rt) {
     final m = _geminiThoughtSigRe.firstMatch(content);
     if (m != null) {
       final sig = m.group(0) ?? '';
       if (sig.isNotEmpty) {
-        rt.geminiThoughtSig = sig;
-        unawaited(
-          _chatService.setGeminiThoughtSignature(
-            rt.slot.assistantMessageId,
-            sig,
-          ),
-        );
+        final meta = decodeGeminiThoughtSignature(sig);
+        final payload = meta == null
+            ? ''
+            : encodeGeminiThoughtSignature(
+                textKey: meta.textKey,
+                textValue: meta.textValue,
+                imageSigs: meta.images,
+              );
+        if (payload.isNotEmpty) {
+          rt.geminiThoughtSig = payload;
+          unawaited(
+            _chatService.setGeminiThoughtSignature(
+              rt.slot.assistantMessageId,
+              payload,
+            ),
+          );
+        }
         content = content.replaceAll(_geminiThoughtSigRe, '').trimRight();
       }
     }
@@ -1178,6 +1215,11 @@ class GenerationEngine extends ChangeNotifier {
             .content;
       }
       rt.pacing.wasAttached = true;
+      // Re-seed the retry countdown on (re)attach: backoff emits no chunks, so
+      // a viewer returning mid-backoff would otherwise see a plain spinner.
+      if (rt.retryStatus != null) {
+        notifier.updateRetryStatus(rt.slot.assistantMessageId, rt.retryStatus);
+      }
       final next = rt.pacing.takeNextContentSlice(
         minCount: _rampSmoothMinCount,
         baseCount: _rampSmoothBaseCount,
@@ -1277,6 +1319,7 @@ class GenerationEngine extends ChangeNotifier {
     }
     _flushLiveContent(rt);
     _flushLiveReasoning(rt);
+    rt.retryStatus = null;
     final state = rt.buildUiState(
       reasoningFinishedAt: reasoningFinishedAt,
       durationMs: DateTime.now().difference(slot.startedAt).inMilliseconds,
@@ -1320,6 +1363,7 @@ class GenerationEngine extends ChangeNotifier {
     slot.finalText = content;
     _flushLiveContent(rt);
     _flushLiveReasoning(rt);
+    rt.retryStatus = null;
     final state = rt.buildUiState(
       reasoningFinishedAt: rt.reasoningStartAt != null ? DateTime.now() : null,
       durationMs: DateTime.now().difference(slot.startedAt).inMilliseconds,
@@ -1388,8 +1432,11 @@ class _SlotRuntime {
   /// `max_tokens` / `context_exceeded` when the response was truncated.
   String? truncationReason;
 
-  /// Gemini thought signature captured from the stream, if any.
+  /// Gemini thought signature payload captured from the stream, if any.
   String? geminiThoughtSig;
+
+  /// Auto-retry countdown while the request waits in backoff.
+  RetryStatus? retryStatus;
 
   Timer? reasoningFlushTimer;
   var reasoningFlushDirty = false;
@@ -1429,6 +1476,7 @@ class _SlotRuntime {
       cachedTokens: consumed?.cachedTokens,
       durationMs: durationMs,
       truncationReason: truncationReason,
+      retryStatus: retryStatus,
     );
   }
 }

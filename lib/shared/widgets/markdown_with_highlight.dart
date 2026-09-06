@@ -4,10 +4,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:gpt_markdown/custom_widgets/markdown_config.dart'
     show GptMarkdownConfig;
+import 'package:gpt_markdown/custom_widgets/selectable_adapter.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark-reasonable.dart';
 import 'package:flutter/rendering.dart';
-import 'package:highlight/highlight.dart' show Node, highlight;
+import 'package:highlight/highlight.dart' show Mode, Node, highlight;
 import '../../icons/lucide_adapter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
@@ -125,10 +126,10 @@ class MarkdownWithCodeHighlight extends StatefulWidget {
 }
 
 class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
-  // Streamed text of 512+ chars is rendered as committed blocks plus a live
-  // tail (issue #334): committed blocks are parsed once and never re-parsed,
-  // so the debounce below only gates how often the whole document refreshes,
-  // not the per-tick parse cost (issue #232's original concern).
+  // Streamed text is rendered as committed blocks plus a live tail (issue
+  // #334): committed blocks are parsed once and never re-parsed, so the
+  // debounce below only gates how often the whole document refreshes, not the
+  // per-tick parse cost (issue #232's original concern).
   static const int _streamingDebounceThresholdChars = 8000;
   // Matches the stream controller's publish interval. A longer window would
   // batch several publishes into one render, and since the timeline is pinned
@@ -207,10 +208,11 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
       return value;
     }
 
-    // 512+ chars engage the incremental splitter; below that a full parse per
-    // tick is cheap and the tail behavior (no block boundaries yet) is simpler.
+    // Keep the same block tree from the first streaming frame through
+    // completion, so growing replies do not dispose interactive children
+    // (table scroll offsets, HTML preview state, code-block expansion).
     final useIncrementalBlocks =
-        widget.streaming && sanitizedText.length >= 512;
+        widget.streaming || _incrementalDocument.blocks.isNotEmpty;
     final sourceBlocks = useIncrementalBlocks
         ? _incrementalDocument.update(sanitizedText)
         : const <IncrementalMarkdownBlock>[];
@@ -596,10 +598,9 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
                 // Rendering the document as one string keeps the blank run
                 // between two blocks as a real line box. Rendering block by
                 // block drops it, so a long reply is laid out tighter while it
-                // streams and then grows the moment it finishes and switches to
-                // the whole-document render. Put the line back so both paths
-                // agree — unless the block before it ends in something whose own
-                // renderer eats the run.
+                // streams compared with a freshly loaded completed reply. Put
+                // the line back so both paths agree — unless the preceding
+                // block's renderer eats the run.
                 if (i > 0 &&
                     !_swallowsTrailingBlankLine(
                       blockContents[i - 1].text,
@@ -615,6 +616,7 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
                   key: ValueKey(
                     'markdown-source-block-${sourceBlocks[i].start}',
                   ),
+                  source: sourceBlocks[i].text,
                   payload: blockContents[i],
                   signature: themeSignature,
                   builder: buildMarkdown,
@@ -623,6 +625,7 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
             ],
           )
         : _CachedMarkdownBlock(
+            source: sanitizedText,
             payload: normalized!,
             signature: themeSignature,
             builder: buildMarkdown,
@@ -676,11 +679,15 @@ typedef _MarkdownBlockBuilder =
 class _CachedMarkdownBlock extends StatefulWidget {
   const _CachedMarkdownBlock({
     super.key,
+    required this.source,
     required this.payload,
     required this.signature,
     required this.builder,
   });
 
+  /// The raw block source before preprocessing. Append-only while streaming;
+  /// replaced wholesale when the message content is edited.
+  final String source;
   final MarkdownCodePayload payload;
   final String signature;
   final _MarkdownBlockBuilder builder;
@@ -697,7 +704,8 @@ class _CachedMarkdownBlockState extends State<_CachedMarkdownBlock> {
   @override
   void didUpdateWidget(covariant _CachedMarkdownBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.payload.text != widget.payload.text ||
+    if (oldWidget.source != widget.source ||
+        oldWidget.payload.text != widget.payload.text ||
         oldWidget.signature != widget.signature) {
       _rendered = null;
     }
@@ -718,7 +726,10 @@ class _CachedMarkdownBlockState extends State<_CachedMarkdownBlock> {
   Widget build(BuildContext context) {
     return _rendered ??= widget.builder(
       widget.payload,
-      _parseIdentity(widget.payload.text),
+      // Synthetic table cells and math delimiters change as tokens arrive;
+      // only a replacement of the source should reset interactive state.
+      // The splitter removes trailing newlines when a block becomes stable.
+      _parseIdentity(widget.source.trimRight()),
     );
   }
 }
@@ -819,14 +830,17 @@ class _MarkdownBlockSeparator extends StatelessWidget {
     // The paragraph carries the `NewLines` style, and its one run is a space:
     // the style has to sit on the paragraph because a line box is measured from
     // the paragraph style when there is no run, and that path rounds
-    // differently from a line that has one. A space is invisible, and the
-    // separator stays out of selection so it cannot be copied.
-    return SelectionContainer.disabled(
-      child: Text.rich(
-        const TextSpan(text: ' '),
-        style: (style ?? const TextStyle()).copyWith(
-          fontSize: style?.fontSize ?? _fallbackFontSize,
-          height: _newLinesHeight,
+    // differently from a line that has one. Copy the paragraph break instead
+    // of the invisible space used to measure it.
+    return SelectableAdapter(
+      selectedText: '\n\n',
+      child: SelectionContainer.disabled(
+        child: Text.rich(
+          const TextSpan(text: ' '),
+          style: (style ?? const TextStyle()).copyWith(
+            fontSize: style?.fontSize ?? _fallbackFontSize,
+            height: _newLinesHeight,
+          ),
         ),
       ),
     );
@@ -840,9 +854,11 @@ class _MarkdownBlockColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Let loose-width bubbles hug their content; tight parent constraints
+    // still make the column fill the available width.
     final column = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
     );
     return LayoutBuilder(
@@ -850,9 +866,10 @@ class _MarkdownBlockColumn extends StatelessWidget {
         if (!constraints.hasBoundedHeight) return column;
         return OverflowBox(
           alignment: Alignment.topCenter,
+          fit: OverflowBoxFit.deferToChild,
           minHeight: 0,
           maxHeight: double.infinity,
-          child: SizedBox(width: constraints.maxWidth, child: column),
+          child: column,
         );
       },
     );
@@ -1043,9 +1060,7 @@ MarkdownCodePayload _preprocessFences(
       }
       buf.write(out.substring(cursor));
       out = _replaceInlineDollarMath(buf.toString());
-      out = out.replaceAllMapped(RegExp(r'__DISPLAY_MATH_MASK_\d+__'), (
-        match,
-      ) {
+      out = out.replaceAllMapped(RegExp(r'__DISPLAY_MATH_MASK_\d+__'), (match) {
         final key = match.group(0)!;
         return displayMathMap[key] ?? key;
       });
@@ -1849,8 +1864,7 @@ bool _isCjkCodeUnit(int codeUnit) {
 }
 
 String _normalizeMathTex(String tex) {
-  final tagRewritten = _rewriteTagCommands(tex);
-  final escapedSpecials = _escapeInlineMathSpecials(tagRewritten);
+  final escapedSpecials = _escapeInlineMathSpecials(tex);
   final normalizedBraces = _escapeLikelyLiteralMathBraces(escapedSpecials);
   return normalizedBraces.replaceAllMapped(RegExp(r'\\\|([\s\S]*?)\\\|'), (
     match,
@@ -1859,36 +1873,6 @@ String _normalizeMathTex(String tex) {
     return r'\lVert '
         '$body'
         r' \rVert';
-  });
-}
-
-// flutter_math_fork 0.7.4 (latest) stubs \tag: it expands to
-// \gdef\df@tag{...}, but \gdef is undefined → ParseException → the WHOLE
-// formula falls back to raw plain text. Rewrite \tag{X} → \qquad\text{(X)}
-// and \tag*{X} → \qquad\text{X} so the number renders inline right after the
-// equation — an approximation, NOT right-aligned at the margin like real
-// LaTeX (proper tags via a vendored flutter_math_fork are a deferred task).
-// \notag/\nonumber produce nothing by design → strip. Only flat labels
-// without backslashes are rewritten: labels with nested braces or TeX
-// commands (e.g. \tag{\alpha} — \text cannot parse math commands) and
-// unbraced \tag 1 stay untouched (raw-text fallback keeps the original tex).
-String _rewriteTagCommands(String tex) {
-  final tag = RegExp(
-    r'(?<!\\)\\tag(\*?)\{([^{}\\]*)\}'
-    r'|(?<!\\)\\notag(?![a-zA-Z])'
-    r'|(?<!\\)\\nonumber(?![a-zA-Z])',
-  );
-  return tex.replaceAllMapped(tag, (m) {
-    final label = (m.group(2) ?? '').trim();
-    if (label.isEmpty) return '';
-    final starred = m.group(1) == '*';
-    return starred
-        ? r'\qquad\text{'
-              '$label'
-              '}'
-        : r'\qquad\text{'
-              '($label)'
-              '}';
   });
 }
 
@@ -2107,6 +2091,11 @@ bool _looksLikeLiteralMathBraceGroup(String tex, int open, int close) {
 bool _isCommandArgumentBrace(String tex, int open) {
   final prev = _previousNonWhitespaceIndex(tex, open - 1);
   if (prev == -1) return false;
+
+  if (tex.codeUnitAt(prev) == 0x2A &&
+      _endsControlWordAt(tex, _previousNonWhitespaceIndex(tex, prev - 1))) {
+    return true;
+  }
 
   if (tex.codeUnitAt(prev) == 0x5D) {
     final optionalOpen = _findMatchingOpenBracket(tex, prev);
@@ -2403,11 +2392,10 @@ class _CollapsibleCodeBlockState extends State<_CollapsibleCodeBlock> {
     final highlightEnabled = !_shouldSkipHighlightWhileStreaming();
 
     Widget buildCodeView(String visibleCode) {
-      final codeView = SelectableHighlightView(
+      final codeView = CodeHighlightView(
         visibleCode,
         language: codeLanguage,
         theme: codeTheme,
-        padding: EdgeInsets.zero,
         textStyle: codeTextStyle,
         enableHighlight: highlightEnabled,
       );
@@ -3359,7 +3347,6 @@ class _MarkdownTableBlock extends StatelessWidget {
                   style: style,
                   config: config,
                   appFontFamily: appFontFamily,
-                  selectable: !compact,
                 ),
             ],
           ),
@@ -3610,7 +3597,6 @@ class _MarkdownTableCell extends StatelessWidget {
     required this.style,
     required this.config,
     required this.appFontFamily,
-    required this.selectable,
   });
 
   final _MarkdownTableCellData data;
@@ -3618,7 +3604,6 @@ class _MarkdownTableCell extends StatelessWidget {
   final TextStyle style;
   final GptMarkdownConfig config;
   final String? appFontFamily;
-  final bool selectable;
 
   @override
   Widget build(BuildContext context) {
@@ -3645,15 +3630,13 @@ class _MarkdownTableCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       child: Align(
         alignment: _alignmentFor(data.alignment),
-        child: selectable
-            ? SelectableText.rich(textSpan, textAlign: data.alignment)
-            : RichText(
-                text: textSpan,
-                textAlign: data.alignment,
-                softWrap: true,
-                overflow: TextOverflow.visible,
-                textWidthBasis: TextWidthBasis.parent,
-              ),
+        child: Text.rich(
+          textSpan,
+          textAlign: data.alignment,
+          softWrap: true,
+          overflow: TextOverflow.visible,
+          textWidthBasis: TextWidthBasis.parent,
+        ),
       ),
     );
   }
@@ -3723,60 +3706,64 @@ class _MarkdownTableToolbar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: 38,
-      padding: const EdgeInsetsDirectional.only(start: 12, end: 6),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        border: Border(
-          bottom: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: isDark ? 0.20 : 0.28),
-            width: 0.6,
+    // Toolbar chrome must not join the enclosing message selection: it is
+    // inert UI, not content to copy.
+    return SelectionContainer.disabled(
+      child: Container(
+        height: 38,
+        padding: const EdgeInsetsDirectional.only(start: 12, end: 6),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: Border(
+            bottom: BorderSide(
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.20 : 0.28),
+              width: 0.6,
+            ),
           ),
         ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant.withValues(alpha: 0.80),
-                fontSize: 12,
-                fontWeight: AppFontWeights.semibold,
-                height: 1.0,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.80),
+                  fontSize: 12,
+                  fontWeight: AppFontWeights.semibold,
+                  height: 1.0,
+                ),
               ),
             ),
-          ),
-          _copyButton(context),
-          WindowsAxTreeSafeTooltip(
-            message: imageActionLabel,
-            child: IosIconButton(
-              icon: Lucide.ImageDown,
-              semanticLabel: imageActionLabel,
-              onTap: onImageAction,
-              onLongPress: onExportImage,
-              size: 15,
-              minSize: 32,
-              padding: const EdgeInsets.all(7),
-              color: cs.onSurfaceVariant.withValues(alpha: 0.68),
+            _copyButton(context),
+            WindowsAxTreeSafeTooltip(
+              message: imageActionLabel,
+              child: IosIconButton(
+                icon: Lucide.ImageDown,
+                semanticLabel: imageActionLabel,
+                onTap: onImageAction,
+                onLongPress: onExportImage,
+                size: 15,
+                minSize: 32,
+                padding: const EdgeInsets.all(7),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.68),
+              ),
             ),
-          ),
-          WindowsAxTreeSafeTooltip(
-            message: exportLabel,
-            child: IosIconButton(
-              icon: Lucide.Download,
-              semanticLabel: exportLabel,
-              onTap: onExport,
-              size: 15,
-              minSize: 32,
-              padding: const EdgeInsets.all(7),
-              color: cs.onSurfaceVariant.withValues(alpha: 0.68),
+            WindowsAxTreeSafeTooltip(
+              message: exportLabel,
+              child: IosIconButton(
+                icon: Lucide.Download,
+                semanticLabel: exportLabel,
+                onTap: onExport,
+                size: 15,
+                minSize: 32,
+                padding: const EdgeInsets.all(7),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.68),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -4319,13 +4306,12 @@ class _MermaidBlockState extends State<_MermaidBlock> {
   }
 
   Widget _buildMermaidCodeView(BuildContext context, bool isDark) {
-    final codeView = SelectableHighlightView(
+    final codeView = CodeHighlightView(
       widget.code,
       language: 'plaintext',
       theme: _transparentBgTheme(
         isDark ? atomOneDarkReasonableTheme : githubTheme,
       ),
-      padding: EdgeInsets.zero,
       textStyle: TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.5),
     );
 
@@ -5007,7 +4993,6 @@ class _LatexMathBlockState extends State<_LatexMathBlock> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isDesktop = _markdownMathTargetPlatformIsDesktop();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -5016,10 +5001,12 @@ class _LatexMathBlockState extends State<_LatexMathBlock> {
           ? (details) => _showDesktopMenu(details.globalPosition)
           : null,
       child: Container(
-        // Display-only: matches the chat surface so the box is invisible in
-        // the message. The background and padding intentionally live outside
-        // any capture boundary so they never leak into the exported PNG.
-        color: cs.surface,
+        // Fully transparent: the formula must overlay whatever sits behind it
+        // (chat surface, custom assistant background image with mask) without
+        // showing an opaque plate. The symmetric padding stays for export
+        // margins; the PNG is captured off-screen with its own transparent
+        // background, so no color is needed here.
+        color: Colors.transparent,
         padding: const EdgeInsets.all(4),
         child: _renderMath(widget.body, style: widget.style, displayMode: true),
       ),
@@ -5426,8 +5413,7 @@ class AtxHeadingMd extends BlockMd {
     GptMarkdownConfig cfg,
     int level,
   ) {
-    final cs = Theme.of(ctx).colorScheme;
-    final isZh = _isZh(ctx);
+    final bool isZh = _isZh(ctx);
     final settings = ctx.read<SettingsProvider>();
     String? appFamily;
     if ((settings.appFontFamily ?? '').isNotEmpty) {
@@ -5485,7 +5471,6 @@ class AtxHeadingMd extends BlockMd {
       fontWeight: weight,
       height: h,
       letterSpacing: ls,
-      color: cs.onSurface,
       fontFamily: appFamily,
       fontFamilyFallback: getPlatformFontFallback(),
     );
@@ -6332,15 +6317,260 @@ class AllowedHtmlTagsMd extends InlineMd {
   }
 }
 
-/// A selectable version of HighlightView that allows users to select
-/// and copy portions of the code instead of just the entire block.
-class SelectableHighlightView extends StatefulWidget {
-  const SelectableHighlightView(
+/// The `markdown` highlight grammar rebuilt to honor CommonMark instead of
+/// the bundled naive rules (issue #662).
+///
+/// The bundled grammar's `_.+?_` / `[*_]{2}.+?[*_]{2}` rules match between
+/// any two underscores, including intraword ones (`a_b_c`), and the code
+/// themes style `emphasis`/`strong` as italic/bold — so a `markdown`-fenced
+/// code block rendered identifiers like `{model_name}` in italic (this
+/// issue). CommonMark never treats an intraword `_` as an emphasis delimiter
+/// and requires a space or tab (or end of line) after ATX `#` (§4.2):
+/// `#hashtag` is a literal line, `# Heading` a heading.
+///
+/// The underscore variants below intentionally only do structural matching
+/// (whitespace/underscore guards, no character classification): grammar
+/// regexes in the `highlight` engine are compiled without the Unicode flag,
+/// so delimiter flanking cannot be expressed there with `\p{...}` classes.
+/// [_underscoreFlankingInvalidNodes] applies the real CommonMark §6.2 rules
+/// with proper Unicode classification right after parsing.
+final Mode _commonMarkMarkdownLanguage = Mode(
+  refs: {},
+  aliases: const ['md', 'mkdown', 'mkd'],
+  contains: [
+    Mode(
+      className: 'section',
+      variants: [
+        Mode(begin: '^#{1,6}(?=[\\t ]|\$)', end: '\$'),
+        Mode(begin: '^.+?\\n[=-]{2,}\$'),
+      ],
+    ),
+    Mode(begin: '<', end: '>', subLanguage: const ['xml'], relevance: 0),
+    Mode(className: 'bullet', begin: '^\\s*([*+-]|(\\d+\\.))\\s+'),
+    Mode(
+      className: 'strong',
+      variants: [
+        Mode(begin: r'\*\*.+?\*\*'),
+        Mode(begin: '__(?![\\s_]).+?(?<=[^\\s_])__', relevance: 0),
+      ],
+    ),
+    Mode(
+      className: 'emphasis',
+      variants: [
+        Mode(begin: r'\*.+?\*'),
+        Mode(begin: '_(?![\\s_]).+?(?<=[^\\s_])_', relevance: 0),
+      ],
+    ),
+    Mode(className: 'quote', begin: '^>\\s+', end: '\$'),
+    Mode(
+      className: 'code',
+      variants: [
+        Mode(begin: '^```\\w*\\s*\$', end: '^```[ ]*\$'),
+        Mode(begin: r'`.+?`'),
+        Mode(begin: '^( {4}|\\t)', end: '\$', relevance: 0),
+      ],
+    ),
+    Mode(begin: '^[-\\*]{3,}', end: '\$'),
+    Mode(
+      begin: '\\[.+?\\][\\(\\[].*?[\\)\\]]',
+      returnBegin: true,
+      contains: [
+        Mode(
+          className: 'string',
+          begin: '\\[',
+          end: '\\]',
+          excludeBegin: true,
+          returnEnd: true,
+          relevance: 0,
+        ),
+        Mode(
+          className: 'link',
+          begin: '\\]\\(',
+          end: '\\)',
+          excludeBegin: true,
+          excludeEnd: true,
+        ),
+        Mode(
+          className: 'symbol',
+          begin: '\\]\\[',
+          end: '\\]',
+          excludeBegin: true,
+          excludeEnd: true,
+        ),
+      ],
+      relevance: 10,
+    ),
+    Mode(
+      begin: '^\\[[^\\n]+\\]:',
+      returnBegin: true,
+      contains: [
+        Mode(
+          className: 'symbol',
+          begin: '\\[',
+          end: '\\]',
+          excludeBegin: true,
+          excludeEnd: true,
+        ),
+        Mode(className: 'link', begin: ':\\s*', end: '\$', excludeBegin: true),
+      ],
+    ),
+  ],
+);
+
+bool _commonMarkMarkdownRegistered = false;
+
+/// Replaces the bundled `markdown` grammar with [_commonMarkMarkdownLanguage].
+/// Must run before the first markdown parse; the highlight singleton is
+/// process-wide and this file is its only consumer, so registration is safe
+/// and idempotent.
+void _ensureCommonMarkMarkdownGrammar() {
+  if (_commonMarkMarkdownRegistered) return;
+  _commonMarkMarkdownRegistered = true;
+  highlight.registerLanguage('markdown', _commonMarkMarkdownLanguage);
+}
+
+/// Whether [language] resolves to the CommonMark markdown grammar.
+///
+/// [_ensureCommonMarkMarkdownGrammar] registers it as `markdown` with the
+/// aliases listed on [_commonMarkMarkdownLanguage]. Any other grammar must
+/// keep the [highlight.parse] node tree untouched: languages such as AsciiDoc
+/// legitimately style underscore emphasis with their own rules, which the
+/// CommonMark intraword flanking would otherwise strip.
+bool _isMarkdownLanguage(String? language) {
+  if (language == null) return false;
+  final l = language.trim().toLowerCase();
+  return l == 'markdown' ||
+      (_commonMarkMarkdownLanguage.aliases ?? const <String>[]).contains(l);
+}
+
+/// CommonMark §6.2 flanking classifications: "Unicode whitespace" is the `Z`
+/// categories plus tab/line terminators; "punctuation" is the Unicode `P`
+/// (punctuation) or `S` (symbol) general categories. These run with the
+/// Unicode flag, unlike the grammar regexes the engine compiles.
+final RegExp _unicodePunct = RegExp(r'[\p{P}\p{S}]', unicode: true);
+final RegExp _unicodeWhitespace = RegExp(r'[\p{Z}\t\n\v\f\r]', unicode: true);
+
+bool _isPunct(String char) => _unicodePunct.hasMatch(char);
+
+bool _isSpace(String char) => _unicodeWhitespace.hasMatch(char);
+
+/// Whether an underscore delimiter run can open emphasis per §6.2:
+/// left-flanking and either not right-flanking or preceded by punctuation.
+/// [prev]/[next] are the code points immediately outside the run; null
+/// means a text boundary, which CommonMark treats like whitespace.
+bool _underscoreCanOpen(String? prev, String? next) {
+  final prevWs = prev == null || _isSpace(prev);
+  final prevPunct = prev != null && _isPunct(prev);
+  final nextWs = next == null || _isSpace(next);
+  final nextPunct = next != null && _isPunct(next);
+  final leftFlanking = !nextWs && (!nextPunct || prevWs || prevPunct);
+  final rightFlanking = !prevWs && (!prevPunct || nextWs || nextPunct);
+  return leftFlanking && (!rightFlanking || prevPunct);
+}
+
+/// Whether an underscore delimiter run can close emphasis per §6.2:
+/// right-flanking and either not left-flanking or followed by punctuation.
+bool _underscoreCanClose(String? prev, String? next) {
+  final prevWs = prev == null || _isSpace(prev);
+  final prevPunct = prev != null && _isPunct(prev);
+  final nextWs = next == null || _isSpace(next);
+  final nextPunct = next != null && _isPunct(next);
+  final leftFlanking = !nextWs && (!nextPunct || prevWs || prevPunct);
+  final rightFlanking = !prevWs && (!prevPunct || nextWs || nextPunct);
+  return rightFlanking && (!leftFlanking || nextPunct);
+}
+
+/// The code point immediately before code-unit offset [index] in [text],
+/// or null at the start.
+String? _codePointBefore(String text, int index) {
+  if (index <= 0) return null;
+  return String.fromCharCode(text.substring(0, index).runes.last);
+}
+
+/// The code point immediately after code-unit offset [index] in [text],
+/// or null at the end.
+String? _codePointAfter(String text, int index) {
+  if (index >= text.length) return null;
+  return String.fromCharCode(text.substring(index).runes.first);
+}
+
+/// Walks the parsed node tree in document order and returns every
+/// `emphasis`/`strong` node whose `_` delimiters violate CommonMark flanking
+/// (§6.2). The grammar only matches _candidate_ delimiter pairs (its regexes
+/// cannot classify characters without the Unicode flag), so invalid pairs —
+/// e.g. `foo_bar_baz`, `α_β_γ`, `a__b__c` — are detected here by validating
+/// each candidate's surrounding code points, and rendered as plain text.
+///
+/// Markdown-only: callers must gate this behind [_isMarkdownLanguage]; other
+/// grammars style underscore emphasis with their own (non-CommonMark) rules.
+///
+/// The engine puts a classed node's text in a child leaf (the container
+/// carries only the className), so runs are grouped by their nearest
+/// emphasis/strong ancestor before validation.
+Set<Node> _underscoreFlankingInvalidNodes(List<Node> nodes) {
+  final text = StringBuffer();
+  final extents = <Node, ({int start, int end})>{};
+  void walk(List<Node> list, Node? classed) {
+    for (final node in list) {
+      final value = node.value;
+      if (value != null && value.isNotEmpty) {
+        if (classed != null) {
+          final prior = extents[classed];
+          extents[classed] = (
+            start: prior?.start ?? text.length,
+            end: text.length + value.length,
+          );
+        }
+        text.write(value);
+      }
+      final children = node.children;
+      if (children != null) {
+        final nextClassed =
+            node.className == 'emphasis' || node.className == 'strong'
+            ? node
+            : classed;
+        walk(children, nextClassed);
+      }
+    }
+  }
+
+  walk(nodes, null);
+  final source = text.toString();
+  final invalid = <Node>{};
+  for (final entry in extents.entries) {
+    final node = entry.key;
+    final start = entry.value.start;
+    final end = entry.value.end;
+    final value = source.substring(start, end);
+    if (!value.startsWith('_') || !value.endsWith('_')) continue;
+    // The opener and closer delimiter runs flank with their own neighbors:
+    // opener uses the char before the run start and the first content char;
+    // closer uses the last content char and the char after the run end.
+    final runLength = value.startsWith('__') ? 2 : 1;
+    final openPrev = _codePointBefore(source, start);
+    final openNext = _codePointAfter(source, start + runLength);
+    final closePrev = _codePointBefore(source, end - runLength);
+    final closeNext = _codePointAfter(source, end);
+    if (!_underscoreCanOpen(openPrev, openNext) ||
+        !_underscoreCanClose(closePrev, closeNext)) {
+      invalid.add(node);
+    }
+  }
+  return invalid;
+}
+
+/// Code block with per-token syntax highlight.
+///
+/// Rendered as a plain [Text.rich] so the code participates in the enclosing
+/// [SelectionArea] selection instead of owning its own selectable context.
+/// (A raw [RichText] would not wire [selectionRegistrar], leaving the code
+/// unselectable.)
+class CodeHighlightView extends StatefulWidget {
+  const CodeHighlightView(
     this.source, {
     super.key,
     this.language,
     this.theme = const {},
-    this.padding,
     this.textStyle,
     this.enableHighlight = true,
   });
@@ -6348,16 +6578,14 @@ class SelectableHighlightView extends StatefulWidget {
   final String source;
   final String? language;
   final Map<String, TextStyle> theme;
-  final EdgeInsetsGeometry? padding;
   final TextStyle? textStyle;
   final bool enableHighlight;
 
   @override
-  State<SelectableHighlightView> createState() =>
-      _SelectableHighlightViewState();
+  State<CodeHighlightView> createState() => _CodeHighlightViewState();
 }
 
-class _SelectableHighlightViewState extends State<SelectableHighlightView> {
+class _CodeHighlightViewState extends State<CodeHighlightView> {
   late List<TextSpan> _codeTextSpans;
 
   @override
@@ -6367,7 +6595,7 @@ class _SelectableHighlightViewState extends State<SelectableHighlightView> {
   }
 
   @override
-  void didUpdateWidget(covariant SelectableHighlightView oldWidget) {
+  void didUpdateWidget(covariant CodeHighlightView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source == widget.source &&
         oldWidget.language == widget.language &&
@@ -6384,29 +6612,42 @@ class _SelectableHighlightViewState extends State<SelectableHighlightView> {
       return <TextSpan>[TextSpan(text: widget.source)];
     }
     try {
+      _ensureCommonMarkMarkdownGrammar();
       final result = highlight.parse(widget.source, language: widget.language);
-      return _convertNodes(result.nodes ?? const []);
+      final nodes = result.nodes ?? const [];
+      // The CommonMark flanking fix (#662) is markdown-specific; other
+      // grammars (e.g. AsciiDoc) keep their original parse output.
+      final flankingInvalid = _isMarkdownLanguage(widget.language)
+          ? _underscoreFlankingInvalidNodes(nodes)
+          : null;
+      return _convertNodes(nodes, flankingInvalid);
     } catch (_) {
       return const [];
     }
   }
 
-  /// Converts a highlight Node tree to a TextSpan tree with appropriate styling
-  List<TextSpan> _convertNodes(List<Node> nodes) {
+  /// Converts a highlight Node tree to a TextSpan tree with appropriate styling.
+  /// Nodes in [flankingInvalid] render plain (underscore emphasis that
+  /// CommonMark deems literal).
+  List<TextSpan> _convertNodes(List<Node> nodes, [Set<Node>? flankingInvalid]) {
     final List<TextSpan> spans = [];
 
     for (final node in nodes) {
+      final unclassed = flankingInvalid?.contains(node) ?? false;
       if (node.value != null) {
         // Leaf node with text content
         spans.add(
-          TextSpan(text: node.value, style: widget.theme[node.className]),
+          TextSpan(
+            text: node.value,
+            style: unclassed ? null : widget.theme[node.className],
+          ),
         );
       } else if (node.children != null) {
         // Node with children - recurse
         spans.add(
           TextSpan(
-            children: _convertNodes(node.children!),
-            style: widget.theme[node.className],
+            children: _convertNodes(node.children!, flankingInvalid),
+            style: unclassed ? null : widget.theme[node.className],
           ),
         );
       }
@@ -6417,7 +6658,7 @@ class _SelectableHighlightViewState extends State<SelectableHighlightView> {
 
   @override
   Widget build(BuildContext context) {
-    return SelectableText.rich(
+    return Text.rich(
       TextSpan(
         style: widget.textStyle,
         children: _codeTextSpans.isEmpty

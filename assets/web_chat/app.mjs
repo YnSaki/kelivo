@@ -8,14 +8,18 @@ import {
   commitPendingMeasurements,
   createAdaptiveStreamPresenter,
   createExpansionCoordinator,
+  createFontFaceRegistrator,
+  createFontFaceTracker,
   createFrameCoalescer,
   createRenderCommitCoordinator,
   createRenderGate,
   createVirtualWindowCoordinator,
   createViewportNavigationCoordinator,
+  extractMathSpans,
   formatCountTemplate,
   formatReasoningElapsed,
   longestStablePrefix,
+  restoreMathText,
   mountCodeBlock,
   messageIndexAtOffset,
   normalizeMeasuredHeight,
@@ -37,6 +41,8 @@ const timeline = document.getElementById('timeline');
 const backgroundLayer = document.getElementById('chat-background');
 const virtualWindowLoader = document.getElementById('virtual-window-loader');
 const virtualWindowLoaderLabel = document.getElementById('virtual-window-loader-label');
+const PRINT_MODE = new URL(document.location.href).searchParams.get('mode') === 'print';
+if (PRINT_MODE) document.body.classList.add('print-mode');
 const maxHtmlPreviewCodeUnits = 1024 * 1024;
 let state = null;
 let requestSequence = 0;
@@ -44,6 +50,8 @@ const heights = new Map();
 const pendingMeasuredHeights = new Map();
 const pendingActions = new Map();
 const pendingMedia = new Set();
+const fontFaceTracker = createFontFaceTracker();
+const fontRegistrator = createFontFaceRegistrator(fontFaceTracker);
 const localExpansions = new Map();
 const mountedSlots = new Map();
 const presentedStreamContent = new Map();
@@ -51,6 +59,7 @@ const pendingMountedUpdates = new Set();
 const markdownHtmlCache = new Map();
 const streamingMarkdownStates = new WeakMap();
 const staticMarkdownStates = new WeakMap();
+const mathSlotsByRoot = new WeakMap();
 const streamStructureSignatureCache = new WeakMap();
 const expansionCoordinator = createExpansionCoordinator();
 const disclosureAnimations = new WeakMap();
@@ -65,6 +74,18 @@ let touchStartY = null;
 let touchActive = false;
 let pointerStartX = null;
 let pointerStartY = null;
+// Mobile touch devices own panning inside the platform WebView. On iOS,
+// preventDefault() during the early touchmoves makes WebKit classify the
+// gesture as non-scrolling so the page can never be dragged afterwards; on
+// Android, Flutter's gesture arena dispatches the native touch stream only
+// after the vertical recognizer wins, so arming the persistent lock from
+// touch fights the live Chromium pan and reads as a "jelly" kick. Only
+// touch-origin stopScrolling calls ('touch') are exempt on mobile
+// touch devices; programmatic/pointer/bridge calls keep locking.
+const isIosTouchDevice = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroidTouchDevice = /Android/i.test(navigator.userAgent);
+const isTouchNativeOwned = isIosTouchDevice || isAndroidTouchDevice;
 let scrollStopLock = false;
 let scrollStopFrame = 0;
 let scrollStopTop = 0;
@@ -163,9 +184,35 @@ function markdownSourceForRender(content) {
     const handle = state?.remoteMediaHandles?.[url];
     return handle ? `${prefix}${remoteImagePlaceholder(handle)}` : match;
   };
-  return String(content ?? '')
+  // Lift math spans out of the source BEFORE marked processes it: marked's
+  // backslash escaping and underscore emphasis would mangle the LaTeX and
+  // shatter the $$ pair auto-render scans for. The raw spans are slotted and
+  // restored as text nodes right before renderMathInElement.
+  const math = extractMathSpans(content ?? '', {
+    dollarMath: state.display?.dollarMath === true,
+  });
+  const source = String(math.source ?? '')
     .replace(/(!\[[^\]]*\]\(\s*<?)(http:\/\/[^\s>)]+)/gi, replace)
     .replace(/(<img\b[^>]*\bsrc\s*=\s*["'])(http:\/\/[^"']+)/gi, replace);
+  return { source, slots: math.slots };
+}
+
+/** Replaces every math slot token inside [root]'s text nodes with the raw
+ *  LaTeX source so renderMathInElement sees the untouched delimiters. */
+function restoreMathSlots(root, slots) {
+  if (!slots || slots.size === 0) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+  for (const textNode of textNodes) {
+    const value = textNode.nodeValue ?? '';
+    if (!value.includes('m:')) continue;
+    const restored = restoreMathText(value, slots);
+    if (restored !== value) textNode.nodeValue = restored;
+  }
 }
 
 function rendererAssetUrl(relativePath) {
@@ -485,6 +532,67 @@ function applyTheme() {
     document.body.dataset.hasBackground = 'false';
   }
   applyAppearance();
+  applyFonts();
+}
+
+// Must match WebChatFontFace.appFaceFamily / codeFaceFamily in
+// lib/features/home/webview/web_chat_snapshot.dart; the print contract test
+// keeps the two sides in sync.
+const FACE_FAMILIES = ['Cuplivo WebApp Font', 'Cuplivo WebCode Font'];
+
+function applyFonts() {
+  if (!state) return;
+  applyFontFamily(
+    '--cuplivo-app-font',
+    state.display?.appFont,
+    '--cuplivo-default-app-font',
+    FACE_FAMILIES[0],
+  );
+  applyFontFamily(
+    '--cuplivo-code-font',
+    state.display?.codeFont,
+    '--cuplivo-default-code-font',
+    FACE_FAMILIES[1],
+  );
+}
+
+function applyFontFamily(variable, font, chainVariable, faceFamily) {
+  if (!font?.family) {
+    fontFaceTracker.expect(null, faceFamily);
+    document.documentElement.style.removeProperty(variable);
+    return;
+  }
+  if (font.handle) {
+    fontFaceTracker.expect(font.handle, font.family);
+    const outcome = fontFaceTracker.begin(
+      font.handle,
+      font.family,
+      state.media?.[font.handle],
+    );
+    if (!outcome.tracked) {
+      if (outcome.cached) {
+        registerFontFaces(font.handle, [font.family], state.media[font.handle]);
+      } else {
+        requestMedia(font.handle);
+      }
+    }
+  } else {
+    fontFaceTracker.expect(null, faceFamily);
+  }
+  document.documentElement.style.setProperty(
+    variable,
+    `'${font.family}', var(${chainVariable})`,
+  );
+}
+
+function registerFontFaces(handle, families, dataUrl) {
+  fontRegistrator.register({
+    fonts: document.fonts,
+    load: (family, url) => new FontFace(family, `url("${url}")`).load(),
+    handle,
+    families,
+    dataUrl,
+  });
 }
 
 function sendAction(action, messageId = null, payload = {}) {
@@ -729,7 +837,10 @@ function patchStreamingMarkdownRoot(root, source, kind) {
     return;
   }
   const renderSource = markdownSourceForRender(source);
-  const tokens = window.marked.lexer(renderSource, { gfm: true, breaks: true });
+  const tokens = window.marked.lexer(renderSource.source, {
+    gfm: true,
+    breaks: true,
+  });
   const signatures = tokens.map((token) => `${token.type}\u0000${token.raw ?? ''}`);
   const previous = streamingMarkdownStates.get(root);
   const prefix = longestStablePrefix(previous?.signatures, signatures);
@@ -745,6 +856,10 @@ function patchStreamingMarkdownRoot(root, source, kind) {
     container.innerHTML = sanitizeMarkdownHtml(
       window.marked.parser([tokens[index]], { gfm: true, breaks: true }),
     );
+    // Streaming renders raw math text (KaTeX runs on the final static pass),
+    // so slot restores happen per container to keep the placeholder text
+    // invisible while the tail is still streaming.
+    restoreMathSlots(container, renderSource.slots);
     enhanceMarkdown(container, true, root.dataset.messageId || null);
     const nodes = [...container.childNodes];
     fragment.append(...nodes);
@@ -755,7 +870,7 @@ function patchStreamingMarkdownRoot(root, source, kind) {
   streamingMarkdownStates.set(root, {
     signatures,
     groups,
-    source: renderSource,
+    source: renderSource.source,
     kind,
   });
 }
@@ -793,8 +908,9 @@ function markdownNode(
       : null;
     const cached = cacheKey == null ? null : markdownHtmlCache.get(cacheKey);
     let sanitized = cached?.source === source ? cached.html : null;
+    const renderSource = markdownSourceForRender(source);
     if (sanitized == null) {
-      const html = window.marked.parse(markdownSourceForRender(source), {
+      const html = window.marked.parse(renderSource.source, {
         gfm: true,
         breaks: true,
       });
@@ -810,6 +926,9 @@ function markdownNode(
       markdownHtmlCache.set(cacheKey, cached);
     }
     root.innerHTML = sanitized;
+    if (renderSource.slots.size > 0) {
+      mathSlotsByRoot.set(root, renderSource.slots);
+    }
     staticMarkdownStates.set(root, {
       source,
       kind,
@@ -964,6 +1083,10 @@ function enhanceMarkdown(root, streaming, messageId = null) {
     renderCodeBlock(pre, code, language, source, expansionKey);
   }
   try {
+    // Static renders: swap math slots back to the raw source BEFORE KaTeX
+    // auto-render runs (and before containsMath, which scans for delimiters).
+    restoreMathSlots(root, mathSlotsByRoot.get(root));
+    mathSlotsByRoot.delete(root);
     if (streaming || state.display?.math === false || !containsMath(root)) return;
     if (!readyRenderers.has('math')) {
       rerenderWhenRendererReady('math', ensureMathRenderer(), root);
@@ -971,6 +1094,8 @@ function enhanceMarkdown(root, streaming, messageId = null) {
     }
     window.renderMathInElement(root, {
       throwOnError: false,
+      macros: { '\\ovalbox': '\\htmlClass{ovalbox}{\\boxed{#1}}' },
+      trust: (ctx) => ctx.command === '\\htmlClass',
       delimiters: [
         { left: '$$', right: '$$', display: true },
         ...(state.display?.dollarMath === true ? [{ left: '$', right: '$', display: false }] : []),
@@ -1972,12 +2097,14 @@ function render() {
     reportSlowRender(startedAt, 'virtual_window_render_slow');
     return;
   }
-  const range = visibleRange({
-    heights: messages.map(messageHeight),
-    scrollTop: viewport.scrollTop,
-    viewportHeight: viewport.viewportHeight,
-    overscan: virtualOverscan(viewport.viewportHeight),
-  });
+  const range = PRINT_MODE
+    ? { start: 0, end: messages.length, top: 0, bottom: 0 }
+    : visibleRange({
+        heights: messages.map(messageHeight),
+        scrollTop: viewport.scrollTop,
+        viewportHeight: viewport.viewportHeight,
+        overscan: virtualOverscan(viewport.viewportHeight),
+      });
   renderedRange = { start: range.start, end: range.end };
   mountedSlots.clear();
   topSpacer = document.createElement('div');
@@ -2023,6 +2150,46 @@ function acknowledgeCommittedRender() {
     conversationId: state.conversationId,
     renderRevision: state.renderRevision,
   });
+  if (PRINT_MODE) maybeSchedulePrintComplete();
+}
+
+const PRINT_COMPLETE_POLL_MS = 200;
+const PRINT_COMPLETE_MAX_ATTEMPTS = 150;
+let printCompletePosted = false;
+let printCompleteTimer = 0;
+let printCompleteAttempts = 0;
+
+function maybeSchedulePrintComplete() {
+  if (!PRINT_MODE || printCompletePosted || printCompleteTimer) return;
+  printCompleteAttempts = 0;
+  printCompleteTimer = setInterval(checkPrintComplete, PRINT_COMPLETE_POLL_MS);
+}
+
+function checkPrintComplete() {
+  printCompleteAttempts += 1;
+  const imagesLoaded = [...document.querySelectorAll('img[data-media-handle]')]
+    .every((image) => image.complete);
+  const coreIdle =
+    pendingMedia.size === 0 &&
+    pendingRendererRenders.size === 0 &&
+    pendingRendererRefreshes.size === 0 &&
+    pendingMermaidCommits.size === 0 &&
+    rendererRefreshFrame === 0;
+  const timedOut = printCompleteAttempts >= PRINT_COMPLETE_MAX_ATTEMPTS;
+  if ((coreIdle && imagesLoaded) || timedOut) {
+    clearInterval(printCompleteTimer);
+    printCompleteTimer = 0;
+    printCompletePosted = true;
+    bridge.post({
+      type: 'printRenderComplete',
+      protocolVersion: PROTOCOL_VERSION,
+      assetVersion: ASSET_VERSION,
+      renderSessionId: state?.renderSessionId ?? '',
+      conversationId: state?.conversationId ?? '',
+      capabilityToken: state?.capabilityToken ?? '',
+      ...(timedOut && !(coreIdle && imagesLoaded) ? { timedOut: true } : {}),
+    });
+  }
 }
 
 function releaseInitialBottomPin() {
@@ -2625,17 +2792,22 @@ function enforceScrollStop() {
   restoreScrollStopPosition();
   scrollStopFrame = requestAnimationFrame(enforceScrollStop);
 }
-function stopScrolling() {
+function stopScrolling(origin = 'programmatic') {
   // The Flutter/Android bridge may deliver this call slightly after the DOM
   // pointer event. Never restart the lock after this gesture already became a
   // real drag.
   if (gestureActive && gestureIntent !== 'hold') return;
+  timeline.style.scrollBehavior = 'auto';
+  // Mobile touch devices own the pan: a touch-origin call never arms the
+  // persistent lock. Programmatic or non-touch calls (viewport commands,
+  // Flutter bridge, mouse pointers, virtual-window clamping) still arm, and
+  // an already-established programmatic lock is always honored below.
+  if (origin === 'touch' && isTouchNativeOwned && !scrollStopLock) return;
   if (!scrollStopLock) {
     scrollStopLock = true;
     scrollStopTop = timeline.scrollTop;
     scrollStopLeft = timeline.scrollLeft;
   }
-  timeline.style.scrollBehavior = 'auto';
   restoreScrollStopPosition();
   if (!scrollStopFrame) scrollStopFrame = requestAnimationFrame(enforceScrollStop);
 }
@@ -2675,7 +2847,7 @@ timeline.addEventListener('pointerdown', (event) => {
   gestureIntent = 'hold';
   pointerStartX = event.clientX;
   pointerStartY = event.clientY;
-  stopScrolling();
+  stopScrolling(event.pointerType === 'touch' ? 'touch' : 'pointer');
 }, { passive: true });
 timeline.addEventListener('pointermove', (event) => {
   if (virtualWindowLoading) {
@@ -2715,7 +2887,7 @@ timeline.addEventListener('touchstart', (event) => {
   gestureActive = true;
   gestureIntent = 'hold';
   touchActive = true;
-  stopScrolling();
+  stopScrolling('touch');
   setRenderBlocked(true);
   touchStartX = event.touches[0]?.clientX ?? null;
   touchStartY = event.touches[0]?.clientY ?? null;
@@ -2723,7 +2895,7 @@ timeline.addEventListener('touchstart', (event) => {
 timeline.addEventListener('touchmove', (event) => {
   if (virtualWindowLoading) {
     restoreScrollStopPosition();
-    if (event.cancelable) event.preventDefault();
+    if (!isTouchNativeOwned && event.cancelable) event.preventDefault();
     return;
   }
   const currentX = event.touches[0]?.clientX;
@@ -2738,7 +2910,7 @@ timeline.addEventListener('touchmove', (event) => {
   });
   if (intent === 'hold') {
     restoreScrollStopPosition();
-    if (scrollStopLock && event.cancelable) {
+    if (!isTouchNativeOwned && scrollStopLock && event.cancelable) {
       event.preventDefault();
     }
     return;
@@ -3076,6 +3248,10 @@ function handleMediaResult(payload) {
     media: { ...(state.media ?? {}), [payload.handle]: payload.dataUrl },
   };
   pendingMedia.delete(payload.handle);
+  const transferFamilies = fontFaceTracker.takeTransfer(payload.handle);
+  if (transferFamilies?.size) {
+    registerFontFaces(payload.handle, transferFamilies, payload.dataUrl);
+  }
   for (const image of document.querySelectorAll('img[data-media-handle]')) {
     if (image.dataset.mediaHandle === payload.handle) image.src = payload.dataUrl;
   }
@@ -3091,6 +3267,7 @@ function handleMediaResult(payload) {
       );
     if (affected) updateMountedMessage(message.id);
   }
+  if (PRINT_MODE) maybeSchedulePrintComplete();
 }
 
 window.CuplivoWeb = {
@@ -3123,6 +3300,8 @@ window.CuplivoWeb = {
             localExpansions.clear();
             pendingActions.clear();
             pendingMedia.clear();
+            fontRegistrator.removeAll(document.fonts);
+            fontFaceTracker.reset();
             heights.clear();
             pendingMeasuredHeights.clear();
             mountedSlots.clear();
@@ -3160,6 +3339,11 @@ window.CuplivoWeb = {
           envelope.renderSessionId === state.renderSessionId &&
           envelope.conversationId === state.conversationId) {
         pendingMedia.delete(envelope.handle);
+        if (envelope.code === 'inactive') {
+          fontFaceTracker.cancel(envelope.handle);
+        } else {
+          fontFaceTracker.failTransfer(envelope.handle);
+        }
       }
       else if (envelope.type === 'viewportCommand') handleViewportCommand(envelope);
     } catch (error) {

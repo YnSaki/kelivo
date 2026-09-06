@@ -11,9 +11,14 @@ void main() {
       ).readAsStringSync();
 
       expect(source, contains('onPointerDown'));
-      expect(source, contains('window.CuplivoWeb?.stopScrolling?.();'));
+      expect(
+        source,
+        contains(r'window.CuplivoWeb?.stopScrolling?.(${jsonEncode(origin)});'),
+      );
+      expect(source, contains("_stopWebScrolling('programmatic')"));
+      expect(source, contains('PointerDeviceKind.touch'));
       expect(source, contains('_windowsController?.executeScript'));
-      expect(source, contains('_androidController?.stopScrolling()'));
+      expect(source, contains('_androidController?.stopScrolling(origin)'));
       expect(source, contains('_flutterController?.runJavaScript'));
     },
   );
@@ -28,10 +33,10 @@ void main() {
       expect(source, contains('_sendViewportCommand'));
       final methodStart = source.indexOf('Future<void> _sendViewportCommand');
       final methodBody = source.substring(methodStart, methodStart + 500);
-      expect(methodBody.indexOf('_stopWebScrolling()'), isNonNegative);
+      expect(methodBody, contains("_stopWebScrolling('programmatic')"));
       expect(
-        methodBody.indexOf('_sendEnvelope(command)'),
-        greaterThan(methodBody.indexOf('_stopWebScrolling()')),
+        methodBody.indexOf("_sendEnvelope(command)"),
+        greaterThan(methodBody.indexOf("_stopWebScrolling('programmatic')")),
       );
     },
   );
@@ -193,7 +198,7 @@ void main() {
     final automaticBody = source.substring(scheduleStart, confirmStart);
     final explicitBody = source.substring(
       confirmStart,
-      source.indexOf('String _webCssColor', confirmStart),
+      source.indexOf('Widget _buildChatInputBar', confirmStart),
     );
 
     expect(automaticBody, contains('_showWebMultiAIFallbackNotice()'));
@@ -221,7 +226,7 @@ void main() {
     'HomePage assigns the Flutter-owned background mode to Web snapshots',
     () {
       final source = File(
-        'lib/features/home/pages/home_page.dart',
+        'lib/features/home/webview/web_chat_snapshot.dart',
       ).readAsStringSync();
 
       expect(source, contains("'backgroundOwner': 'flutter'"));
@@ -232,7 +237,7 @@ void main() {
     'HomePage passes Flutter code-block surface tokens to Web snapshots',
     () {
       final source = File(
-        'lib/features/home/pages/home_page.dart',
+        'lib/features/home/webview/web_chat_snapshot.dart',
       ).readAsStringSync();
 
       expect(source, contains("'code-body'"));
@@ -247,7 +252,7 @@ void main() {
     'HomePage reuses the localized Web loading label for virtual windows',
     () {
       final source = File(
-        'lib/features/home/pages/home_page.dart',
+        'lib/features/home/webview/web_chat_snapshot.dart',
       ).readAsStringSync();
 
       expect(source, contains("'loading': l10n.webChatLoading"));
@@ -255,25 +260,31 @@ void main() {
   );
 
   test('Windows Web assets reuse only complete versioned caches', () {
-    final source = File(
+    final viewportSource = File(
       'lib/features/home/webview/web_conversation_viewport.dart',
     ).readAsStringSync();
+    final cacheSource = File(
+      'lib/features/home/webview/web_chat_shell_cache.dart',
+    ).readAsStringSync();
 
-    expect(source, contains('.complete'));
-    expect(source, contains('.complete.tmp'));
-    expect(source, contains('_windowsCacheIsComplete'));
-    expect(source, contains('_cleanupOldWindowsCaches'));
-    expect(source, contains("'mermaid.min.js'"));
+    expect(cacheSource, contains('.complete'));
+    expect(cacheSource, contains('.complete.tmp'));
+    expect(cacheSource, contains('_windowsCacheIsComplete'));
+    expect(cacheSource, contains('_cleanupOldWindowsCaches'));
+    expect(cacheSource, contains("'mermaid.min.js'"));
     expect(
-      source,
+      viewportSource,
       contains("queryParameters: <String, String>{'platform': 'windows'}"),
     );
-    expect(source, contains('addVirtualHostNameMapping'));
-    expect(source, contains("scheme: 'https'"));
-    expect(source, contains("host: _windowsVirtualHost"));
-    expect(source, contains('winweb.WebviewHostResourceAccessKind.deny'));
-    expect(source, isNot(contains('Uri.file(shell.path)')));
-    expect(RegExp(r'flush: true').allMatches(source), hasLength(1));
+    expect(viewportSource, contains('addVirtualHostNameMapping'));
+    expect(viewportSource, contains("scheme: 'https'"));
+    expect(viewportSource, contains("host: webChatWindowsVirtualHost"));
+    expect(
+      viewportSource,
+      contains('winweb.WebviewHostResourceAccessKind.deny'),
+    );
+    expect(viewportSource, isNot(contains('Uri.file(shell.path)')));
+    expect(RegExp(r'flush: true').allMatches(cacheSource), hasLength(1));
   });
 
   test(
@@ -290,13 +301,47 @@ void main() {
       expect(nativeSource, contains('MotionEvent.ACTION_DOWN'));
       expect(nativeSource, contains('"stopScrolling"'));
       expect(nativeSource, contains('webView.flingScroll(0, 0)'));
-      expect(nativeSource, contains('window.CuplivoWeb?.stopScrolling?.();'));
-      expect(nativeSource, contains('stopScrolling { result.success(null) }'));
-      expect(nativeSource, contains('onComplete?.invoke()'));
+      expect(
+        nativeSource,
+        contains("window.CuplivoWeb?.stopScrolling?.('touch');"),
+      );
+      expect(
+        nativeSource,
+        contains("window.CuplivoWeb?.stopScrolling?.('programmatic');"),
+      );
+      expect(
+        nativeSource,
+        contains('stopScrolling(call.arguments as? String)'),
+      );
       expect(
         controllerSource,
-        contains("Future<void> stopScrolling() => _invoke('stopScrolling')"),
+        contains(
+          "Future<void> stopScrolling([String origin = 'programmatic'])",
+        ),
       );
+    },
+  );
+
+  test(
+    'Darwin shell loads from a loopback server and awaits channel registration',
+    () {
+      final source = File(
+        'lib/features/home/webview/web_conversation_viewport.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('LocalWebChatShellServer.acquire()'));
+      expect(source, contains('isLocalShellUri'));
+      final acquireAt = source.indexOf('LocalWebChatShellServer.acquire()');
+      final channelAt = source.indexOf('await controller.addJavaScriptChannel');
+      expect(acquireAt, greaterThan(0));
+      expect(channelAt, greaterThan(0));
+      final loadAt = source.indexOf(
+        'await controller.loadRequest(server.shellUri)',
+      );
+      expect(loadAt, greaterThan(0));
+      expect(channelAt, greaterThan(acquireAt));
+      expect(loadAt, greaterThan(channelAt));
+      expect(source.substring(acquireAt, loadAt), contains("'CuplivoChat'"));
     },
   );
 }

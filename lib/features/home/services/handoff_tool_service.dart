@@ -13,7 +13,6 @@ import '../../../core/services/api/chat_api_service.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/generation_engine.dart';
 import '../../../utils/utf16_safe_cut.dart';
-import '../../chat/utils/thinking_tag_parser.dart';
 import 'ask_user_interaction_service.dart';
 import 'local_tools_service.dart';
 import 'message_builder_service.dart';
@@ -30,13 +29,36 @@ import 'tool_handler_service.dart';
 class HandoffToolService {
   const HandoffToolService._();
 
+  /// Maximum number of nested sub-agent layers (chain of parent links).
+  /// A delegating conversation at this depth is rejected: deeper chains are
+  /// treated as unbounded recursion (A → B → C → D stops at D).
+  static const int maxDelegationDepth = 3;
+
+  /// Depth of the delegating conversation = number of ancestor links, walking
+  /// `Conversation.parentConversationId` (written by every handoff; nothing
+  /// else creates parent links). Root conversation = 0.
+  static int _delegationDepth(ChatService chatService, String startId) {
+    var depth = 0;
+    var currentId = startId;
+    final visited = <String>{};
+    while (currentId.isNotEmpty && visited.add(currentId)) {
+      if (depth >= maxDelegationDepth) break;
+      final parentId = chatService
+          .getConversation(currentId)
+          ?.parentConversationId;
+      currentId = parentId ?? '';
+      if (parentId != null) depth++;
+    }
+    return depth;
+  }
+
   static Future<String> execute({
     required Map<String, dynamic> args,
     required AssistantProvider assistants,
     required ChatService chatService,
     required GenerationEngine engine,
     required BuildContext context,
-    Assistant? delegatingAssistant,
+    String? delegatingConversationId,
   }) async {
     final handoffId = (args['assistant'] ?? '').toString().trim();
     final task = (args['task'] ?? '').toString().trim();
@@ -61,14 +83,8 @@ class HandoffToolService {
       );
     }
 
-    // Self-delegation is rejected: delegating a task to your own assistant
-    // is equivalent to doing it yourself and can spin into unbounded
-    // recursion, so the current assistant is never a valid target.
     final matches = assistants.assistants.where(
-      (a) =>
-          a.discoverable &&
-          a.handoffId == handoffId &&
-          a.id != delegatingAssistant?.id,
+      (a) => a.discoverable && a.handoffId == handoffId,
     );
     final target = matches.isNotEmpty ? matches.first : null;
 
@@ -78,8 +94,7 @@ class HandoffToolService {
             (a) =>
                 a.discoverable &&
                 a.handoffId != null &&
-                a.handoffId!.isNotEmpty &&
-                a.id != delegatingAssistant?.id,
+                a.handoffId!.isNotEmpty,
           )
           .map((a) => a.handoffId!)
           .toList();
@@ -96,16 +111,36 @@ class HandoffToolService {
       );
     }
 
-    final parentConversationId = chatService.currentConversationId;
+    // Hard depth cap: bound the delegation chain the model could create with
+    // repeated handoffs (self-delegation is allowed and would otherwise spin
+    // A → A → A → … forever).
+    final parentConversationId =
+        delegatingConversationId ?? chatService.currentConversationId;
+    final depth = _delegationDepth(chatService, parentConversationId ?? '');
+    if (depth >= maxDelegationDepth) {
+      return _toolError(
+        error: 'subagent_max_depth',
+        message:
+            'Error: the sub-agent delegation chain already reached the '
+            'maximum depth of $maxDelegationDepth nested sub-agents. '
+            'Do not delegate further — run the work directly or ask the '
+            'user.',
+        tool: LocalToolNames.handoff,
+      );
+    }
 
     final conversation = await chatService.createConversation(
       assistantId: target.id,
       mcpServerIds: target.mcpServerIds,
       parentConversationId: parentConversationId,
-      // The delegating conversation stays "current": the subagent panel keys
-      // off ChatService.currentConversationId, and nested handoffs must
-      // attribute their parent to the real delegating conversation, not to
-      // whichever child was created last.
+      // The parent is the conversation whose generation issued this tool
+      // call (the tool handler's captured context) — NOT the global current
+      // conversation: children are created with setAsCurrent: false, so a
+      // nested handoff would otherwise attach to the root forever. The
+      // subagent panel keys off ChatService.currentConversationId and
+      // shows wait-mode rounds whose parent matches it, so the real
+      // delegator keeps its own children; deeper layers are visible from
+      // their delegator's conversation view.
       setAsCurrent: false,
     );
     await chatService.addMessage(
@@ -218,6 +253,7 @@ class HandoffToolService {
         target,
         providerKey: providerKey,
         modelId: modelId,
+        requestId: conversation.id,
       );
       // ignore: use_build_context_synchronously (root context)
       final toolHandler = ToolHandlerService(contextProvider: context);
@@ -371,15 +407,13 @@ class HandoffToolService {
           .replaceAll('{locale}', locale)
           .replaceAll('{content}', content);
 
-      final raw = (await ChatApiService.generateText(
+      final title = (await ChatApiService.generateText(
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: conversationId,
         thinkingBudget: budget,
       )).trim();
-      final title = ThinkingTagParser.parseLegacyInlineBlocks(
-        raw,
-      ).visibleContent;
       if (title.isNotEmpty) {
         await chatService.renameConversation(conversationId, title);
         debugPrint('[HandoffTool] title generated for $conversationId: $title');

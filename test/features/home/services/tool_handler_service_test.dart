@@ -25,7 +25,7 @@ void main() {
       businessPrefs = BusinessPreferences.memoryForTests({});
     });
 
-    testWidgets('edit_memory returns updated content when id exists', (
+    testWidgets('edit_memory returns typed JSON confirmation when id exists', (
       tester,
     ) async {
       final assistant = Assistant(
@@ -62,7 +62,157 @@ void main() {
         'content': 'new memory',
       });
 
-      expect(result, contains('<content>new memory</content>'));
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload, {'type': 'memory_edited', 'id': memory.id});
+      expect(payload, hasLength(2));
+    });
+
+    testWidgets('create_memory returns typed JSON confirmation with new id', (
+      tester,
+    ) async {
+      final assistant = Assistant(
+        id: 'assistant-a',
+        name: 'Assistant',
+        enableMemory: true,
+      );
+
+      await tester.pumpWidget(
+        _ToolHandlerTestScope(
+          child: Builder(
+            builder: (context) {
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      final context = tester.element(find.byType(SizedBox));
+      final handler = ToolHandlerService(contextProvider: context)
+          .buildToolCallHandler(
+            SettingsProvider(preferences: businessPrefs),
+            assistant,
+          )!;
+
+      final result = await handler('create_memory', {'content': 'new memory'});
+
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload['type'], 'memory_created');
+      expect(payload['id'], isA<int>());
+      expect(payload['id'], greaterThan(0));
+      expect(payload, hasLength(2));
+      final stored = context.read<MemoryProvider>().getForAssistant(
+        assistant.id,
+      );
+      expect(stored.single.content, 'new memory');
+    });
+
+    testWidgets('create_memory rejects empty content', (tester) async {
+      final assistant = Assistant(
+        id: 'assistant-a',
+        name: 'Assistant',
+        enableMemory: true,
+      );
+
+      await tester.pumpWidget(
+        _ToolHandlerTestScope(
+          child: Builder(
+            builder: (context) {
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      final context = tester.element(find.byType(SizedBox));
+      final handler = ToolHandlerService(contextProvider: context)
+          .buildToolCallHandler(
+            SettingsProvider(preferences: businessPrefs),
+            assistant,
+          )!;
+
+      final result = await handler('create_memory', {'content': ''});
+
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload['type'], 'tool_error');
+      expect(payload['error'], 'invalid_memory_content');
+      expect(payload['tool'], 'create_memory');
+    });
+
+    testWidgets('delete_memory returns typed JSON confirmation', (
+      tester,
+    ) async {
+      final assistant = Assistant(
+        id: 'assistant-a',
+        name: 'Assistant',
+        enableMemory: true,
+      );
+
+      await tester.pumpWidget(
+        _ToolHandlerTestScope(
+          child: Builder(
+            builder: (context) {
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      final context = tester.element(find.byType(SizedBox));
+      final memoryProvider = context.read<MemoryProvider>();
+      final memory = await memoryProvider.add(
+        assistantId: assistant.id,
+        content: 'doomed memory',
+      );
+      final handler = ToolHandlerService(contextProvider: context)
+          .buildToolCallHandler(
+            SettingsProvider(preferences: businessPrefs),
+            assistant,
+          )!;
+
+      final result = await handler('delete_memory', {'id': memory.id});
+
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload, {'type': 'memory_deleted', 'id': memory.id});
+      expect(payload, hasLength(2));
+      expect(memoryProvider.getForAssistant(assistant.id), isEmpty);
+    });
+
+    testWidgets('read_memory keeps the XML <memories> data payload', (
+      tester,
+    ) async {
+      final assistant = Assistant(
+        id: 'assistant-a',
+        name: 'Assistant',
+        enableMemory: true,
+      );
+
+      await tester.pumpWidget(
+        _ToolHandlerTestScope(
+          child: Builder(
+            builder: (context) {
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      final context = tester.element(find.byType(SizedBox));
+      final memoryProvider = context.read<MemoryProvider>();
+      await memoryProvider.add(
+        assistantId: assistant.id,
+        content: 'first memory',
+      );
+      final handler = ToolHandlerService(contextProvider: context)
+          .buildToolCallHandler(
+            SettingsProvider(preferences: businessPrefs),
+            assistant,
+          )!;
+
+      final result = await handler('read_memory', {});
+
+      expect(result, contains('<memories>'));
+      expect(result, contains('<content>first memory</content>'));
+      expect(result, isNot(contains('"type"')));
     });
 
     testWidgets('edit_memory returns tool error when id does not exist', (

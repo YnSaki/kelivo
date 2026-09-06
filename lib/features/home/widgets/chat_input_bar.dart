@@ -399,6 +399,17 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   bool _supportsImagesApiRouting(BuildContext context) {
+    // Group chat chooses the generating model per member assistant, so the
+    // global 1:1 model is meaningless here. Every member resolves image
+    // routing against its own model inside the API layer; the composer keeps
+    // the default allow (single ChatInputData produced by _handleSend).
+    if (widget.mode == ChatInputMode.groupChat) {
+      _inputStatus.updateImageModeKey(
+        null,
+        conversationId: widget.conversationId,
+      );
+      return false;
+    }
     final settings = context.watch<SettingsProvider>();
     final ap = context.watch<AssistantProvider>();
     final a = ap.currentAssistant;
@@ -432,6 +443,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   void _checkImageWarning(BuildContext context) {
+    if (widget.mode == ChatInputMode.groupChat) {
+      _inputStatus.updateImageWarningKey(null);
+      return;
+    }
     if (_images.isEmpty) {
       _inputStatus.updateImageWarningKey(null);
       return;
@@ -1665,6 +1680,83 @@ class _ChatInputBarState extends State<ChatInputBar>
     return KeyEventResult.handled;
   }
 
+  /// Handles rich content pushed by an IME via the Android
+  /// `commitContent` path (Gboard / WeChat clipboard image paste, etc.).
+  /// The engine already resolved the content URI to bytes, so behave like
+  /// the normal clipboard flow: persist to the upload dir and attach.
+  Future<void> _handleInsertedContent(KeyboardInsertedContent content) async {
+    final format = switch (content.mimeType.toLowerCase()) {
+      'image/png' => 'png',
+      'image/jpeg' || 'image/jpg' => 'jpeg',
+      'image/gif' => 'gif',
+      'image/webp' => 'webp',
+      _ => null,
+    };
+    if (format == null) {
+      debugPrint(
+        '[ChatInputBar] Ignored IME content with unsupported type: '
+        '${content.mimeType}',
+      );
+      return;
+    }
+    final bytes = content.data;
+    if (bytes == null || bytes.isEmpty) {
+      debugPrint('[ChatInputBar] Ignored IME content with no data.');
+      return;
+    }
+    if (!mounted) return;
+    final savedPath = await _savePastedImageBytes(format, bytes);
+    if (savedPath == null || !mounted) return;
+    _addImages([savedPath]);
+  }
+
+  /// Persists pasted image bytes under the upload directory with a unique
+  /// `paste_<ts>[_n].<ext>` name so the file outlives its temporary source.
+  ///
+  /// Allocation is collision-safe under concurrent IME insertions: the name
+  /// is reserved atomically via exclusive create, and a numeric suffix is
+  /// retried on a name clash.
+  Future<String?> _savePastedImageBytes(String format, Uint8List bytes) async {
+    File? reserved;
+    try {
+      final dir = await AppDirectories.getUploadDirectory();
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final ext = format.toLowerCase();
+      final fileExt = ext == 'jpeg' ? 'jpg' : ext;
+      final baseName = 'paste_${DateTime.now().millisecondsSinceEpoch}';
+      var counter = 0;
+      while (true) {
+        final suffix = counter == 0 ? '' : '_$counter';
+        final file = File(p.join(dir.path, '$baseName$suffix.$fileExt'));
+        try {
+          await file.create(exclusive: true);
+          reserved = file;
+          break;
+        } on FileSystemException {
+          if (!await file.exists()) rethrow;
+          counter++;
+        }
+      }
+      await reserved.writeAsBytes(bytes, flush: true);
+      return reserved.path;
+    } catch (e) {
+      if (reserved != null) {
+        try {
+          await reserved.delete();
+        } catch (cleanupError) {
+          debugPrint(
+            '[ChatInputBar] Failed to delete reserved upload '
+            '${reserved.path}: $cleanupError',
+          );
+        }
+      }
+      debugPrint('[ChatInputBar] Failed to persist pasted image: $e');
+      return null;
+    }
+  }
+
   Future<void> _handlePasteFromClipboard() async {
     // 1) Prefer reading via super_clipboard for better Windows support
     try {
@@ -1697,30 +1789,6 @@ class _ChatInputBarState extends State<ChatInputBar>
               if (!completer.isCompleted) completer.complete(null);
             }
             return await completer.future;
-          } catch (_) {
-            return null;
-          }
-        }
-
-        // Helper: persist bytes as a file under upload directory
-        Future<String?> saveImageBytes(String format, Uint8List bytes) async {
-          try {
-            final dir = await AppDirectories.getUploadDirectory();
-            if (!await dir.exists()) {
-              await dir.create(recursive: true);
-            }
-            final ts = DateTime.now().millisecondsSinceEpoch;
-            final ext = format.toLowerCase();
-            final fileExt = ext == 'jpeg' ? 'jpg' : ext;
-            String name = 'paste_$ts.$fileExt';
-            String destPath = p.join(dir.path, name);
-            if (await File(destPath).exists()) {
-              name =
-                  'paste_${ts}_${DateTime.now().microsecondsSinceEpoch}.$fileExt';
-              destPath = p.join(dir.path, name);
-            }
-            await File(destPath).writeAsBytes(bytes, flush: true);
-            return destPath;
           } catch (_) {
             return null;
           }
@@ -1770,7 +1838,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
 
         if (bytes != null && bytes.isNotEmpty && fmt != null) {
-          final savedPath = await saveImageBytes(fmt, bytes);
+          final savedPath = await _savePastedImageBytes(fmt, bytes);
           if (savedPath != null) {
             _addImages([savedPath]);
             return;
@@ -3223,6 +3291,21 @@ class _ChatInputBarState extends State<ChatInputBar>
                                             controller: _controller,
                                             focusNode: widget.focusNode,
                                             onChanged: _onTextChanged,
+                                            // Android only: accepts image content
+                                            // pushed by IMEs (Gboard / WeChat
+                                            // clipboard paste via commitContent).
+                                            contentInsertionConfiguration:
+                                                ContentInsertionConfiguration(
+                                                  onContentInserted:
+                                                      _handleInsertedContent,
+                                                  allowedMimeTypes: const [
+                                                    'image/png',
+                                                    'image/jpeg',
+                                                    'image/jpg',
+                                                    'image/gif',
+                                                    'image/webp',
+                                                  ],
+                                                ),
                                             readOnly: _composerLocked,
                                             minLines: 1,
                                             maxLines: _isExpanded ? 25 : 5,

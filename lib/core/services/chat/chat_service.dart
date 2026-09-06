@@ -15,6 +15,7 @@ import '../../../utils/app_directories.dart';
 import '../../../utils/path_canon.dart';
 import '../deleted_records_store.dart';
 import '../workspace/linux_sandbox_service.dart';
+import '../workspace/workspace_terminal_native_bridge.dart';
 
 /// Resolves the effective chat model (assistant binding ?? global default)
 /// that a new conversation should snapshot, or null when no snapshot should
@@ -25,6 +26,13 @@ typedef ConversationModelSnapshotResolver =
     );
 
 class ChatService extends ChangeNotifier {
+  ChatService({Future<void> Function()? stopWorkspaceTerminals})
+    : _stopWorkspaceTerminals =
+          stopWorkspaceTerminals ??
+          WorkspaceTerminalNativeBridge.instance.stopAllSessions;
+
+  final Future<void> Function() _stopWorkspaceTerminals;
+
   static const int defaultInitialMessageMin = 2;
   static const int defaultInitialMessageMax = 240;
   static const int defaultInitialTextBudget = 20000;
@@ -1030,7 +1038,13 @@ class ChatService extends ChangeNotifier {
     if (conversation != null) {
       if (!conversation.messageIds.contains(message.id)) {
         conversation.messageIds.add(message.id);
-        // Keep original updatedAt during restore
+        // Keep original updatedAt during restore, but never let a restore
+        // regress it below the newest incoming message (issue #545: synced
+        // messages sorted to the bottom because the conversation kept a
+        // stale updatedAt from before the messages arrived).
+        if (message.timestamp.isAfter(conversation.updatedAt)) {
+          conversation.updatedAt = message.timestamp;
+        }
         await _saveConversation(conversation);
       }
     }
@@ -1047,6 +1061,22 @@ class ChatService extends ChangeNotifier {
       }
     }
 
+    notifyListeners();
+  }
+
+  /// Replaces an existing conversation's row wholesale (same id).
+  ///
+  /// Used by LAN-sync direction merges (issue #615, category D): the winner's
+  /// conversation copy replaces the loser's fields. Only the row fields are
+  /// persisted — `messageIds` is derived from message_rows by the repository
+  /// (no stored column), so the local message list survives the replace
+  /// regardless; the caller passes the local list to keep the in-memory row
+  /// truthful, and the message append path (addMessageDirectly) owns
+  /// ID-append plus the updatedAt rider (issue #545).
+  Future<void> replaceConversationRow(Conversation updated) async {
+    if (!_initialized) await init();
+    await _saveConversation(updated);
+    await _refreshConversation(updated.id);
     notifyListeners();
   }
 
@@ -2080,6 +2110,46 @@ class ChatService extends ChangeNotifier {
     return skip;
   }
 
+  /// Single canonical version-collapse implementation: groups messages by
+  /// `groupId ?? id`, keeps the first-occurrence order, sorts each group by
+  /// version and returns the selected-index (defaulting to the last) version
+  /// per group. All other collapsers in the repo delegate here.
+  static List<ChatMessage> collapseMessageVersions(
+    List<ChatMessage> items,
+    Map<String, int> versionSelections,
+  ) {
+    final Map<String, List<ChatMessage>> byGroup =
+        <String, List<ChatMessage>>{};
+    final List<String> order = <String>[];
+
+    for (final m in items) {
+      final gid = (m.groupId ?? m.id);
+      final list = byGroup.putIfAbsent(gid, () {
+        order.add(gid);
+        return <ChatMessage>[];
+      });
+      list.add(m);
+    }
+
+    // Sort each group by version
+    for (final e in byGroup.entries) {
+      e.value.sort((a, b) => a.version.compareTo(b.version));
+    }
+
+    // Select the appropriate version from each group
+    final out = <ChatMessage>[];
+    for (final gid in order) {
+      final vers = byGroup[gid]!;
+      final sel = versionSelections[gid];
+      final idx = (sel != null && sel >= 0 && sel < vers.length)
+          ? sel
+          : (vers.length - 1);
+      out.add(vers[idx]);
+    }
+
+    return out;
+  }
+
   Future<void> deleteMessage(String messageId) async {
     if (!_initialized) return;
 
@@ -2180,6 +2250,12 @@ class ChatService extends ChangeNotifier {
   Future<void> clearAllData() async {
     if (!_initialized) return;
 
+    try {
+      await _stopWorkspaceTerminals();
+    } catch (error) {
+      if (error is WorkspaceTerminalStopException) rethrow;
+      throw WorkspaceTerminalStopException(error);
+    }
     await _repo.clearAllData();
     _messagesCache.clear();
     _conversationsCache.clear();

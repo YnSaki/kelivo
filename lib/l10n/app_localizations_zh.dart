@@ -355,6 +355,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get storageSpaceSortByTime => '按时间';
 
   @override
+  String get storageSpaceNoCacheFiles => '暂无缓存文件';
+
+  @override
+  String storageSpaceDeletedCacheFilesDone(Object count) {
+    return '已删除 $count 个缓存文件';
+  }
+
+  @override
   String get storageWorkspaceEntryTitle => '工作区';
 
   @override
@@ -1537,6 +1545,133 @@ class AppLocalizationsZh extends AppLocalizations {
   String get androidBackgroundNotificationText => '后台保持聊天生成';
 
   @override
+  String get keepAliveGuidePageTitle => '后台保活引导';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '电池优化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若状态不是「无限制」，点击此行允许 Cuplivo 忽略电池优化，后台生成才能顺利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '无限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受优化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '检查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允许';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允许';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查询失败';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被禁用，可在系统设置中开启。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知权限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知权限才能发送后台完成通知。若被禁用，点击此行按系统提示授权。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '厂商电源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未识别';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：设置 → 应用设置 → 自启动管理，开启 Cuplivo；设置 → 省电与电池 → 省电策略，将 Cuplivo 设为「无限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '华为：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许自启动、关联启动与后台活动。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '荣耀：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许后台活动。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；电池 → 应用耗电 → 无限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：设置 → 电池 → 应用耗电管理 → Cuplivo → 不限制；应用 → 自启动，开启。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；i 管家 → 耗电管理 → 后台起动，允许。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：设置 → 电池和日常维护 → 电池 → 后台使用限制；确保 Cuplivo 未在「休眠的应用」列表中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：设置 → 应用管理 → 权限管理 → 后台权限；或手机管家 → 电量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '未能识别您的手机品牌。可在系统设置的「应用 → Cuplivo → 耗电/电池」中将电源改为「无限制」；多数系统在最近任务列表中还可将应用「锁定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自启动';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省电设置';
+
+  @override
+  String get keepAliveGuideLockTitle => '后台锁定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任务列表中长按 Cuplivo 卡片并选择「锁定」，避免一键清理将其杀死。小米：长按卡片 → 锁定；华为/荣耀：下拉卡片；OPPO/一加：长按 → 锁定；vivo：点击右上角锁形图标。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已打开通用设置页。若找不到对应选项，请按下方步骤操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '无法打开任何设置页，请按下方步骤手动操作。';
+
+  @override
   String get assistantEditEmojiDialogTitle => '选择表情';
 
   @override
@@ -2135,9 +2270,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get backupPageExportToFile => '导出为文件';
 
   @override
-  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
-
-  @override
   String get backupPageExportToFileSubtitle => '导出APP数据为文件';
 
   @override
@@ -2145,9 +2277,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get backupPageImportBackupFileSubtitle => '导入本地备份文件';
-
-  @override
-  String get backupPageImportFromOtherApps => '从其他APP导入';
 
   @override
   String get backupPageImportFromKelivo => '从新版 Kelivo 导入';
@@ -2301,6 +2430,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get backupPageLocalBackup => '本地备份';
 
   @override
+  String get backupPageChannelManagement => '备份渠道管理';
+
+  @override
+  String get backupPageFullBackupSection => '全量备份';
+
+  @override
+  String get backupPageImportRestoreSection => '导入恢复';
+
+  @override
+  String get backupPageChannelEnabled => '已启用';
+
+  @override
+  String get backupPageChannelNotConfigured => '未配置';
+
+  @override
+  String get backupPageChannelLocalAlwaysOn => '始终可用';
+
+  @override
+  String get backupPageRestoreFromWebDav => '从 WebDAV 恢复';
+
+  @override
+  String get backupPageRestoreFromS3 => '从 S3 恢复';
+
+  @override
   String get backupPageImportFromCherryStudio => '从 Cherry Studio 导入';
 
   @override
@@ -2308,6 +2461,83 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get backupPageIncrementalTitle => '增量备份';
+
+  @override
+  String get backupPageRestoreFromBackup => '从备份恢复';
+
+  @override
+  String get backupPageTestingConnection => '测试中…';
+
+  @override
+  String backupEntryDueLine(Object time) {
+    return '该备份了 · 上次备份 $time';
+  }
+
+  @override
+  String get backupHeroHealthyTitle => '数据已有备份';
+
+  @override
+  String backupHeroLastBackup(Object time) {
+    return '上次备份 $time';
+  }
+
+  @override
+  String get backupHeroDueTitle => '该备份了';
+
+  @override
+  String get backupHeroNoTitle => '还没有备份';
+
+  @override
+  String get backupHeroNoDetail => '聊天记录目前只保存在这台设备上';
+
+  @override
+  String get backupSectionExportSync => '导出与同步';
+
+  @override
+  String get backupSectionAuto => '自动备份';
+
+  @override
+  String get backupRestoreCloud => '从云端恢复';
+
+  @override
+  String get backupRestoreCloudNone => '尚未配置云端渠道';
+
+  @override
+  String get backupMigrateTitle => '数据迁移';
+
+  @override
+  String get backupMigrateRowSubtitle => '在 Cuplivo 与其他应用之间迁移数据';
+
+  @override
+  String get backupMigrateExportLabel => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageContentLabel => '备份内容';
+
+  @override
+  String get backupScopeChatsAssistants => '聊天记录及助手';
+
+  @override
+  String get backupScopeSettings => '设置项';
+
+  @override
+  String get backupScopeAttachments => '附件';
+
+  @override
+  String get backupScopeWorkspaces => '工作区';
+
+  @override
+  String get backupScopeSkills => '技能';
+
+  @override
+  String get backupScopeFontsAvatars => '字体与头像';
+
+  @override
+  String get backupDestLocal => '本地';
+
+  @override
+  String get backupPageExportKelivoCompatibleSubtitle =>
+      '生成可供旧版 Kelivo 或旧版 Cuplivo 导入的完整备份';
 
   @override
   String get backupPageIncrementalDescription => '仅导出某个日期之后的聊天数据。';
@@ -2420,16 +2650,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get backupReminderCustomDaysInvalid => '请输入 1 到 365 之间的数字。';
 
   @override
-  String get backupReminderSidebarTitle => '备份提醒';
+  String get backupEntryAlwaysVisibleTitle => '常驻显示备份入口';
 
   @override
-  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+  String get backupEntryJustNow => '刚刚';
 
   @override
-  String get backupReminderSidebarAction => '去备份';
+  String backupEntryMinutesAgo(num count) {
+    return '$count 分钟前';
+  }
 
   @override
-  String get backupReminderSnoozeTooltip => '稍后提醒';
+  String backupEntryHoursAgo(num count) {
+    return '$count 小时前';
+  }
+
+  @override
+  String backupEntryDaysAgo(num count) {
+    return '$count 天前';
+  }
+
+  @override
+  String backupEntryDateWithYear(Object date, Object year) {
+    return '$date（$year）';
+  }
 
   @override
   String get lanSyncSectionTitle => '局域网同步';
@@ -2492,6 +2736,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get lanSyncClientConfirm => '开始同步';
 
   @override
+  String get lanSyncPriorityLabel => '冲突处理';
+
+  @override
+  String get lanSyncPriorityAuto => '自动（默认合并）';
+
+  @override
+  String get lanSyncPriorityInitiatorWins => '本机优先';
+
+  @override
+  String get lanSyncPriorityServerWins => '对方优先';
+
+  @override
+  String get lanSyncPeerPriorityInitiatorWins => '对方选择「本机优先」：冲突数据将以对方版本为准。';
+
+  @override
+  String get lanSyncPeerPriorityServerWins => '对方选择「对方优先」：冲突数据将保留本机版本。';
+
+  @override
   String get lanSyncClientExchanging => '正在交换数据...';
 
   @override
@@ -2523,6 +2785,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get lanSyncPlanNoChanges => '无待同步内容。';
+
+  @override
+  String get lanSyncPlanPrioritySettings => '已选择冲突方向：将交换设置数据。';
 
   @override
   String lanSyncPlanToSendFiles(Object count, Object size) {
@@ -3045,6 +3310,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatSelectionExportImage => '图片';
 
   @override
+  String get chatSelectionExportPdf => 'PDF';
+
+  @override
   String get chatSelectionThinkingTools => '思考工具';
 
   @override
@@ -3134,10 +3402,33 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageExportSheetMarkdown => 'Markdown';
 
   @override
+  String get messageExportSheetPdf => 'PDF';
+
+  @override
   String get messageExportSheetSingleMarkdownSubtitle => '将该消息导出为 Markdown 文件';
 
   @override
+  String get messageExportSheetPdfIncomplete => 'PDF 已导出，部分图片或图表可能不完整';
+
+  @override
+  String get messageExportSheetPdfUnsupported =>
+      'PDF 导出目前仅支持 Windows 和 Android';
+
+  @override
+  String get messageExportSheetPdfExportInProgress => '另一个 PDF 导出正在进行中。';
+
+  @override
+  String get messageExportSheetPdfAndroidWebViewUnsupported =>
+      '请更新 Android System WebView 后再导出 PDF。';
+
+  @override
+  String get messageExportSheetPdfAndroidFailed => '无法导出 PDF，请重试。';
+
+  @override
   String get messageExportSheetPlainText => '纯文本';
+
+  @override
+  String get messageExportSheetSinglePdfSubtitle => '将该消息导出为 PDF 文件';
 
   @override
   String get messageExportSheetSingleTxtSubtitle => '将该消息导出为 TXT 文件';
@@ -6671,6 +6962,49 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providersPageMultiSelectTooltip => '多选';
 
   @override
+  String get providersPageHideBuiltinAction => '隐藏内置供应商';
+
+  @override
+  String get providersPageHideBuiltinTitle => '隐藏内置供应商';
+
+  @override
+  String get providersPageHideSelectedConfirmContent =>
+      '隐藏的内置供应商可随时从供应商列表底部恢复。';
+
+  @override
+  String providersPageBatchDeleteMixedConfirmContent(
+    int deleteCount,
+    int hideCount,
+  ) {
+    return '将删除 $deleteCount 个自定义供应商，并隐藏 $hideCount 个内置供应商。内置供应商可随时从列表底部恢复。';
+  }
+
+  @override
+  String providersPageHideBuiltinSnackbar(int count) {
+    return '已隐藏 $count 个内置供应商';
+  }
+
+  @override
+  String providersPageBatchDeleteMixedSnackbar(int deleteCount, int hideCount) {
+    return '已删除 $deleteCount 个供应商，隐藏 $hideCount 个内置供应商';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsButton(int count) {
+    return '恢复内置供应商（$count）';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsConfirm(int count) {
+    return '将恢复 $count 个隐藏的内置供应商？已保存的配置将一并恢复。';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsSnackbar(int count) {
+    return '已恢复 $count 个内置供应商';
+  }
+
+  @override
   String get providersPageDeleteSelectedConfirmContent =>
       '确定要删除选中的供应商吗？该操作不可撤销。';
 
@@ -6795,6 +7129,56 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get networkProxyPriorityNote => '当同时开启全局代理与供应商代理时，将优先使用供应商代理。';
+
+  @override
+  String get settingsPageAutoRetry => '自动重试';
+
+  @override
+  String get autoRetryEnableLabel => '开启自动重试';
+
+  @override
+  String get autoRetryMaxRetries => '最大重试次数';
+
+  @override
+  String get autoRetryInitialDelay => '首次延迟（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延迟（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖动';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待随机 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '网络错误时重试';
+
+  @override
+  String get autoRetryStatusCodes => '可重试状态码';
+
+  @override
+  String get autoRetryKeywords => '重试关键字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重试关键字';
+
+  @override
+  String get autoRetryAddHint => '添加';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢复默认';
+
+  @override
+  String get autoRetryFooter => '仅在本次请求尚未产生任何输出时才会自动重试。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒后重试 ($attempt/$maxRetries)';
+  }
 
   @override
   String get desktopShowProviderInModelCapsule => '模型胶囊显示供应商';
@@ -8017,17 +8401,47 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已开启，但还没有可委派的目标助手。请在另一个助手上开启「可作为子代理被其他助手委派」。';
+  String get subagentGoSetup => '去配置';
 
   @override
-  String get subagentGoSetup => '去设置';
+  String get subagentPageTitle => '子智能体委派';
 
   @override
-  String get subagentTargetListTitle => '可委派的目标助手';
+  String get subagentPageExplainer =>
+      '开启子智能体委派后，当前助手可以把任务委派给其他助手，并等待其作为子智能体返回结果。要成为可委派目标，助手需要同时满足：\n1. 开启「可被发现」\n2. 设置非空的「委派 ID」';
 
   @override
-  String get subagentTargetListEmpty => '还没有可委派的目标助手。';
+  String get subagentPageStatusEmptySub => '开启「可被发现」并设置委派 ID 后即可';
+
+  @override
+  String get subagentPageEmpty => '还没有助手。请先到「助手设置」创建助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未配置';
+
+  @override
+  String get subagentReasonNoId => '未设置委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未开启可被发现';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已满足全部条件';
+
+  @override
+  String get subagentEditorNoIdSub => '补全委派 ID 后即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先开启「可被发现」';
+
+  @override
+  String get subagentIdConflict => 'ID 冲突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -8536,6 +8950,51 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workspaceTerminalCopy => '复制';
 
   @override
+  String get workspaceTerminalPersistenceSettings => '沙箱与终端持久化设置';
+
+  @override
+  String get workspaceKeepTerminalAfterExit => '退出终端后不关闭终端';
+
+  @override
+  String get workspaceKeepTerminalAfterExitDescription =>
+      '保留此工作区的 PTY 和终端内容，以便稍后继续使用。';
+
+  @override
+  String get workspaceTerminalPersistentKeepAlive => '终端持久保活';
+
+  @override
+  String get workspaceTerminalPersistentKeepAliveDescription =>
+      '通过前台通知在划掉应用任务后继续保留终端，会增加耗电。';
+
+  @override
+  String get workspaceAutoStartLinuxSandbox => '软件启动时打开 Linux 沙箱';
+
+  @override
+  String get workspaceAutoStartLinuxSandboxDescription =>
+      'Cuplivo 启动后自动运行此工作区的 Linux 登录 Shell。';
+
+  @override
+  String workspaceTerminalSettingFailed(String error) {
+    return '无法更新终端设置：$error';
+  }
+
+  @override
+  String get workspaceTerminalStopFailed => '无法停止工作区终端，操作已取消。';
+
+  @override
+  String get workspaceTerminalNotificationPermissionDenied =>
+      '需要通知权限才能开启终端持久保活。';
+
+  @override
+  String get workspaceTerminalNotificationChannel => '终端持久会话';
+
+  @override
+  String get workspaceTerminalNotificationTitle => '工作区终端正在运行';
+
+  @override
+  String get workspaceTerminalNotificationText => 'Cuplivo 正在保活 Linux 工作区终端。';
+
+  @override
   String get workspaceFilesEntry => '工作区文件';
 
   @override
@@ -8962,8 +9421,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get webConversationStylesGithubTitle => '从 GitHub 导入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 仓库、tree、blob 或 raw 样式文件 URL';
+  String get webConversationStylesGithubHint => '仓库或样式文件 URL';
 
   @override
   String get webConversationStylesSelectTitle => '选择要导入的样式';
@@ -9016,6 +9474,193 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get webConversationStylesNoDescription => '无描述';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContent => '助手气泡贴合内容';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContentSubtitle =>
+      '助手气泡按文字宽度收缩，不再占满整行';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段显示为多个气泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回复遇到空行时拆分，每段单独一个气泡';
+
+  @override
+  String get messageStyleSettingsPageBackgroundColor => '背景颜色';
+
+  @override
+  String get messageStyleSettingsPageBackgroundOpacity => '背景不透明度';
+
+  @override
+  String get messageStyleSettingsPageBlur => '模糊强度';
+
+  @override
+  String get messageStyleSettingsPageBlurHint => '模糊作用于气泡背后的内容，未设置聊天壁纸时效果不明显';
+
+  @override
+  String get messageStyleSettingsPageBorderColor => '边框颜色';
+
+  @override
+  String get messageStyleSettingsPageBorderOpacity => '边框不透明度';
+
+  @override
+  String get messageStyleSettingsPageBorderWidth => '边框宽度';
+
+  @override
+  String get messageStyleSettingsPageCancel => '取消';
+
+  @override
+  String get messageStyleSettingsPageCornerRadius => '圆角半径';
+
+  @override
+  String get messageStyleSettingsPageDark => '深色';
+
+  @override
+  String get messageStyleSettingsPageDefaultHint => '默认样式跟随当前主题，没有可调参数。';
+
+  @override
+  String get messageStyleSettingsPageLight => '浅色';
+
+  @override
+  String get messageStyleSettingsPagePreviewAssistant => '这是一条助手回复。';
+
+  @override
+  String get messageStyleSettingsPagePreviewThinking => '思考中';
+
+  @override
+  String get messageStyleSettingsPagePreviewUser => '这是一条用户消息';
+
+  @override
+  String get messageStyleSettingsPageReset => '重置';
+
+  @override
+  String get messageStyleSettingsPageResetConfirm => '恢复全部消息样式自定义？';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistant => '助手';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistantHint =>
+      '助手设定同时作用于思考、工具调用和翻译卡片。';
+
+  @override
+  String get messageStyleSettingsPageRoleUser => '用户';
+
+  @override
+  String get messageStyleSettingsPageStyleDefaultSubtitle => '跟随主题，不可调节';
+
+  @override
+  String get messageStyleSettingsPageStyleFrostedSubtitle => '半透明毛玻璃';
+
+  @override
+  String get messageStyleSettingsPageStyleSolidSubtitle => '不透明纯色底';
+
+  @override
+  String get messageStyleSettingsPageTextColor => '文字颜色';
+
+  @override
+  String get messageStyleSettingsPageTitle => '消息样式';
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '从…搬来';
+
+  @override
+  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageImportFromOtherApps => '从其他APP导入';
+
+  @override
+  String get backupReminderSidebarTitle => '备份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去备份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍后提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自动快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '启用自动快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本机保留最多 3 份完整快照。快照独立于备份之外，不会随备份上传。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照频率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小时';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即创建快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照列表';
+
+  @override
+  String get autoSnapshotEmpty => '暂无快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 个助手 · $conversations 个会话';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功创建';
+
+  @override
+  String get autoSnapshotDedupedToast => '数据无变化，已跳过本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他备份任务进行中，请稍后再试';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照创建失败：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '关闭自动快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '关闭会永久删除已有的 $count 份快照。确定继续吗？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '关闭并删除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '删除存储的快照失败：$error。快照文件仍保留在磁盘上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '无法保存「自动快照」设置：$error。请重试。';
+  }
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hans`).
@@ -9367,6 +10012,14 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get storageSpaceSortByTime => '按时间';
+
+  @override
+  String get storageSpaceNoCacheFiles => '暂无缓存文件';
+
+  @override
+  String storageSpaceDeletedCacheFilesDone(Object count) {
+    return '已删除 $count 个缓存文件';
+  }
 
   @override
   String get storageWorkspaceEntryTitle => '工作区';
@@ -10551,6 +11204,133 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get androidBackgroundNotificationText => '后台保持聊天生成';
 
   @override
+  String get keepAliveGuidePageTitle => '后台保活引导';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在后台继续聊天生成：开启后台聊天模式、允许 Cuplivo 忽略电池优化、授予通知权限，并在厂商省电管理中为 Cuplivo 添加白名单。国产 ROM 会回收未入白名单的前台服务。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '电池优化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若状态不是「无限制」，点击此行允许 Cuplivo 忽略电池优化，后台生成才能顺利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '无限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受优化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '检查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允许';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允许';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查询失败';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被禁用，可在系统设置中开启。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知权限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知权限才能发送后台完成通知。若被禁用，点击此行按系统提示授权。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '厂商电源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未识别';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：设置 → 应用设置 → 自启动管理，开启 Cuplivo；设置 → 省电与电池 → 省电策略，将 Cuplivo 设为「无限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '华为：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许自启动、关联启动与后台活动。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '荣耀：设置 → 应用 → 应用启动管理 → Cuplivo → 手动管理，允许后台活动。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；电池 → 应用耗电 → 无限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：设置 → 电池 → 应用耗电管理 → Cuplivo → 不限制；应用 → 自启动，开启。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：设置 → 应用 → 应用管理 → Cuplivo → 自启动，开启；i 管家 → 耗电管理 → 后台起动，允许。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：设置 → 电池和日常维护 → 电池 → 后台使用限制；确保 Cuplivo 未在「休眠的应用」列表中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：设置 → 应用管理 → 权限管理 → 后台权限；或手机管家 → 电量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '未能识别您的手机品牌。可在系统设置的「应用 → Cuplivo → 耗电/电池」中将电源改为「无限制」；多数系统在最近任务列表中还可将应用「锁定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自启动';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省电设置';
+
+  @override
+  String get keepAliveGuideLockTitle => '后台锁定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任务列表中长按 Cuplivo 卡片并选择「锁定」，避免一键清理将其杀死。小米：长按卡片 → 锁定；华为/荣耀：下拉卡片；OPPO/一加：长按 → 锁定；vivo：点击右上角锁形图标。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已打开通用设置页。若找不到对应选项，请按下方步骤操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '无法打开任何设置页，请按下方步骤手动操作。';
+
+  @override
   String get assistantEditEmojiDialogTitle => '选择表情';
 
   @override
@@ -11149,9 +11929,6 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get backupPageExportToFile => '导出为文件';
 
   @override
-  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
-
-  @override
   String get backupPageExportToFileSubtitle => '导出APP数据为文件';
 
   @override
@@ -11159,9 +11936,6 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get backupPageImportBackupFileSubtitle => '导入本地备份文件';
-
-  @override
-  String get backupPageImportFromOtherApps => '从其他APP导入';
 
   @override
   String get backupPageImportFromKelivo => '从新版 Kelivo 导入';
@@ -11315,6 +12089,30 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get backupPageLocalBackup => '本地备份';
 
   @override
+  String get backupPageChannelManagement => '备份渠道管理';
+
+  @override
+  String get backupPageFullBackupSection => '全量备份';
+
+  @override
+  String get backupPageImportRestoreSection => '导入恢复';
+
+  @override
+  String get backupPageChannelEnabled => '已启用';
+
+  @override
+  String get backupPageChannelNotConfigured => '未配置';
+
+  @override
+  String get backupPageChannelLocalAlwaysOn => '始终可用';
+
+  @override
+  String get backupPageRestoreFromWebDav => '从 WebDAV 恢复';
+
+  @override
+  String get backupPageRestoreFromS3 => '从 S3 恢复';
+
+  @override
   String get backupPageImportFromCherryStudio => '从 Cherry Studio 导入';
 
   @override
@@ -11322,6 +12120,83 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get backupPageIncrementalTitle => '增量备份';
+
+  @override
+  String get backupPageRestoreFromBackup => '从备份恢复';
+
+  @override
+  String get backupPageTestingConnection => '测试中…';
+
+  @override
+  String backupEntryDueLine(Object time) {
+    return '该备份了 · 上次备份 $time';
+  }
+
+  @override
+  String get backupHeroHealthyTitle => '数据已有备份';
+
+  @override
+  String backupHeroLastBackup(Object time) {
+    return '上次备份 $time';
+  }
+
+  @override
+  String get backupHeroDueTitle => '该备份了';
+
+  @override
+  String get backupHeroNoTitle => '还没有备份';
+
+  @override
+  String get backupHeroNoDetail => '聊天记录目前只保存在这台设备上';
+
+  @override
+  String get backupSectionExportSync => '导出与同步';
+
+  @override
+  String get backupSectionAuto => '自动备份';
+
+  @override
+  String get backupRestoreCloud => '从云端恢复';
+
+  @override
+  String get backupRestoreCloudNone => '尚未配置云端渠道';
+
+  @override
+  String get backupMigrateTitle => '数据迁移';
+
+  @override
+  String get backupMigrateRowSubtitle => '在 Cuplivo 与其他应用之间迁移数据';
+
+  @override
+  String get backupMigrateExportLabel => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageContentLabel => '备份内容';
+
+  @override
+  String get backupScopeChatsAssistants => '聊天记录及助手';
+
+  @override
+  String get backupScopeSettings => '设置项';
+
+  @override
+  String get backupScopeAttachments => '附件';
+
+  @override
+  String get backupScopeWorkspaces => '工作区';
+
+  @override
+  String get backupScopeSkills => '技能';
+
+  @override
+  String get backupScopeFontsAvatars => '字体与头像';
+
+  @override
+  String get backupDestLocal => '本地';
+
+  @override
+  String get backupPageExportKelivoCompatibleSubtitle =>
+      '生成可供旧版 Kelivo 或旧版 Cuplivo 导入的完整备份';
 
   @override
   String get backupPageIncrementalDescription => '仅导出某个日期之后的聊天数据。';
@@ -11434,16 +12309,30 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get backupReminderCustomDaysInvalid => '请输入 1 到 365 之间的数字。';
 
   @override
-  String get backupReminderSidebarTitle => '备份提醒';
+  String get backupEntryAlwaysVisibleTitle => '常驻显示备份入口';
 
   @override
-  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+  String get backupEntryJustNow => '刚刚';
 
   @override
-  String get backupReminderSidebarAction => '去备份';
+  String backupEntryMinutesAgo(num count) {
+    return '$count 分钟前';
+  }
 
   @override
-  String get backupReminderSnoozeTooltip => '稍后提醒';
+  String backupEntryHoursAgo(num count) {
+    return '$count 小时前';
+  }
+
+  @override
+  String backupEntryDaysAgo(num count) {
+    return '$count 天前';
+  }
+
+  @override
+  String backupEntryDateWithYear(Object date, Object year) {
+    return '$date（$year）';
+  }
 
   @override
   String get lanSyncSectionTitle => '局域网同步';
@@ -11506,6 +12395,24 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get lanSyncClientConfirm => '开始同步';
 
   @override
+  String get lanSyncPriorityLabel => '冲突处理';
+
+  @override
+  String get lanSyncPriorityAuto => '自动（默认合并）';
+
+  @override
+  String get lanSyncPriorityInitiatorWins => '本机优先';
+
+  @override
+  String get lanSyncPriorityServerWins => '对方优先';
+
+  @override
+  String get lanSyncPeerPriorityInitiatorWins => '对方选择「本机优先」：冲突数据将以对方版本为准。';
+
+  @override
+  String get lanSyncPeerPriorityServerWins => '对方选择「对方优先」：冲突数据将保留本机版本。';
+
+  @override
   String get lanSyncClientExchanging => '正在交换数据...';
 
   @override
@@ -11537,6 +12444,9 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get lanSyncPlanNoChanges => '无待同步内容。';
+
+  @override
+  String get lanSyncPlanPrioritySettings => '已选择冲突方向：将交换设置数据。';
 
   @override
   String lanSyncPlanToSendFiles(Object count, Object size) {
@@ -12059,6 +12969,9 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get chatSelectionExportImage => '图片';
 
   @override
+  String get chatSelectionExportPdf => 'PDF';
+
+  @override
   String get chatSelectionThinkingTools => '思考工具';
 
   @override
@@ -12148,10 +13061,33 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get messageExportSheetMarkdown => 'Markdown';
 
   @override
+  String get messageExportSheetPdf => 'PDF';
+
+  @override
   String get messageExportSheetSingleMarkdownSubtitle => '将该消息导出为 Markdown 文件';
 
   @override
+  String get messageExportSheetPdfIncomplete => 'PDF 已导出，部分图片或图表可能不完整';
+
+  @override
+  String get messageExportSheetPdfUnsupported =>
+      'PDF 导出目前仅支持 Windows 和 Android';
+
+  @override
+  String get messageExportSheetPdfExportInProgress => '另一个 PDF 导出正在进行中。';
+
+  @override
+  String get messageExportSheetPdfAndroidWebViewUnsupported =>
+      '请更新 Android System WebView 后再导出 PDF。';
+
+  @override
+  String get messageExportSheetPdfAndroidFailed => '无法导出 PDF，请重试。';
+
+  @override
   String get messageExportSheetPlainText => '纯文本';
+
+  @override
+  String get messageExportSheetSinglePdfSubtitle => '将该消息导出为 PDF 文件';
 
   @override
   String get messageExportSheetSingleTxtSubtitle => '将该消息导出为 TXT 文件';
@@ -15685,6 +16621,49 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get providersPageMultiSelectTooltip => '多选';
 
   @override
+  String get providersPageHideBuiltinAction => '隐藏内置供应商';
+
+  @override
+  String get providersPageHideBuiltinTitle => '隐藏内置供应商';
+
+  @override
+  String get providersPageHideSelectedConfirmContent =>
+      '隐藏的内置供应商可随时从供应商列表底部恢复。';
+
+  @override
+  String providersPageBatchDeleteMixedConfirmContent(
+    int deleteCount,
+    int hideCount,
+  ) {
+    return '将删除 $deleteCount 个自定义供应商，并隐藏 $hideCount 个内置供应商。内置供应商可随时从列表底部恢复。';
+  }
+
+  @override
+  String providersPageHideBuiltinSnackbar(int count) {
+    return '已隐藏 $count 个内置供应商';
+  }
+
+  @override
+  String providersPageBatchDeleteMixedSnackbar(int deleteCount, int hideCount) {
+    return '已删除 $deleteCount 个供应商，隐藏 $hideCount 个内置供应商';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsButton(int count) {
+    return '恢复内置供应商（$count）';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsConfirm(int count) {
+    return '将恢复 $count 个隐藏的内置供应商？已保存的配置将一并恢复。';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsSnackbar(int count) {
+    return '已恢复 $count 个内置供应商';
+  }
+
+  @override
   String get providersPageDeleteSelectedConfirmContent =>
       '确定要删除选中的供应商吗？该操作不可撤销。';
 
@@ -15809,6 +16788,56 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get networkProxyPriorityNote => '当同时开启全局代理与供应商代理时，将优先使用供应商代理。';
+
+  @override
+  String get settingsPageAutoRetry => '自动重试';
+
+  @override
+  String get autoRetryEnableLabel => '开启自动重试';
+
+  @override
+  String get autoRetryMaxRetries => '最大重试次数';
+
+  @override
+  String get autoRetryInitialDelay => '首次延迟（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延迟（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖动';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待随机 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '网络错误时重试';
+
+  @override
+  String get autoRetryStatusCodes => '可重试状态码';
+
+  @override
+  String get autoRetryKeywords => '重试关键字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重试关键字';
+
+  @override
+  String get autoRetryAddHint => '添加';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢复默认';
+
+  @override
+  String get autoRetryFooter => '仅在本次请求尚未产生任何输出时才会自动重试。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒后重试 ($attempt/$maxRetries)';
+  }
 
   @override
   String get desktopShowProviderInModelCapsule => '模型胶囊显示供应商';
@@ -17031,17 +18060,47 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已开启，但还没有可委派的目标助手。请在另一个助手上开启「可作为子代理被其他助手委派」。';
+  String get subagentGoSetup => '去配置';
 
   @override
-  String get subagentGoSetup => '去设置';
+  String get subagentPageTitle => '子智能体委派';
 
   @override
-  String get subagentTargetListTitle => '可委派的目标助手';
+  String get subagentPageExplainer =>
+      '开启子智能体委派后，当前助手可以把任务委派给其他助手，并等待其作为子智能体返回结果。要成为可委派目标，助手需要同时满足：\n1. 开启「可被发现」\n2. 设置非空的「委派 ID」';
 
   @override
-  String get subagentTargetListEmpty => '还没有可委派的目标助手。';
+  String get subagentPageStatusEmptySub => '开启「可被发现」并设置委派 ID 后即可';
+
+  @override
+  String get subagentPageEmpty => '还没有助手。请先到「助手设置」创建助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未配置';
+
+  @override
+  String get subagentReasonNoId => '未设置委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未开启可被发现';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已满足全部条件';
+
+  @override
+  String get subagentEditorNoIdSub => '补全委派 ID 后即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先开启「可被发现」';
+
+  @override
+  String get subagentIdConflict => 'ID 冲突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -17550,6 +18609,51 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get workspaceTerminalCopy => '复制';
 
   @override
+  String get workspaceTerminalPersistenceSettings => '沙箱与终端持久化设置';
+
+  @override
+  String get workspaceKeepTerminalAfterExit => '退出终端后不关闭终端';
+
+  @override
+  String get workspaceKeepTerminalAfterExitDescription =>
+      '保留此工作区的 PTY 和终端内容，以便稍后继续使用。';
+
+  @override
+  String get workspaceTerminalPersistentKeepAlive => '终端持久保活';
+
+  @override
+  String get workspaceTerminalPersistentKeepAliveDescription =>
+      '通过前台通知在划掉应用任务后继续保留终端，会增加耗电。';
+
+  @override
+  String get workspaceAutoStartLinuxSandbox => '软件启动时打开 Linux 沙箱';
+
+  @override
+  String get workspaceAutoStartLinuxSandboxDescription =>
+      'Cuplivo 启动后自动运行此工作区的 Linux 登录 Shell。';
+
+  @override
+  String workspaceTerminalSettingFailed(String error) {
+    return '无法更新终端设置：$error';
+  }
+
+  @override
+  String get workspaceTerminalStopFailed => '无法停止工作区终端，操作已取消。';
+
+  @override
+  String get workspaceTerminalNotificationPermissionDenied =>
+      '需要通知权限才能开启终端持久保活。';
+
+  @override
+  String get workspaceTerminalNotificationChannel => '终端持久会话';
+
+  @override
+  String get workspaceTerminalNotificationTitle => '工作区终端正在运行';
+
+  @override
+  String get workspaceTerminalNotificationText => 'Cuplivo 正在保活 Linux 工作区终端。';
+
+  @override
   String get workspaceFilesEntry => '工作区文件';
 
   @override
@@ -17976,8 +19080,7 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get webConversationStylesGithubTitle => '从 GitHub 导入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 仓库、tree、blob 或 raw 样式文件 URL';
+  String get webConversationStylesGithubHint => '仓库或样式文件 URL';
 
   @override
   String get webConversationStylesSelectTitle => '选择要导入的样式';
@@ -18030,6 +19133,193 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get webConversationStylesNoDescription => '无描述';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContent => '助手气泡贴合内容';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContentSubtitle =>
+      '助手气泡按文字宽度收缩，不再占满整行';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段显示为多个气泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回复遇到空行时拆分，每段单独一个气泡';
+
+  @override
+  String get messageStyleSettingsPageBackgroundColor => '背景颜色';
+
+  @override
+  String get messageStyleSettingsPageBackgroundOpacity => '背景不透明度';
+
+  @override
+  String get messageStyleSettingsPageBlur => '模糊强度';
+
+  @override
+  String get messageStyleSettingsPageBlurHint => '模糊作用于气泡背后的内容，未设置聊天壁纸时效果不明显';
+
+  @override
+  String get messageStyleSettingsPageBorderColor => '边框颜色';
+
+  @override
+  String get messageStyleSettingsPageBorderOpacity => '边框不透明度';
+
+  @override
+  String get messageStyleSettingsPageBorderWidth => '边框宽度';
+
+  @override
+  String get messageStyleSettingsPageCancel => '取消';
+
+  @override
+  String get messageStyleSettingsPageCornerRadius => '圆角半径';
+
+  @override
+  String get messageStyleSettingsPageDark => '深色';
+
+  @override
+  String get messageStyleSettingsPageDefaultHint => '默认样式跟随当前主题，没有可调参数。';
+
+  @override
+  String get messageStyleSettingsPageLight => '浅色';
+
+  @override
+  String get messageStyleSettingsPagePreviewAssistant => '这是一条助手回复。';
+
+  @override
+  String get messageStyleSettingsPagePreviewThinking => '思考中';
+
+  @override
+  String get messageStyleSettingsPagePreviewUser => '这是一条用户消息';
+
+  @override
+  String get messageStyleSettingsPageReset => '重置';
+
+  @override
+  String get messageStyleSettingsPageResetConfirm => '恢复全部消息样式自定义？';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistant => '助手';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistantHint =>
+      '助手设定同时作用于思考、工具调用和翻译卡片。';
+
+  @override
+  String get messageStyleSettingsPageRoleUser => '用户';
+
+  @override
+  String get messageStyleSettingsPageStyleDefaultSubtitle => '跟随主题，不可调节';
+
+  @override
+  String get messageStyleSettingsPageStyleFrostedSubtitle => '半透明毛玻璃';
+
+  @override
+  String get messageStyleSettingsPageStyleSolidSubtitle => '不透明纯色底';
+
+  @override
+  String get messageStyleSettingsPageTextColor => '文字颜色';
+
+  @override
+  String get messageStyleSettingsPageTitle => '消息样式';
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '从…搬来';
+
+  @override
+  String get backupPageExportKelivoCompatible => '导出 Kelivo 兼容备份';
+
+  @override
+  String get backupPageImportFromOtherApps => '从其他APP导入';
+
+  @override
+  String get backupReminderSidebarTitle => '备份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已经到你设定的备份周期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去备份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍后提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自动快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '启用自动快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本机保留最多 3 份完整快照。快照独立于备份之外，不会随备份上传。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照频率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小时';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即创建快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照列表';
+
+  @override
+  String get autoSnapshotEmpty => '暂无快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 个助手 · $conversations 个会话';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功创建';
+
+  @override
+  String get autoSnapshotDedupedToast => '数据无变化，已跳过本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他备份任务进行中，请稍后再试';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照创建失败：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '关闭自动快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '关闭会永久删除已有的 $count 份快照。确定继续吗？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '关闭并删除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '删除存储的快照失败：$error。快照文件仍保留在磁盘上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '无法保存「自动快照」设置：$error。请重试。';
+  }
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -18382,6 +19672,14 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get storageSpaceSortByTime => '按時間';
+
+  @override
+  String get storageSpaceNoCacheFiles => '暫無快取檔案';
+
+  @override
+  String storageSpaceDeletedCacheFilesDone(Object count) {
+    return '已刪除 $count 個快取檔案';
+  }
 
   @override
   String get storageWorkspaceEntryTitle => '工作區';
@@ -19565,6 +20863,133 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get androidBackgroundNotificationText => '後台保持聊天生成';
 
   @override
+  String get keepAliveGuidePageTitle => '後台保活引導';
+
+  @override
+  String get keepAliveGuideIntro =>
+      '如需在後台繼續聊天生成：開啟後台聊天模式、允許 Cuplivo 忽略電池最佳化、授予通知權限，並在廠商省電管理中為 Cuplivo 加入白名單。國產 ROM 會回收未入白名單的前台服務。';
+
+  @override
+  String get keepAliveGuideBatteryTitle => '電池最佳化';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      '若狀態不是「無限制」，點擊此行允許 Cuplivo 忽略電池最佳化，後台生成才能順利完成。';
+
+  @override
+  String get keepAliveGuideStatusIgnored => '無限制';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => '受最佳化限制';
+
+  @override
+  String get keepAliveGuideStatusUnknown => '檢查中…';
+
+  @override
+  String get keepAliveGuideStatusGranted => '已允許';
+
+  @override
+  String get keepAliveGuideStatusDenied => '未允許';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => '查詢失敗';
+
+  @override
+  String get keepAliveGuideNotificationsDenied => '通知仍被停用，可在系統設定中開啟。';
+
+  @override
+  String get keepAliveGuideNotificationTitle => '通知權限';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Android 13+ 需要通知權限才能發送後台完成通知。若被停用，點擊此行按系統提示授權。';
+
+  @override
+  String get keepAliveGuideVendorTitle => '廠商電源管理';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => '未識別';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      '小米：設定 → 應用程式設定 → 自啟動管理，開啟 Cuplivo；設定 → 省電與電池 → 省電策略，將 Cuplivo 設為「無限制」。';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      '華為：設定 → 應用程式 → 應用程式啟動管理 → Cuplivo → 手動管理，允許自啟動、關聯啟動與後台活動。';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      '榮耀：設定 → 應用程式 → 應用程式啟動管理 → Cuplivo → 手動管理，允許後台活動。';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO：設定 → 應用程式 → 應用程式管理 → Cuplivo → 自啟動，開啟；電池 → 應用程式耗電 → 無限制。';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      '一加：設定 → 電池 → 應用程式耗電管理 → Cuplivo → 不限制；應用程式 → 自啟動，開啟。';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo：設定 → 應用程式 → 應用程式管理 → Cuplivo → 自啟動，開啟；i 管家 → 耗電管理 → 後台啟動，允許。';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      '三星：設定 → 電池與日常維護 → 電池 → 後台使用限制；確保 Cuplivo 不在「休眠的應用程式」清單中。';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      '魅族：設定 → 應用程式管理 → 權限管理 → 後台權限；或手機管家 → 電量管理。';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      '無法辨識您的手機品牌。可在系統設定的「應用程式 → Cuplivo → 耗電/電池」中將電源改為「無限制」；多數系統在最近任務清單中還可將應用程式「鎖定」防止被清理。';
+
+  @override
+  String get keepAliveGuideAutostartAction => '前往自啟動';
+
+  @override
+  String get keepAliveGuidePowerAction => '前往省電設定';
+
+  @override
+  String get keepAliveGuideLockTitle => '後台鎖定';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      '在最近任務清單中長按 Cuplivo 卡片並選擇「鎖定」，避免一鍵清理將其殺死。小米：長按卡片 → 鎖定；華為/榮耀：下拉卡片；OPPO/一加：長按 → 鎖定；vivo：點擊右上角鎖形圖示。';
+
+  @override
+  String get keepAliveGuideFallbackOpened => '已開啟通用設定頁。若找不到對應選項，請按下方步驟操作。';
+
+  @override
+  String get keepAliveGuideOpenFailed => '無法開啟任何設定頁，請按下方步驟手動操作。';
+
+  @override
   String get assistantEditEmojiDialogTitle => '選擇表情';
 
   @override
@@ -20163,9 +21588,6 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get backupPageExportToFile => '匯出為檔案';
 
   @override
-  String get backupPageExportKelivoCompatible => '匯出 Kelivo 相容備份';
-
-  @override
   String get backupPageExportToFileSubtitle => '匯出APP資料為檔案';
 
   @override
@@ -20173,9 +21595,6 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get backupPageImportBackupFileSubtitle => '匯入本機備份檔案';
-
-  @override
-  String get backupPageImportFromOtherApps => '從其他APP匯入';
 
   @override
   String get backupPageImportFromKelivo => '從新版 Kelivo 匯入';
@@ -20329,6 +21748,30 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get backupPageLocalBackup => '本機備份';
 
   @override
+  String get backupPageChannelManagement => '備份渠道管理';
+
+  @override
+  String get backupPageFullBackupSection => '全量備份';
+
+  @override
+  String get backupPageImportRestoreSection => '匯入復原';
+
+  @override
+  String get backupPageChannelEnabled => '已啟用';
+
+  @override
+  String get backupPageChannelNotConfigured => '未配置';
+
+  @override
+  String get backupPageChannelLocalAlwaysOn => '始終可用';
+
+  @override
+  String get backupPageRestoreFromWebDav => '從 WebDAV 恢復';
+
+  @override
+  String get backupPageRestoreFromS3 => '從 S3 恢復';
+
+  @override
   String get backupPageImportFromCherryStudio => '從 Cherry Studio 匯入';
 
   @override
@@ -20336,6 +21779,83 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get backupPageIncrementalTitle => '增量備份';
+
+  @override
+  String get backupPageRestoreFromBackup => '從備份還原';
+
+  @override
+  String get backupPageTestingConnection => '測試中…';
+
+  @override
+  String backupEntryDueLine(Object time) {
+    return '該備份了 · 上次備份 $time';
+  }
+
+  @override
+  String get backupHeroHealthyTitle => '資料已有備份';
+
+  @override
+  String backupHeroLastBackup(Object time) {
+    return '上次備份 $time';
+  }
+
+  @override
+  String get backupHeroDueTitle => '該備份了';
+
+  @override
+  String get backupHeroNoTitle => '還沒有備份';
+
+  @override
+  String get backupHeroNoDetail => '聊天記錄目前只保存在這台裝置上';
+
+  @override
+  String get backupSectionExportSync => '匯出與同步';
+
+  @override
+  String get backupSectionAuto => '自動備份';
+
+  @override
+  String get backupRestoreCloud => '從雲端復原';
+
+  @override
+  String get backupRestoreCloudNone => '尚未配置雲端渠道';
+
+  @override
+  String get backupMigrateTitle => '資料遷移';
+
+  @override
+  String get backupMigrateRowSubtitle => '在 Cuplivo 與其他應用之間遷移資料';
+
+  @override
+  String get backupMigrateExportLabel => '匯出 Kelivo 相容備份';
+
+  @override
+  String get backupPageContentLabel => '備份內容';
+
+  @override
+  String get backupScopeChatsAssistants => '聊天記錄及助手';
+
+  @override
+  String get backupScopeSettings => '設定項';
+
+  @override
+  String get backupScopeAttachments => '附件';
+
+  @override
+  String get backupScopeWorkspaces => '工作區';
+
+  @override
+  String get backupScopeSkills => '技能';
+
+  @override
+  String get backupScopeFontsAvatars => '字體與頭像';
+
+  @override
+  String get backupDestLocal => '本機';
+
+  @override
+  String get backupPageExportKelivoCompatibleSubtitle =>
+      '產生可供舊版 Kelivo 或舊版 Cuplivo 匯入的完整備份';
 
   @override
   String get backupPageIncrementalDescription => '僅匯出某個日期之後的聊天資料。';
@@ -20448,16 +21968,30 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get backupReminderCustomDaysInvalid => '請輸入 1 到 365 之間的數字。';
 
   @override
-  String get backupReminderSidebarTitle => '備份提醒';
+  String get backupEntryAlwaysVisibleTitle => '常駐顯示備份入口';
 
   @override
-  String get backupReminderSidebarSubtitle => '已經到你設定的備份週期了。';
+  String get backupEntryJustNow => '剛剛';
 
   @override
-  String get backupReminderSidebarAction => '去備份';
+  String backupEntryMinutesAgo(num count) {
+    return '$count 分鐘前';
+  }
 
   @override
-  String get backupReminderSnoozeTooltip => '稍後提醒';
+  String backupEntryHoursAgo(num count) {
+    return '$count 小時前';
+  }
+
+  @override
+  String backupEntryDaysAgo(num count) {
+    return '$count 天前';
+  }
+
+  @override
+  String backupEntryDateWithYear(Object date, Object year) {
+    return '$date（$year）';
+  }
 
   @override
   String get lanSyncSectionTitle => '區域網路同步';
@@ -20520,6 +22054,24 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get lanSyncClientConfirm => '開始同步';
 
   @override
+  String get lanSyncPriorityLabel => '衝突處理';
+
+  @override
+  String get lanSyncPriorityAuto => '自動（預設合併）';
+
+  @override
+  String get lanSyncPriorityInitiatorWins => '本機優先';
+
+  @override
+  String get lanSyncPriorityServerWins => '對方優先';
+
+  @override
+  String get lanSyncPeerPriorityInitiatorWins => '對方選擇「本機優先」：衝突資料將以對方版本為準。';
+
+  @override
+  String get lanSyncPeerPriorityServerWins => '對方選擇「對方優先」：衝突資料將保留本機版本。';
+
+  @override
   String get lanSyncClientExchanging => '正在交換資料...';
 
   @override
@@ -20551,6 +22103,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get lanSyncPlanNoChanges => '無待同步內容。';
+
+  @override
+  String get lanSyncPlanPrioritySettings => '已選擇衝突方向：將交換設定資料。';
 
   @override
   String lanSyncPlanToSendFiles(Object count, Object size) {
@@ -21072,6 +22627,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get chatSelectionExportImage => '圖片';
 
   @override
+  String get chatSelectionExportPdf => 'PDF';
+
+  @override
   String get chatSelectionThinkingTools => '思考工具';
 
   @override
@@ -21161,10 +22719,33 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get messageExportSheetMarkdown => 'Markdown';
 
   @override
+  String get messageExportSheetPdf => 'PDF';
+
+  @override
   String get messageExportSheetSingleMarkdownSubtitle => '將該訊息匯出為 Markdown 檔案';
 
   @override
+  String get messageExportSheetPdfIncomplete => 'PDF 已導出，部分圖片或圖表可能不完整';
+
+  @override
+  String get messageExportSheetPdfUnsupported =>
+      'PDF 匯出目前僅支援 Windows 和 Android';
+
+  @override
+  String get messageExportSheetPdfExportInProgress => '另一個 PDF 匯出正在進行中。';
+
+  @override
+  String get messageExportSheetPdfAndroidWebViewUnsupported =>
+      '請更新 Android System WebView 後再匯出 PDF。';
+
+  @override
+  String get messageExportSheetPdfAndroidFailed => '無法匯出 PDF，請再試一次。';
+
+  @override
   String get messageExportSheetPlainText => '純文字';
+
+  @override
+  String get messageExportSheetSinglePdfSubtitle => '將該訊息匯出為 PDF 檔案';
 
   @override
   String get messageExportSheetSingleTxtSubtitle => '將該訊息匯出為 TXT 檔案';
@@ -24700,6 +26281,49 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get providersPageMultiSelectTooltip => '多選';
 
   @override
+  String get providersPageHideBuiltinAction => '隱藏內建供應商';
+
+  @override
+  String get providersPageHideBuiltinTitle => '隱藏內建供應商';
+
+  @override
+  String get providersPageHideSelectedConfirmContent =>
+      '隱藏的內建供應商可隨時從供應商列表底部還原。';
+
+  @override
+  String providersPageBatchDeleteMixedConfirmContent(
+    int deleteCount,
+    int hideCount,
+  ) {
+    return '將刪除 $deleteCount 個自訂供應商，並隱藏 $hideCount 個內建供應商。內建供應商可隨時從列表底部還原。';
+  }
+
+  @override
+  String providersPageHideBuiltinSnackbar(int count) {
+    return '已隱藏 $count 個內建供應商';
+  }
+
+  @override
+  String providersPageBatchDeleteMixedSnackbar(int deleteCount, int hideCount) {
+    return '已刪除 $deleteCount 個供應商，隱藏 $hideCount 個內建供應商';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsButton(int count) {
+    return '還原內建供應商（$count）';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsConfirm(int count) {
+    return '將還原 $count 個隱藏的內建供應商？已保存的設定將一併還原。';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsSnackbar(int count) {
+    return '已還原 $count 個內建供應商';
+  }
+
+  @override
   String get providersPageDeleteSelectedConfirmContent =>
       '確定要刪除選中的供應商嗎？此操作不可撤銷。';
 
@@ -24824,6 +26448,56 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get networkProxyPriorityNote => '同時啟用全域代理與供應商代理時，將優先使用供應商代理。';
+
+  @override
+  String get settingsPageAutoRetry => '自動重試';
+
+  @override
+  String get autoRetryEnableLabel => '開啟自動重試';
+
+  @override
+  String get autoRetryMaxRetries => '最大重試次數';
+
+  @override
+  String get autoRetryInitialDelay => '首次延遲（毫秒）';
+
+  @override
+  String get autoRetryMultiplier => '退避倍率';
+
+  @override
+  String get autoRetryMaxDelay => '最大延遲（毫秒）';
+
+  @override
+  String get autoRetryJitter => '抖動';
+
+  @override
+  String get autoRetryJitterSubtitle => '每次等待隨機 ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => '網路錯誤時重試';
+
+  @override
+  String get autoRetryStatusCodes => '可重試狀態碼';
+
+  @override
+  String get autoRetryKeywords => '重試關鍵字';
+
+  @override
+  String get autoRetryStopKeywords => '停止重試關鍵字';
+
+  @override
+  String get autoRetryAddHint => '新增';
+
+  @override
+  String get autoRetryRestoreDefaults => '恢復預設';
+
+  @override
+  String get autoRetryFooter => '僅在本次請求尚未產生任何輸出時才會自動重試。';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '$seconds 秒後重試 ($attempt/$maxRetries)';
+  }
 
   @override
   String get desktopShowProviderInModelCapsule => '模型膠囊顯示供應商';
@@ -26046,17 +27720,47 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      '子代理委派已開啟，但還沒有可委派的目標助手。請在另一個助手上開啟「可作為子代理被其他助手委派」。';
-
-  @override
   String get subagentGoSetup => '去設定';
 
   @override
-  String get subagentTargetListTitle => '可委派的目標助手';
+  String get subagentPageTitle => '子智能體委派';
 
   @override
-  String get subagentTargetListEmpty => '還沒有可委派的目標助手。';
+  String get subagentPageExplainer =>
+      '開啟子智能體委派後，目前助手可以把任務委派給其他助手，並等待其作為子智能體返回結果。要成為可委派目標，助手需要同時滿足：\n1. 開啟「可被發現」\n2. 設定非空的「委派 ID」';
+
+  @override
+  String get subagentPageStatusEmptySub => '開啟「可被發現」並設定委派 ID 後即可';
+
+  @override
+  String get subagentPageEmpty => '還沒有助手。請先到「助手設定」建立助手。';
+
+  @override
+  String get subagentSectionDelegatable => '可委派';
+
+  @override
+  String get subagentSectionUnconfigured => '未設定';
+
+  @override
+  String get subagentReasonNoId => '未設定委派 ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => '未開啟可被發現';
+
+  @override
+  String get subagentEditorStateOk => '可委派';
+
+  @override
+  String get subagentEditorOkSub => '已滿足全部條件';
+
+  @override
+  String get subagentEditorNoIdSub => '補全委派 ID 後即可被委派';
+
+  @override
+  String get subagentEditorNotDiscSub => '需先開啟「可被發現」';
+
+  @override
+  String get subagentIdConflict => 'ID 衝突';
 
   @override
   String get groupChatCreate => '新建群聊';
@@ -26566,6 +28270,51 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get workspaceTerminalCopy => '複製';
 
   @override
+  String get workspaceTerminalPersistenceSettings => '沙箱與終端持久化設定';
+
+  @override
+  String get workspaceKeepTerminalAfterExit => '離開終端後不關閉終端';
+
+  @override
+  String get workspaceKeepTerminalAfterExitDescription =>
+      '保留此工作區的 PTY 與終端內容，以便稍後繼續使用。';
+
+  @override
+  String get workspaceTerminalPersistentKeepAlive => '終端持續保活';
+
+  @override
+  String get workspaceTerminalPersistentKeepAliveDescription =>
+      '透過前台通知在移除應用程式工作後繼續保留終端，會增加耗電。';
+
+  @override
+  String get workspaceAutoStartLinuxSandbox => '軟體啟動時開啟 Linux 沙箱';
+
+  @override
+  String get workspaceAutoStartLinuxSandboxDescription =>
+      'Cuplivo 啟動後自動執行此工作區的 Linux 登入 Shell。';
+
+  @override
+  String workspaceTerminalSettingFailed(String error) {
+    return '無法更新終端設定：$error';
+  }
+
+  @override
+  String get workspaceTerminalStopFailed => '無法停止工作區終端，操作已取消。';
+
+  @override
+  String get workspaceTerminalNotificationPermissionDenied =>
+      '需要通知權限才能開啟終端持續保活。';
+
+  @override
+  String get workspaceTerminalNotificationChannel => '終端持久工作階段';
+
+  @override
+  String get workspaceTerminalNotificationTitle => '工作區終端正在執行';
+
+  @override
+  String get workspaceTerminalNotificationText => 'Cuplivo 正在保活 Linux 工作區終端。';
+
+  @override
   String get workspaceFilesEntry => '工作區檔案';
 
   @override
@@ -26992,8 +28741,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get webConversationStylesGithubTitle => '從 GitHub 匯入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 儲存庫、tree、blob 或 raw 樣式檔案 URL';
+  String get webConversationStylesGithubHint => '儲存庫或樣式檔案 URL';
 
   @override
   String get webConversationStylesSelectTitle => '選擇要匯入的樣式';
@@ -27046,4 +28794,191 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get webConversationStylesNoDescription => '無描述';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContent => '助手氣泡貼合內容';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContentSubtitle =>
+      '助手氣泡按文字寬度收縮，不再佔滿整行';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs => '分段顯示為多個氣泡';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      '助手回覆遇到空行時拆分，每段單獨一個氣泡';
+
+  @override
+  String get messageStyleSettingsPageBackgroundColor => '背景顏色';
+
+  @override
+  String get messageStyleSettingsPageBackgroundOpacity => '背景不透明度';
+
+  @override
+  String get messageStyleSettingsPageBlur => '模糊強度';
+
+  @override
+  String get messageStyleSettingsPageBlurHint => '模糊作用於氣泡背後的內容，未設定聊天桌布時效果不明顯';
+
+  @override
+  String get messageStyleSettingsPageBorderColor => '邊框顏色';
+
+  @override
+  String get messageStyleSettingsPageBorderOpacity => '邊框不透明度';
+
+  @override
+  String get messageStyleSettingsPageBorderWidth => '邊框寬度';
+
+  @override
+  String get messageStyleSettingsPageCancel => '取消';
+
+  @override
+  String get messageStyleSettingsPageCornerRadius => '圓角半徑';
+
+  @override
+  String get messageStyleSettingsPageDark => '深色';
+
+  @override
+  String get messageStyleSettingsPageDefaultHint => '預設樣式跟隨目前主題，沒有可調參數。';
+
+  @override
+  String get messageStyleSettingsPageLight => '淺色';
+
+  @override
+  String get messageStyleSettingsPagePreviewAssistant => '這是一則助手回覆。';
+
+  @override
+  String get messageStyleSettingsPagePreviewThinking => '思考中';
+
+  @override
+  String get messageStyleSettingsPagePreviewUser => '這是一則使用者訊息';
+
+  @override
+  String get messageStyleSettingsPageReset => '重設';
+
+  @override
+  String get messageStyleSettingsPageResetConfirm => '恢復全部訊息樣式自訂？';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistant => '助手';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistantHint =>
+      '助手設定同時作用於思考、工具呼叫和翻譯卡片。';
+
+  @override
+  String get messageStyleSettingsPageRoleUser => '使用者';
+
+  @override
+  String get messageStyleSettingsPageStyleDefaultSubtitle => '跟隨主題，不可調節';
+
+  @override
+  String get messageStyleSettingsPageStyleFrostedSubtitle => '半透明毛玻璃';
+
+  @override
+  String get messageStyleSettingsPageStyleSolidSubtitle => '不透明純色底';
+
+  @override
+  String get messageStyleSettingsPageTextColor => '文字顏色';
+
+  @override
+  String get messageStyleSettingsPageTitle => '訊息樣式';
+
+  @override
+  String get backupMigrateMoveOutHeader => '搬去…';
+
+  @override
+  String get backupMigrateMoveInHeader => '從…搬來';
+
+  @override
+  String get backupPageExportKelivoCompatible => '匯出 Kelivo 相容備份';
+
+  @override
+  String get backupPageImportFromOtherApps => '從其他APP匯入';
+
+  @override
+  String get backupReminderSidebarTitle => '備份提醒';
+
+  @override
+  String get backupReminderSidebarSubtitle => '已經到你設定的備份週期了。';
+
+  @override
+  String get backupReminderSidebarAction => '去備份';
+
+  @override
+  String get backupReminderSnoozeTooltip => '稍後提醒';
+
+  @override
+  String get autoSnapshotSectionTitle => '自動快照';
+
+  @override
+  String get autoSnapshotEnableTitle => '啟用自動快照';
+
+  @override
+  String get autoSnapshotEnableSubtitle => '在本機保留最多 3 份完整快照。快照獨立於備份之外，不會隨備份上傳。';
+
+  @override
+  String get autoSnapshotFrequencyTitle => '快照頻率';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => '每 12 小時';
+
+  @override
+  String get autoSnapshotFrequencyDaily => '每天';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => '每 3 天';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => '每 5 天';
+
+  @override
+  String get autoSnapshotCreateNow => '立即建立快照';
+
+  @override
+  String get autoSnapshotListTitle => '快照清單';
+
+  @override
+  String get autoSnapshotEmpty => '尚無快照';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants 個助手 · $conversations 個會話';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => '快照已成功建立';
+
+  @override
+  String get autoSnapshotDedupedToast => '資料無變化，已跳過本次快照';
+
+  @override
+  String get autoSnapshotBusyToast => '有其他備份任務進行中，請稍後再試';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return '快照建立失敗：$error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => '關閉自動快照？';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return '關閉會永久刪除已有的 $count 份快照。確定繼續嗎？';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => '關閉並刪除';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return '刪除儲存的快照失敗：$error。快照檔案仍保留在磁碟上。';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return '無法儲存「自動快照」設定：$error。請重試。';
+  }
 }

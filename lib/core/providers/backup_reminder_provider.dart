@@ -18,6 +18,8 @@ class BackupReminderProvider extends ChangeNotifier {
   static const String _minutesOfDayKey = 'backup_reminder_minutes_of_day_v1';
   static const String _enabledAtKey = 'backup_reminder_enabled_at_v1';
   static const String _lastBackupAtKey = 'backup_reminder_last_backup_at_v1';
+  static const String _entryAlwaysVisibleKey =
+      'backup_reminder_entry_always_v1';
 
   bool _loaded = false;
   bool _enabled = false;
@@ -25,8 +27,8 @@ class BackupReminderProvider extends ChangeNotifier {
   int? _reminderMinutesOfDay;
   DateTime? _enabledAt;
   DateTime? _lastBackupAt;
-  bool _snoozedForSession = false;
   bool _shouldShowReminder = false;
+  bool _entryAlwaysVisible = true;
   Timer? _timer;
 
   bool get loaded => _loaded;
@@ -36,6 +38,10 @@ class BackupReminderProvider extends ChangeNotifier {
   DateTime? get enabledAt => _enabledAt;
   DateTime? get lastBackupAt => _lastBackupAt;
   bool get shouldShowReminder => _shouldShowReminder;
+
+  /// 首页抽屉备份入口是否常驻显示；false 时仅 [shouldShowReminder] 期间
+  /// 显示（见 side_drawer 入口行可见性门控）。
+  bool get entryAlwaysVisible => _entryAlwaysVisible;
 
   DateTime? get nextReminderAt {
     if (!_enabled || _reminderMinutesOfDay == null) return null;
@@ -55,10 +61,18 @@ class BackupReminderProvider extends ChangeNotifier {
     );
     _enabledAt = _parseDate(prefs.getString(_enabledAtKey));
     _lastBackupAt = _parseDate(prefs.getString(_lastBackupAtKey));
+    _entryAlwaysVisible = prefs.getBool(_entryAlwaysVisibleKey) ?? true;
     _loaded = true;
     evaluateDue(DateTime.now(), notify: false);
     if (startTimer) _schedule();
     notifyListeners();
+  }
+
+  Future<void> setEntryAlwaysVisible(bool value) async {
+    if (_entryAlwaysVisible == value) return;
+    _entryAlwaysVisible = value;
+    notifyListeners();
+    await _preferences.setBool(_entryAlwaysVisibleKey, value);
   }
 
   Future<void> saveSchedule({
@@ -79,7 +93,6 @@ class BackupReminderProvider extends ChangeNotifier {
       _enabledAt = currentTime;
     }
     if (!enabled) {
-      _snoozedForSession = false;
       _shouldShowReminder = false;
     }
 
@@ -105,7 +118,6 @@ class BackupReminderProvider extends ChangeNotifier {
     }
 
     _enabled = false;
-    _snoozedForSession = false;
     _shouldShowReminder = false;
     await _persist();
     _schedule();
@@ -114,7 +126,6 @@ class BackupReminderProvider extends ChangeNotifier {
 
   Future<void> recordBackupCompleted({DateTime? now}) async {
     _lastBackupAt = now ?? DateTime.now();
-    _snoozedForSession = false;
     await _persist();
     evaluateDue(_lastBackupAt!, notify: false);
     _schedule();
@@ -123,19 +134,10 @@ class BackupReminderProvider extends ChangeNotifier {
 
   void evaluateDue(DateTime now, {bool notify = true}) {
     final next = nextReminderAt;
-    final nextShouldShow =
-        _enabled && !_snoozedForSession && next != null && !now.isBefore(next);
+    final nextShouldShow = _enabled && next != null && !now.isBefore(next);
     if (_shouldShowReminder == nextShouldShow) return;
     _shouldShowReminder = nextShouldShow;
     if (notify) notifyListeners();
-  }
-
-  void snoozeForSession() {
-    if (!_shouldShowReminder && _snoozedForSession) return;
-    _snoozedForSession = true;
-    _shouldShowReminder = false;
-    _schedule();
-    notifyListeners();
   }
 
   @override
@@ -158,12 +160,12 @@ class BackupReminderProvider extends ChangeNotifier {
   }
 
   /// Arms a one-shot timer for the next reminder instead of polling every
-  /// minute. Runs only while the reminder is enabled (and not snoozed); all
-  /// state changes reschedule, so the event loop stays idle between reminders.
+  /// minute. Runs only while the reminder is enabled; all state changes
+  /// reschedule, so the event loop stays idle between reminders.
   void _schedule() {
     _timer?.cancel();
     _timer = null;
-    if (!_enabled || _snoozedForSession) return;
+    if (!_enabled) return;
     final next = nextReminderAt;
     if (next == null) return;
     final now = DateTime.now();
@@ -175,7 +177,7 @@ class BackupReminderProvider extends ChangeNotifier {
     _timer = Timer(next.difference(now), () {
       evaluateDue(DateTime.now());
       // Re-arm instead of dead-ending: normally a no-op (reminder is due and
-      // stays visible until the user backs up or snoozes), but if the wall
+      // stays visible until the user backs up), but if the wall
       // clock moved backward since arming (DST fall-back, manual time/zone
       // change), the timer fired before `next` and this re-arms it.
       _schedule();

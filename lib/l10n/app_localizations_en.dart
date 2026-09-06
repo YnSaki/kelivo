@@ -366,6 +366,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get storageSpaceSortByTime => 'By date';
 
   @override
+  String get storageSpaceNoCacheFiles => 'No cache files';
+
+  @override
+  String storageSpaceDeletedCacheFilesDone(Object count) {
+    return 'Deleted $count cache files';
+  }
+
+  @override
   String get storageWorkspaceEntryTitle => 'Workspace';
 
   @override
@@ -1601,6 +1609,136 @@ class AppLocalizationsEn extends AppLocalizations {
       'Keeping chat generation alive in background';
 
   @override
+  String get keepAliveGuidePageTitle => 'Background Keep-Alive Guide';
+
+  @override
+  String get keepAliveGuideIntro =>
+      'To keep chat generation running in the background, enable the background chat mode, allow Cuplivo to ignore battery optimization, grant notification access, and whitelist Cuplivo in your manufacturer\'s power settings. Chinese OEM ROMs kill foreground services unless the app is whitelisted.';
+
+  @override
+  String get keepAliveGuideBatteryTitle => 'Battery Optimization';
+
+  @override
+  String get keepAliveGuideBatteryStep =>
+      'If the status is not \"Unrestricted\", tap the row to allow Cuplivo to ignore battery optimization so background generation can finish.';
+
+  @override
+  String get keepAliveGuideStatusIgnored => 'Unrestricted';
+
+  @override
+  String get keepAliveGuideStatusNotIgnored => 'Optimized';
+
+  @override
+  String get keepAliveGuideStatusUnknown => 'Checking…';
+
+  @override
+  String get keepAliveGuideStatusGranted => 'Allowed';
+
+  @override
+  String get keepAliveGuideStatusDenied => 'Denied';
+
+  @override
+  String get keepAliveGuideStatusQueryFailed => 'Query failed';
+
+  @override
+  String get keepAliveGuideNotificationsDenied =>
+      'Notifications are still blocked. You can enable them in system settings.';
+
+  @override
+  String get keepAliveGuideNotificationTitle => 'Notifications';
+
+  @override
+  String get keepAliveGuideNotificationStep =>
+      'Notification permission (Android 13+) is required for background completion notifications. If blocked, tap the row and follow the system prompt.';
+
+  @override
+  String get keepAliveGuideVendorTitle => 'Manufacturer Settings';
+
+  @override
+  String get keepAliveGuideVendorNotDetected => 'Not detected';
+
+  @override
+  String get keepAliveGuideVendorXiaomi => 'Xiaomi / HyperOS';
+
+  @override
+  String get keepAliveGuideVendorHuawei => 'Huawei / HarmonyOS';
+
+  @override
+  String get keepAliveGuideVendorHonor => 'Honor / MagicOS';
+
+  @override
+  String get keepAliveGuideVendorOppo => 'OPPO / ColorOS';
+
+  @override
+  String get keepAliveGuideVendorOneplus => 'OnePlus';
+
+  @override
+  String get keepAliveGuideVendorVivo => 'vivo / OriginOS';
+
+  @override
+  String get keepAliveGuideVendorSamsung => 'Samsung / One UI';
+
+  @override
+  String get keepAliveGuideVendorMeizu => 'Meizu / Flyme';
+
+  @override
+  String get keepAliveGuideXiaomiHint =>
+      'Xiaomi: Settings → Apps → Autostart → enable Cuplivo; Settings → Battery → Battery saver policy for Cuplivo → No restrictions.';
+
+  @override
+  String get keepAliveGuideHuaweiHint =>
+      'Huawei: Settings → Apps → Launch management → Cuplivo → Manage manually, allow self-launch, associate launch and background activity.';
+
+  @override
+  String get keepAliveGuideHonorHint =>
+      'Honor: Settings → Apps → App launch management → Cuplivo → Manage manually, allow background activity.';
+
+  @override
+  String get keepAliveGuideOppoHint =>
+      'OPPO: Settings → Apps → App management → Cuplivo → Autostart, enable; Battery → App battery usage → Unlimited.';
+
+  @override
+  String get keepAliveGuideOneplusHint =>
+      'OnePlus: Settings → Battery → App power management → Cuplivo → Don\'t restrict; enable Self-startup under Settings → Apps.';
+
+  @override
+  String get keepAliveGuideVivoHint =>
+      'vivo: Settings → Apps → App management → Cuplivo → Autostart, enable; i Manager → Power management → background auto-start, allow.';
+
+  @override
+  String get keepAliveGuideSamsungHint =>
+      'Samsung: Settings → Battery and device care → Battery → Background usage limits; ensure Cuplivo is not in the sleeping apps list.';
+
+  @override
+  String get keepAliveGuideMeizuHint =>
+      'Meizu: Settings → Apps → Rights management → background; or Security center → App power saving.';
+
+  @override
+  String get keepAliveGuideOtherVendorHint =>
+      'Your manufacturer is not recognized. Find the app\'s power management under system settings (usually Apps → Cuplivo → Power/Battery) and set it to Unrestricted; many ROMs also provide a lock in the recent-apps list.';
+
+  @override
+  String get keepAliveGuideAutostartAction => 'Open Autostart';
+
+  @override
+  String get keepAliveGuidePowerAction => 'Open Power Settings';
+
+  @override
+  String get keepAliveGuideLockTitle => 'Lock in Recent Apps';
+
+  @override
+  String get keepAliveGuideLockStep =>
+      'In the recent-apps list, long-press the Cuplivo card and choose lock (pin) so one-tap cleanup does not kill it. Xiaomi: long-press → lock; Huawei/Honor: pull the card down; OPPO/OnePlus: long-press → lock; vivo: tap the lock icon.';
+
+  @override
+  String get keepAliveGuideFallbackOpened =>
+      'Opened a generic settings page. If you cannot find the option, follow the steps below.';
+
+  @override
+  String get keepAliveGuideOpenFailed =>
+      'Could not open any settings page. Please follow the steps below manually.';
+
+  @override
   String get assistantEditEmojiDialogTitle => 'Choose Emoji';
 
   @override
@@ -2213,9 +2351,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backupPageExportToFile => 'Export to File';
 
   @override
-  String get backupPageExportKelivoCompatible => 'Export for Kelivo';
-
-  @override
   String get backupPageExportToFileSubtitle => 'Export app data to a file';
 
   @override
@@ -2223,9 +2358,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupPageImportBackupFileSubtitle => 'Import a local backup file';
-
-  @override
-  String get backupPageImportFromOtherApps => 'Import from Other Apps';
 
   @override
   String get backupPageImportFromKelivo => 'Import from New Kelivo';
@@ -2387,6 +2519,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backupPageLocalBackup => 'Local Backup';
 
   @override
+  String get backupPageChannelManagement => 'Backup Channels';
+
+  @override
+  String get backupPageFullBackupSection => 'Full Backup';
+
+  @override
+  String get backupPageImportRestoreSection => 'Import & Restore';
+
+  @override
+  String get backupPageChannelEnabled => 'Enabled';
+
+  @override
+  String get backupPageChannelNotConfigured => 'Not configured';
+
+  @override
+  String get backupPageChannelLocalAlwaysOn => 'Always available';
+
+  @override
+  String get backupPageRestoreFromWebDav => 'Restore from WebDAV';
+
+  @override
+  String get backupPageRestoreFromS3 => 'Restore from S3';
+
+  @override
   String get backupPageImportFromCherryStudio => 'Import from Cherry Studio';
 
   @override
@@ -2394,6 +2550,84 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupPageIncrementalTitle => 'Incremental Backup';
+
+  @override
+  String get backupPageRestoreFromBackup => 'Restore from Backup';
+
+  @override
+  String get backupPageTestingConnection => 'Testing...';
+
+  @override
+  String backupEntryDueLine(Object time) {
+    return 'Backup due · Last backup $time';
+  }
+
+  @override
+  String get backupHeroHealthyTitle => 'Backup Is Up to Date';
+
+  @override
+  String backupHeroLastBackup(Object time) {
+    return 'Last backup $time';
+  }
+
+  @override
+  String get backupHeroDueTitle => 'Backup Due';
+
+  @override
+  String get backupHeroNoTitle => 'No Backup Yet';
+
+  @override
+  String get backupHeroNoDetail => 'Your chats are only on this device so far';
+
+  @override
+  String get backupSectionExportSync => 'Export & Sync';
+
+  @override
+  String get backupSectionAuto => 'Automatic Backup';
+
+  @override
+  String get backupRestoreCloud => 'Restore from Cloud';
+
+  @override
+  String get backupRestoreCloudNone => 'No cloud channel configured';
+
+  @override
+  String get backupMigrateTitle => 'Migrate Data';
+
+  @override
+  String get backupMigrateRowSubtitle =>
+      'Move data between Cuplivo and other apps';
+
+  @override
+  String get backupMigrateExportLabel => 'Export Kelivo-Compatible Backup';
+
+  @override
+  String get backupPageContentLabel => 'Backup Contents';
+
+  @override
+  String get backupScopeChatsAssistants => 'Chats & Assistants';
+
+  @override
+  String get backupScopeSettings => 'Settings';
+
+  @override
+  String get backupScopeAttachments => 'Attachments';
+
+  @override
+  String get backupScopeWorkspaces => 'Workspaces';
+
+  @override
+  String get backupScopeSkills => 'Skills';
+
+  @override
+  String get backupScopeFontsAvatars => 'Fonts & Avatars';
+
+  @override
+  String get backupDestLocal => 'Local';
+
+  @override
+  String get backupPageExportKelivoCompatibleSubtitle =>
+      'A full backup that old Kelivo or older Cuplivo builds can import';
 
   @override
   String get backupPageIncrementalDescription =>
@@ -2508,17 +2742,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backupReminderCustomDaysInvalid => 'Enter a number from 1 to 365.';
 
   @override
-  String get backupReminderSidebarTitle => 'Backup reminder';
+  String get backupEntryAlwaysVisibleTitle => 'Always Show Backup Entry';
 
   @override
-  String get backupReminderSidebarSubtitle =>
-      'Your backup interval has arrived.';
+  String get backupEntryJustNow => 'Just now';
 
   @override
-  String get backupReminderSidebarAction => 'Go to backup';
+  String backupEntryMinutesAgo(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count min ago',
+      one: '1 min ago',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get backupReminderSnoozeTooltip => 'Remind me later';
+  String backupEntryHoursAgo(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hr ago',
+      one: '1 hr ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupEntryDaysAgo(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupEntryDateWithYear(Object date, Object year) {
+    return '$date, $year';
+  }
 
   @override
   String get lanSyncSectionTitle => 'LAN Sync';
@@ -2582,6 +2847,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lanSyncClientConfirm => 'Start Sync';
 
   @override
+  String get lanSyncPriorityLabel => 'Conflict resolution';
+
+  @override
+  String get lanSyncPriorityAuto => 'Auto (default merge)';
+
+  @override
+  String get lanSyncPriorityInitiatorWins => 'This device wins';
+
+  @override
+  String get lanSyncPriorityServerWins => 'Peer wins';
+
+  @override
+  String get lanSyncPeerPriorityInitiatorWins =>
+      'Peer chose \"This device wins\": conflicting data will follow the peer\'s copy.';
+
+  @override
+  String get lanSyncPeerPriorityServerWins =>
+      'Peer chose \"Peer wins\": conflicting data will keep this device\'s copy.';
+
+  @override
   String get lanSyncClientExchanging => 'Exchanging data...';
 
   @override
@@ -2614,6 +2899,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get lanSyncPlanNoChanges => 'No changes to sync.';
+
+  @override
+  String get lanSyncPlanPrioritySettings =>
+      'Conflict direction chosen: settings will be exchanged.';
 
   @override
   String lanSyncPlanToSendFiles(Object count, Object size) {
@@ -3153,6 +3442,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSelectionExportImage => 'Image';
 
   @override
+  String get chatSelectionExportPdf => 'PDF';
+
+  @override
   String get chatSelectionThinkingTools => 'Thinking tools';
 
   @override
@@ -3251,11 +3543,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageExportSheetMarkdown => 'Markdown';
 
   @override
+  String get messageExportSheetPdf => 'PDF';
+
+  @override
   String get messageExportSheetSingleMarkdownSubtitle =>
       'Export this message as a Markdown file';
 
   @override
+  String get messageExportSheetPdfIncomplete =>
+      'PDF exported, but some images or diagrams may be incomplete';
+
+  @override
+  String get messageExportSheetPdfUnsupported =>
+      'PDF export is currently only available on Windows and Android';
+
+  @override
+  String get messageExportSheetPdfExportInProgress =>
+      'Another PDF export is already in progress.';
+
+  @override
+  String get messageExportSheetPdfAndroidWebViewUnsupported =>
+      'Update Android System WebView to export PDFs.';
+
+  @override
+  String get messageExportSheetPdfAndroidFailed =>
+      'Could not export the PDF. Please try again.';
+
+  @override
   String get messageExportSheetPlainText => 'Plain Text';
+
+  @override
+  String get messageExportSheetSinglePdfSubtitle =>
+      'Export this message as a PDF file';
 
   @override
   String get messageExportSheetSingleTxtSubtitle =>
@@ -6968,6 +7287,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String get providersPageMultiSelectTooltip => 'Multi-select';
 
   @override
+  String get providersPageHideBuiltinAction => 'Hide built-in provider';
+
+  @override
+  String get providersPageHideBuiltinTitle => 'Hide Built-in Provider';
+
+  @override
+  String get providersPageHideSelectedConfirmContent =>
+      'Hidden built-in providers can be restored anytime from the bottom of the provider list.';
+
+  @override
+  String providersPageBatchDeleteMixedConfirmContent(
+    int deleteCount,
+    int hideCount,
+  ) {
+    return 'Delete $deleteCount custom provider(s) and hide $hideCount built-in provider(s)? Built-in providers can be restored anytime from the bottom of the list.';
+  }
+
+  @override
+  String providersPageHideBuiltinSnackbar(int count) {
+    return 'Hid $count built-in provider(s)';
+  }
+
+  @override
+  String providersPageBatchDeleteMixedSnackbar(int deleteCount, int hideCount) {
+    return 'Deleted $deleteCount provider(s), hid $hideCount built-in provider(s)';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsButton(int count) {
+    return 'Restore built-in providers ($count)';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsConfirm(int count) {
+    return 'Restore $count hidden built-in provider(s)? Their saved configurations will be restored.';
+  }
+
+  @override
+  String providersPageRestoreBuiltinsSnackbar(int count) {
+    return 'Restored $count built-in provider(s)';
+  }
+
+  @override
   String get providersPageDeleteSelectedConfirmContent =>
       'Delete selected providers? This cannot be undone.';
 
@@ -7095,6 +7457,57 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get networkProxyPriorityNote =>
       'When both global and provider proxies are enabled, provider-level proxy takes priority.';
+
+  @override
+  String get settingsPageAutoRetry => 'Auto Retry';
+
+  @override
+  String get autoRetryEnableLabel => 'Enable auto-retry';
+
+  @override
+  String get autoRetryMaxRetries => 'Max retries';
+
+  @override
+  String get autoRetryInitialDelay => 'Initial delay (ms)';
+
+  @override
+  String get autoRetryMultiplier => 'Backoff multiplier';
+
+  @override
+  String get autoRetryMaxDelay => 'Max delay (ms)';
+
+  @override
+  String get autoRetryJitter => 'Jitter';
+
+  @override
+  String get autoRetryJitterSubtitle => 'Randomize each wait by ±20%';
+
+  @override
+  String get autoRetryOnNetworkError => 'Retry on network errors';
+
+  @override
+  String get autoRetryStatusCodes => 'Retry status codes';
+
+  @override
+  String get autoRetryKeywords => 'Retry keywords';
+
+  @override
+  String get autoRetryStopKeywords => 'Stop keywords';
+
+  @override
+  String get autoRetryAddHint => 'Add';
+
+  @override
+  String get autoRetryRestoreDefaults => 'Restore defaults';
+
+  @override
+  String get autoRetryFooter =>
+      'Auto-retry only runs if this request has not produced any output yet.';
+
+  @override
+  String autoRetryCountdown(Object attempt, Object maxRetries, Object seconds) {
+    return '${seconds}s until retry ($attempt/$maxRetries)';
+  }
 
   @override
   String get desktopShowProviderInModelCapsule =>
@@ -8385,17 +8798,49 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get subagentNoTargetHint =>
-      'Sub-agent delegation is on, but no sub-agent targets are available. Enable “Delegateable as a sub-agent” on another assistant first.';
-
-  @override
   String get subagentGoSetup => 'Set up';
 
   @override
-  String get subagentTargetListTitle => 'Delegatable assistants';
+  String get subagentPageTitle => 'Sub-agent Delegation';
 
   @override
-  String get subagentTargetListEmpty => 'No delegatable assistants yet.';
+  String get subagentPageExplainer =>
+      'With Sub-agent Delegation enabled, the current assistant can delegate tasks to other assistants and wait for their sub-agent result. To become a delegatable target, an assistant must:\n1. Have “Discoverable” enabled\n2. Set a non-empty delegation ID';
+
+  @override
+  String get subagentPageStatusEmptySub =>
+      'Enable “Discoverable” and set a delegation ID first';
+
+  @override
+  String get subagentPageEmpty =>
+      'No assistants to configure yet. Create one in Assistant settings first.';
+
+  @override
+  String get subagentSectionDelegatable => 'Delegatable';
+
+  @override
+  String get subagentSectionUnconfigured => 'Not configured';
+
+  @override
+  String get subagentReasonNoId => 'No delegation ID';
+
+  @override
+  String get subagentReasonNotDiscoverable => 'Discoverability is off';
+
+  @override
+  String get subagentEditorStateOk => 'Delegatable';
+
+  @override
+  String get subagentEditorOkSub => 'All conditions met';
+
+  @override
+  String get subagentEditorNoIdSub => 'Set a delegation ID to enable';
+
+  @override
+  String get subagentEditorNotDiscSub => '“Discoverable” must be enabled first';
+
+  @override
+  String get subagentIdConflict => 'ID conflict';
 
   @override
   String get groupChatCreate => 'New group chat';
@@ -8937,6 +9382,59 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workspaceTerminalCopy => 'Copy';
 
   @override
+  String get workspaceTerminalPersistenceSettings =>
+      'Sandbox and terminal persistence';
+
+  @override
+  String get workspaceKeepTerminalAfterExit =>
+      'Keep terminal running after leaving';
+
+  @override
+  String get workspaceKeepTerminalAfterExitDescription =>
+      'Keep this workspace\'s PTY and terminal contents so you can resume them later.';
+
+  @override
+  String get workspaceTerminalPersistentKeepAlive =>
+      'Persistent terminal keep-alive';
+
+  @override
+  String get workspaceTerminalPersistentKeepAliveDescription =>
+      'Use a foreground notification to keep the terminal alive after the app task is removed. This uses more power.';
+
+  @override
+  String get workspaceAutoStartLinuxSandbox =>
+      'Open Linux sandbox when the app starts';
+
+  @override
+  String get workspaceAutoStartLinuxSandboxDescription =>
+      'Start this workspace\'s Linux login shell after Cuplivo starts.';
+
+  @override
+  String workspaceTerminalSettingFailed(String error) {
+    return 'Unable to update terminal settings: $error';
+  }
+
+  @override
+  String get workspaceTerminalStopFailed =>
+      'The workspace terminal could not be stopped. The operation was cancelled.';
+
+  @override
+  String get workspaceTerminalNotificationPermissionDenied =>
+      'Notification permission is required to enable persistent terminal keep-alive.';
+
+  @override
+  String get workspaceTerminalNotificationChannel =>
+      'Persistent terminal sessions';
+
+  @override
+  String get workspaceTerminalNotificationTitle =>
+      'Workspace terminal is running';
+
+  @override
+  String get workspaceTerminalNotificationText =>
+      'Cuplivo is keeping a Linux workspace terminal alive.';
+
+  @override
   String get workspaceFilesEntry => 'Workspace files';
 
   @override
@@ -9393,8 +9891,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webConversationStylesGithubTitle => 'Import from GitHub';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub repository, tree, blob, or raw style file URL';
+  String get webConversationStylesGithubHint => 'Repo or style file URL';
 
   @override
   String get webConversationStylesSelectTitle => 'Select styles to import';
@@ -9447,4 +9944,202 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webConversationStylesNoDescription => 'No description';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContent =>
+      'Fit assistant bubble to content';
+
+  @override
+  String get messageStyleSettingsPageAssistantFitContentSubtitle =>
+      'Assistant bubbles hug their text instead of filling the row';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphs =>
+      'Split paragraphs into bubbles';
+
+  @override
+  String get messageStyleSettingsPageAssistantSplitParagraphsSubtitle =>
+      'Blank lines break an assistant reply into one bubble per paragraph';
+
+  @override
+  String get messageStyleSettingsPageBackgroundColor => 'Background';
+
+  @override
+  String get messageStyleSettingsPageBackgroundOpacity => 'Background Opacity';
+
+  @override
+  String get messageStyleSettingsPageBlur => 'Blur';
+
+  @override
+  String get messageStyleSettingsPageBlurHint =>
+      'Blur applies to content behind the bubble. It is barely visible without a chat wallpaper.';
+
+  @override
+  String get messageStyleSettingsPageBorderColor => 'Border';
+
+  @override
+  String get messageStyleSettingsPageBorderOpacity => 'Border Opacity';
+
+  @override
+  String get messageStyleSettingsPageBorderWidth => 'Border Width';
+
+  @override
+  String get messageStyleSettingsPageCancel => 'Cancel';
+
+  @override
+  String get messageStyleSettingsPageCornerRadius => 'Corner Radius';
+
+  @override
+  String get messageStyleSettingsPageDark => 'Dark';
+
+  @override
+  String get messageStyleSettingsPageDefaultHint =>
+      'Default style follows the current theme and has no extra controls.';
+
+  @override
+  String get messageStyleSettingsPageLight => 'Light';
+
+  @override
+  String get messageStyleSettingsPagePreviewAssistant =>
+      'This is an assistant reply.';
+
+  @override
+  String get messageStyleSettingsPagePreviewThinking => 'Thinking';
+
+  @override
+  String get messageStyleSettingsPagePreviewUser => 'This is a user message';
+
+  @override
+  String get messageStyleSettingsPageReset => 'Reset';
+
+  @override
+  String get messageStyleSettingsPageResetConfirm =>
+      'Reset all message style customizations?';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistant => 'Assistant';
+
+  @override
+  String get messageStyleSettingsPageRoleAssistantHint =>
+      'Assistant settings also apply to thinking, tool-call, and translation cards.';
+
+  @override
+  String get messageStyleSettingsPageRoleUser => 'User';
+
+  @override
+  String get messageStyleSettingsPageStyleDefaultSubtitle =>
+      'Follows the theme; not customizable';
+
+  @override
+  String get messageStyleSettingsPageStyleFrostedSubtitle =>
+      'Translucent frosted glass';
+
+  @override
+  String get messageStyleSettingsPageStyleSolidSubtitle => 'Opaque solid fill';
+
+  @override
+  String get messageStyleSettingsPageTextColor => 'Text';
+
+  @override
+  String get messageStyleSettingsPageTitle => 'Message Style';
+
+  @override
+  String get backupMigrateMoveOutHeader => 'Move out to';
+
+  @override
+  String get backupMigrateMoveInHeader => 'Move in from';
+
+  @override
+  String get backupPageExportKelivoCompatible => 'Export for Kelivo';
+
+  @override
+  String get backupPageImportFromOtherApps => 'Import from Other Apps';
+
+  @override
+  String get backupReminderSidebarTitle => 'Backup reminder';
+
+  @override
+  String get backupReminderSidebarSubtitle =>
+      'Your backup interval has arrived.';
+
+  @override
+  String get backupReminderSidebarAction => 'Go to backup';
+
+  @override
+  String get backupReminderSnoozeTooltip => 'Remind me later';
+
+  @override
+  String get autoSnapshotSectionTitle => 'Auto Snapshots';
+
+  @override
+  String get autoSnapshotEnableTitle => 'Enable Auto Snapshots';
+
+  @override
+  String get autoSnapshotEnableSubtitle =>
+      'Keep up to 3 full snapshots on this device. Snapshots are independent of backups and are never uploaded.';
+
+  @override
+  String get autoSnapshotFrequencyTitle => 'Snapshot Frequency';
+
+  @override
+  String get autoSnapshotFrequencyEvery12h => 'Every 12 hours';
+
+  @override
+  String get autoSnapshotFrequencyDaily => 'Every day';
+
+  @override
+  String get autoSnapshotFrequencyEvery3Days => 'Every 3 days';
+
+  @override
+  String get autoSnapshotFrequencyEvery5Days => 'Every 5 days';
+
+  @override
+  String get autoSnapshotCreateNow => 'Create Snapshot Now';
+
+  @override
+  String get autoSnapshotListTitle => 'Snapshots';
+
+  @override
+  String get autoSnapshotEmpty => 'No snapshots yet';
+
+  @override
+  String autoSnapshotMetaCounts(int assistants, int conversations) {
+    return '$assistants assistants · $conversations chats';
+  }
+
+  @override
+  String get autoSnapshotCreatedToast => 'Snapshot created';
+
+  @override
+  String get autoSnapshotDedupedToast => 'Data unchanged — snapshot skipped';
+
+  @override
+  String get autoSnapshotBusyToast =>
+      'Another backup task is running. Try again later.';
+
+  @override
+  String autoSnapshotFailedToast(String error) {
+    return 'Snapshot failed: $error';
+  }
+
+  @override
+  String get autoSnapshotDisableTitle => 'Turn off Auto Snapshots?';
+
+  @override
+  String autoSnapshotDisableBody(int count) {
+    return 'Turning off will permanently delete $count existing snapshot(s). Continue?';
+  }
+
+  @override
+  String get autoSnapshotDisableConfirm => 'Turn off & Delete';
+
+  @override
+  String autoSnapshotDisableDeleteFailed(String error) {
+    return 'Failed to delete stored snapshots: $error. They are kept on disk.';
+  }
+
+  @override
+  String autoSnapshotToggleFailed(String error) {
+    return 'Could not save the Auto Snapshots setting: $error. Please try again.';
+  }
 }

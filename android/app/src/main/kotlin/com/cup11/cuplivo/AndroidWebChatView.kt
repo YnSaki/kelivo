@@ -28,15 +28,27 @@ import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
 import java.io.ByteArrayInputStream
 
-private const val WEB_CHAT_ORIGIN = "https://appassets.androidplatform.net"
-private const val WEB_CHAT_SHELL_URL =
+internal const val WEB_CHAT_ORIGIN = "https://appassets.androidplatform.net"
+internal const val WEB_CHAT_SHELL_URL =
   "$WEB_CHAT_ORIGIN/assets/flutter_assets/assets/web_chat/index.html"
+internal const val WEB_CHAT_PRINT_SHELL_URL =
+  "$WEB_CHAT_SHELL_URL?platform=android&mode=print"
 private const val FLUTTER_ASSET_PREFIX = "flutter_assets/assets/"
 private const val WEB_CHAT_ASSET_PREFIX = "${FLUTTER_ASSET_PREFIX}web_chat/"
 private const val MERMAID_ASSET_PATH = "${FLUTTER_ASSET_PREFIX}mermaid.min.js"
-private const val LOG_TAG = "CuplivoWebChat"
+internal const val WEB_CHAT_LOG_TAG = "CuplivoWebChat"
 private const val STOP_WEB_SCROLLING_SCRIPT =
-  "window.CuplivoWeb?.stopScrolling?.();"
+  "window.CuplivoWeb?.stopScrolling?.('programmatic');"
+private const val STOP_WEB_SCROLLING_TOUCH_SCRIPT =
+  "window.CuplivoWeb?.stopScrolling?.('touch');"
+private const val STOP_WEB_SCROLLING_POINTER_SCRIPT =
+  "window.CuplivoWeb?.stopScrolling?.('pointer');"
+
+private fun webStopScrollingScript(origin: String?): String = when (origin) {
+  "touch" -> STOP_WEB_SCROLLING_TOUCH_SCRIPT
+  "pointer" -> STOP_WEB_SCROLLING_POINTER_SCRIPT
+  else -> STOP_WEB_SCROLLING_SCRIPT
+}
 
 internal fun isAllowedWebChatAssetPath(path: String): Boolean {
   if (path.contains("..") || path.startsWith('/')) return false
@@ -60,7 +72,10 @@ internal fun webChatAssetMimeType(path: String): String = when (path.substringAf
   else -> "application/octet-stream"
 }
 
-private class WebChatAssetPathHandler(
+internal fun isAllowedWebChatMainFrameUrl(url: String, printMode: Boolean): Boolean =
+  url == if (printMode) WEB_CHAT_PRINT_SHELL_URL else WEB_CHAT_SHELL_URL
+
+internal class WebChatAssetPathHandler(
   private val context: Context,
 ) : WebViewAssetLoader.PathHandler {
   override fun handle(path: String): WebResourceResponse {
@@ -80,7 +95,7 @@ private class WebChatAssetPathHandler(
       }
     } catch (error: Exception) {
       Log.d(
-        LOG_TAG,
+        WEB_CHAT_LOG_TAG,
         "Failed to load bundled Web chat asset (${error.javaClass.simpleName})",
       )
       notFoundResponse()
@@ -97,6 +112,29 @@ private class WebChatAssetPathHandler(
   )
 }
 
+internal fun createWebChatAssetLoader(context: Context): WebViewAssetLoader =
+  WebViewAssetLoader.Builder()
+    .addPathHandler("/assets/", WebChatAssetPathHandler(context))
+    .build()
+
+@SuppressLint("SetJavaScriptEnabled")
+@Suppress("DEPRECATION")
+internal fun configureSecureWebChatSettings(webView: WebView) {
+  webView.setBackgroundColor(Color.TRANSPARENT)
+  webView.settings.apply {
+    javaScriptEnabled = true
+    domStorageEnabled = false
+    allowFileAccess = false
+    allowContentAccess = false
+    allowFileAccessFromFileURLs = false
+    allowUniversalAccessFromFileURLs = false
+    javaScriptCanOpenWindowsAutomatically = false
+    setSupportMultipleWindows(false)
+    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    mediaPlaybackRequiresUserGesture = true
+  }
+}
+
 class AndroidWebChatViewFactory(
   private val messenger: BinaryMessenger,
 ) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
@@ -110,9 +148,7 @@ private class AndroidWebChatPlatformView(
   viewId: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler {
   private val channel = MethodChannel(messenger, "cuplivo/web_chat/$viewId")
-  private val assetLoader = WebViewAssetLoader.Builder()
-    .addPathHandler("/assets/", WebChatAssetPathHandler(context))
-    .build()
+  private val assetLoader = createWebChatAssetLoader(context)
   private val webView = WebView(context)
   private var disposed = false
   private val supportsSecureBridge =
@@ -123,25 +159,11 @@ private class AndroidWebChatPlatformView(
     configureWebView()
   }
 
-  @SuppressLint("SetJavaScriptEnabled")
-  @Suppress("DEPRECATION")
   private fun configureWebView() {
-    webView.setBackgroundColor(Color.TRANSPARENT)
-    webView.settings.apply {
-      javaScriptEnabled = true
-      domStorageEnabled = false
-      allowFileAccess = false
-      allowContentAccess = false
-      allowFileAccessFromFileURLs = false
-      allowUniversalAccessFromFileURLs = false
-      javaScriptCanOpenWindowsAutomatically = false
-      setSupportMultipleWindows(false)
-      mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-      mediaPlaybackRequiresUserGesture = true
-    }
+    configureSecureWebChatSettings(webView)
     webView.setOnTouchListener { _, event ->
       if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-        stopScrolling()
+        stopScrolling(origin = "touch")
       }
       false
     }
@@ -172,7 +194,12 @@ private class AndroidWebChatPlatformView(
         request: WebResourceRequest,
       ): Boolean {
         if (!request.isForMainFrame) return false
-        if (request.url.toString() == WEB_CHAT_SHELL_URL) return false
+        if (
+          isAllowedWebChatMainFrameUrl(
+            request.url.toString(),
+            printMode = false,
+          )
+        ) return false
         channel.invokeMethod("navigationRequest", request.url.toString())
         return true
       }
@@ -235,18 +262,23 @@ private class AndroidWebChatPlatformView(
         webView.evaluateJavascript(source) { result.success(null) }
       }
       "stopScrolling" -> {
-        stopScrolling { result.success(null) }
+        stopScrolling(call.arguments as? String) { result.success(null) }
       }
       else -> result.notImplemented()
     }
   }
 
-  private fun stopScrolling(onComplete: (() -> Unit)? = null) {
+  private fun stopScrolling(
+    origin: String? = null,
+    onComplete: (() -> Unit)? = null,
+  ) {
     // Flutter's vertical-drag recognizer buffers the native ACTION_DOWN until
     // the gesture arena resolves. Cancel Chromium's compositor fling from the
     // method channel immediately, then keep the nested timeline fixed in JS.
+    // The origin is preserved into JS so touch-origin calls stay arming-free
+    // on mobile while programmatic/pointer calls keep the lock.
     webView.flingScroll(0, 0)
-    webView.evaluateJavascript(STOP_WEB_SCROLLING_SCRIPT) {
+    webView.evaluateJavascript(webStopScrollingScript(origin)) {
       onComplete?.invoke()
     }
   }

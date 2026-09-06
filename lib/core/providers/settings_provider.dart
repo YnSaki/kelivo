@@ -15,10 +15,12 @@ import '../services/tts/network_tts.dart';
 import '../services/tts/tts_text_selection.dart';
 import '../services/asr/asr_service_options.dart';
 import '../services/network/request_logger.dart';
+import '../services/api/retry_policy.dart';
 import '../services/logging/flutter_logger.dart';
 import '../services/backup/double_pref_keys.dart'
     show doublePrefKeys, businessPrefDouble;
 import '../models/api_keys.dart';
+import '../models/auto_retry_options.dart';
 import '../models/backup.dart';
 import '../models/provider_group.dart';
 import '../models/web_conversation_style.dart';
@@ -31,6 +33,7 @@ import '../../utils/provider_grouping_logic.dart';
 import '../../utils/brand_assets.dart';
 import '../prompts/constants/compress_prompts.dart' as compress_prompts;
 import '../prompts/constants/ocr_prompts.dart' as ocr_prompts;
+import 'package:Cuplivo/theme/chat_bubble_style.dart';
 import 'package:Cuplivo/theme/custom_theme.dart';
 import 'package:Cuplivo/theme/palettes.dart';
 
@@ -88,6 +91,8 @@ class SettingsProvider extends ChangeNotifier {
   static const String _themeModeKey = 'theme_mode_v1';
   static const String _providerConfigsKey = 'provider_configs_v1';
   static const String _providerConfigsBackupKey = 'provider_configs_backup_v1';
+  static const String _hiddenBuiltinProvidersKey =
+      'hidden_builtin_providers_v1';
   static const String _migrationsVersionKey = 'migrations_version_v1';
   static const int _embeddingOverridesMigrationVersion = 3;
   static const int _doubleKeysNormalizationMigrationVersion = 4;
@@ -260,6 +265,14 @@ class SettingsProvider extends ChangeNotifier {
       'display_use_pure_background_v1';
   static const String _displayChatMessageBackgroundStyleKey =
       'display_chat_message_background_style_v1';
+  static const String _displayAssistantBubbleFitContentKey =
+      'display_assistant_bubble_fit_content_v1';
+  static const String _displayAssistantBubbleSplitParagraphsKey =
+      'display_assistant_bubble_split_paragraphs_v1';
+  static const String _chatBubbleStyleOverridesKey =
+      'chat_bubble_style_overrides_v1';
+  static const String _userChatBubbleStyleOverridesKey =
+      'chat_bubble_style_overrides_user_v1';
   static const String _mobileAssistantEditTabOrderKey =
       'mobile_assistant_edit_tab_order_v1';
   static const String _mobileAssistantEditTabHiddenKey =
@@ -346,6 +359,8 @@ class SettingsProvider extends ChangeNotifier {
   static const String _globalProxyBypassKey = 'global_proxy_bypass_v1';
   static const String _defaultGlobalProxyBypassRules =
       'localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1';
+  // Auto-retry (exponential backoff) for chat / translate / OCR streams
+  static const String _autoRetryOptionsKey = 'auto_retry_options_v1';
   // TTS services (network)
   static const String _ttsServicesKey = 'tts_services_v1';
   static const String _ttsSelectedServiceIdKey = 'tts_selected_service_id_v1';
@@ -490,6 +505,40 @@ class SettingsProvider extends ChangeNotifier {
       Map.unmodifiable(_providerConfigs);
   bool get hasAnyActiveModel =>
       _providerConfigs.values.any((c) => c.enabled && c.models.isNotEmpty);
+  // Hidden built-in providers are removed from the visible list but keep
+  // their persisted config (apiKey, models, name, ...) so restore brings
+  // them back exactly as they were. Never deleted (data-disaster risk).
+  final Set<String> _hiddenBuiltinProviders = <String>{};
+  Set<String> get hiddenBuiltinProviderKeys =>
+      Set.unmodifiable(_hiddenBuiltinProviders);
+  bool isProviderHidden(String key) => _hiddenBuiltinProviders.contains(key);
+
+  /// Hides a built-in provider: removes it from lists and the model picker,
+  /// clears all model selections referencing it, but keeps its config.
+  /// Non-built-in keys are ignored — custom providers have true delete.
+  Future<void> hideBuiltinProvider(String key) async {
+    if (!_builtInProviderKeys.contains(key)) return;
+    if (!_hiddenBuiltinProviders.add(key)) return;
+    await _clearSelectionsForProvider(key);
+    await _persistHiddenBuiltinProviders();
+    notifyListeners();
+  }
+
+  /// Re-shows every hidden built-in provider (configs preserved).
+  Future<void> restoreAllBuiltinProviders() async {
+    if (_hiddenBuiltinProviders.isEmpty) return;
+    _hiddenBuiltinProviders.clear();
+    await _persistHiddenBuiltinProviders();
+    notifyListeners();
+  }
+
+  Future<void> _persistHiddenBuiltinProviders() async {
+    await _preferences.setString(
+      _hiddenBuiltinProvidersKey,
+      jsonEncode(_hiddenBuiltinProviders.toList()),
+    );
+  }
+
   // Returns a config for the given key without mutating internal state when missing.
   // This avoids implicitly creating providers during read paths (e.g., rendering old chats).
   ProviderConfig getProviderConfig(String key, {String? defaultName}) {
@@ -657,6 +706,10 @@ class SettingsProvider extends ChangeNotifier {
       List.unmodifiable(_searchServices);
   SearchCommonOptions _searchCommonOptions = const SearchCommonOptions();
   SearchCommonOptions get searchCommonOptions => _searchCommonOptions;
+  // Auto-retry (exponential backoff). Mirrored into [AutoRetryConfig.current]
+  // because the static ChatApiService has no provider access.
+  AutoRetryOptions _autoRetry = const AutoRetryOptions.defaults();
+  AutoRetryOptions get autoRetryOptions => _autoRetry;
   int _searchServiceSelected = 0;
   int get searchServiceSelected => _searchServiceSelected;
   bool _searchEnabled = false;
@@ -969,6 +1022,22 @@ class SettingsProvider extends ChangeNotifier {
     // throws). Runs before the getDouble reads below within this same _load.
     await _normalizeDoublePrefKeys(prefs);
 
+    // load hidden built-in providers (validated: only real built-in keys)
+    try {
+      final hiddenStr = prefs.getString(_hiddenBuiltinProvidersKey) ?? '';
+      _hiddenBuiltinProviders.clear();
+      if (hiddenStr.isNotEmpty) {
+        final raw = jsonDecode(hiddenStr);
+        if (raw is List) {
+          _hiddenBuiltinProviders.addAll(
+            raw.whereType<String>().where(_builtInProviderKeys.contains),
+          );
+        }
+      }
+    } catch (_) {
+      _hiddenBuiltinProviders.clear();
+    }
+
     // load provider grouping
     try {
       final groupsStr = prefs.getString(_providerGroupsKey) ?? '';
@@ -1133,6 +1202,24 @@ class SettingsProvider extends ChangeNotifier {
       if (parts.length >= 2) {
         _proactiveCareDecisionModelProvider = parts[0];
         _proactiveCareDecisionModelId = parts.sublist(1).join('::');
+      }
+    }
+    // Reconcile model selections against hidden built-ins. A cross-device
+    // backup/merge restore can land a hidden key while an independently
+    // merged model selection (scalar LWW each) still references it — and the
+    // config still exists, so nothing else would ever clear these. Mirrors
+    // the hide-time clearing (issue #295).
+    for (final hiddenKey in _hiddenBuiltinProviders) {
+      if (_currentModelProvider == hiddenKey ||
+          _titleModelProvider == hiddenKey ||
+          _translateModelProvider == hiddenKey ||
+          _ocrModelProvider == hiddenKey ||
+          _summaryModelProvider == hiddenKey ||
+          _suggestionModelProvider == hiddenKey ||
+          _compressModelProvider == hiddenKey ||
+          _proactiveCareDecisionModelProvider == hiddenKey ||
+          _pinnedModels.any((e) => e.startsWith('$hiddenKey::'))) {
+        await _clearSelectionsForProvider(hiddenKey);
       }
     }
     // learning mode
@@ -1412,6 +1499,54 @@ class SettingsProvider extends ChangeNotifier {
       default:
         _chatMessageBackgroundStyle = ChatMessageBackgroundStyle.defaultStyle;
     }
+    _assistantBubbleFitContent =
+        prefs.getBool(_displayAssistantBubbleFitContentKey) ?? false;
+    _assistantBubbleSplitParagraphs =
+        prefs.getBool(_displayAssistantBubbleSplitParagraphsKey) ?? false;
+    final bubbleOverridesRaw = prefs.getString(_chatBubbleStyleOverridesKey);
+    if (bubbleOverridesRaw != null && bubbleOverridesRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(bubbleOverridesRaw);
+        if (decoded is Map<String, dynamic>) {
+          _chatBubbleStyleOverrides = ChatBubbleStyleOverrides.fromJson(
+            decoded,
+          );
+        } else if (decoded is Map) {
+          _chatBubbleStyleOverrides = ChatBubbleStyleOverrides.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } catch (e) {
+        debugPrint(
+          'SettingsProvider: failed to decode $_chatBubbleStyleOverridesKey: '
+          '$e',
+        );
+        _chatBubbleStyleOverrides = const ChatBubbleStyleOverrides();
+      }
+    }
+    final userBubbleOverridesRaw = prefs.getString(
+      _userChatBubbleStyleOverridesKey,
+    );
+    if (userBubbleOverridesRaw != null && userBubbleOverridesRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(userBubbleOverridesRaw);
+        if (decoded is Map<String, dynamic>) {
+          _userChatBubbleStyleOverrides = ChatBubbleStyleOverrides.fromJson(
+            decoded,
+          );
+        } else if (decoded is Map) {
+          _userChatBubbleStyleOverrides = ChatBubbleStyleOverrides.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } catch (e) {
+        // Keep null so a corrupt user key still follows assistant.
+        debugPrint(
+          'SettingsProvider: failed to decode '
+          '$_userChatBubbleStyleOverridesKey: $e',
+        );
+      }
+    }
     _mobileAssistantEditTabOrder = List.unmodifiable(
       prefs.getStringList(_mobileAssistantEditTabOrderKey) ?? const <String>[],
     );
@@ -1523,6 +1658,23 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       _globalProxyBypass = bypass;
     }
+
+    // load auto-retry options
+    _autoRetry = const AutoRetryOptions.defaults();
+    final autoRetryStr = prefs.getString(_autoRetryOptionsKey);
+    if (autoRetryStr != null && autoRetryStr.isNotEmpty) {
+      try {
+        _autoRetry = AutoRetryOptions.fromJson(
+          jsonDecode(autoRetryStr) as Map<String, dynamic>,
+        );
+      } catch (e) {
+        debugPrint(
+          '[Settings] failed to parse auto retry options '
+          '(falling back to defaults): $e',
+        );
+      }
+    }
+    AutoRetryConfig.current = _autoRetry;
 
     // load network TTS services
     try {
@@ -1866,6 +2018,8 @@ class SettingsProvider extends ChangeNotifier {
   bool get codeFontIsGoogle => _codeFontIsGoogle;
   String? get appFontLocalAlias => _appFontLocalAlias;
   String? get codeFontLocalAlias => _codeFontLocalAlias;
+  String? get appFontLocalPath => _appFontLocalPath;
+  String? get codeFontLocalPath => _codeFontLocalPath;
 
   // Use alias if a local font is set and successfully registered
   String? get _effectiveAppFontAlias =>
@@ -2892,6 +3046,99 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setString(_displayChatMessageBackgroundStyleKey, v);
   }
 
+  // When on, assistant bubbles hug their text instead of spanning the row.
+  bool _assistantBubbleFitContent = false;
+  bool get assistantBubbleFitContent => _assistantBubbleFitContent;
+  Future<void> setAssistantBubbleFitContent(bool v) async {
+    if (_assistantBubbleFitContent == v) return;
+    _assistantBubbleFitContent = v;
+    notifyListeners();
+    await _preferences.setBool(_displayAssistantBubbleFitContentKey, v);
+  }
+
+  // When on, blank lines split assistant text into one bubble per paragraph.
+  bool _assistantBubbleSplitParagraphs = false;
+  bool get assistantBubbleSplitParagraphs => _assistantBubbleSplitParagraphs;
+  Future<void> setAssistantBubbleSplitParagraphs(bool v) async {
+    if (_assistantBubbleSplitParagraphs == v) return;
+    _assistantBubbleSplitParagraphs = v;
+    notifyListeners();
+    await _preferences.setBool(_displayAssistantBubbleSplitParagraphsKey, v);
+  }
+
+  ChatBubbleStyleOverrides _chatBubbleStyleOverrides =
+      const ChatBubbleStyleOverrides();
+  ChatBubbleStyleOverrides? _userChatBubbleStyleOverrides;
+  ChatBubbleStyleOverrides get chatBubbleStyleOverrides =>
+      _chatBubbleStyleOverrides;
+  ChatBubbleStyleOverrides get assistantChatBubbleStyleOverrides =>
+      _chatBubbleStyleOverrides;
+  ChatBubbleStyleOverrides get userChatBubbleStyleOverrides =>
+      _userChatBubbleStyleOverrides ?? _chatBubbleStyleOverrides;
+  ChatBubbleStyleOverrides chatBubbleStyleOverridesFor({
+    required bool isUser,
+  }) =>
+      isUser ? userChatBubbleStyleOverrides : assistantChatBubbleStyleOverrides;
+  Future<void> setChatBubbleStyleOverrides(ChatBubbleStyleOverrides v) async {
+    final assistantChanged = _chatBubbleStyleOverrides != v;
+    final hadUserSplit = _userChatBubbleStyleOverrides != null;
+    if (!assistantChanged && !hadUserSplit) return;
+    _chatBubbleStyleOverrides = v;
+    _userChatBubbleStyleOverrides = null;
+    notifyListeners();
+    if (assistantChanged) {
+      await _preferences.setString(
+        _chatBubbleStyleOverridesKey,
+        jsonEncode(v.toJson()),
+      );
+    }
+    if (hadUserSplit) {
+      await _preferences.remove(_userChatBubbleStyleOverridesKey);
+    }
+  }
+
+  Future<void> setChatBubbleStyleOverridesForRole({
+    required bool isUser,
+    required ChatBubbleStyleOverrides value,
+  }) async {
+    if (isUser) {
+      if (_userChatBubbleStyleOverrides == value) return;
+      _userChatBubbleStyleOverrides = value;
+      notifyListeners();
+      await _preferences.setString(
+        _userChatBubbleStyleOverridesKey,
+        jsonEncode(value.toJson()),
+      );
+      return;
+    }
+    if (_chatBubbleStyleOverrides == value) return;
+    if (_userChatBubbleStyleOverrides == null) {
+      // Snapshot the previous assistant (fallback) value onto user on the
+      // first assistant role write, so the pre-split shared style is kept.
+      // Write the assistant key before the user key: an overlapping second
+      // role write that runs between our awaits should win the assistant key.
+      final previous = _chatBubbleStyleOverrides;
+      _userChatBubbleStyleOverrides = previous;
+      _chatBubbleStyleOverrides = value;
+      notifyListeners();
+      await _preferences.setString(
+        _chatBubbleStyleOverridesKey,
+        jsonEncode(value.toJson()),
+      );
+      await _preferences.setString(
+        _userChatBubbleStyleOverridesKey,
+        jsonEncode(previous.toJson()),
+      );
+      return;
+    }
+    _chatBubbleStyleOverrides = value;
+    notifyListeners();
+    await _preferences.setString(
+      _chatBubbleStyleOverridesKey,
+      jsonEncode(value.toJson()),
+    );
+  }
+
   List<String> _mobileAssistantEditTabOrder = const <String>[];
   List<String> get mobileAssistantEditTabOrder => _mobileAssistantEditTabOrder;
   Future<void> setMobileAssistantEditTabOrder(List<String> order) async {
@@ -3442,6 +3689,21 @@ class SettingsProvider extends ChangeNotifier {
     _providerGroupMap.remove(key);
     _cleanupProviderOrderAndGrouping();
 
+    await _clearSelectionsForProvider(key);
+
+    // Persist updates
+    final prefs = _preferences;
+    final map = _providerConfigs.map((k, v) => MapEntry(k, v.toJson()));
+    await prefs.setString(_providerConfigsKey, jsonEncode(map));
+    await prefs.setStringList(_providersOrderKey, _providersOrder);
+    await prefs.setString(_providerGroupMapKey, jsonEncode(_providerGroupMap));
+    notifyListeners();
+  }
+
+  /// Clears every model selection (settings-level + pinned) referencing the
+  /// given provider without touching its config. Shared by remove (delete)
+  /// and hide so both paths behave identically.
+  Future<void> _clearSelectionsForProvider(String key) async {
     // Clear selections referencing this provider to avoid re-creating defaults
     final prefs = _preferences;
     if (_currentModelProvider == key) {
@@ -3491,13 +3753,6 @@ class SettingsProvider extends ChangeNotifier {
     if (_pinnedModels.length != beforePinned) {
       await prefs.setStringList(_pinnedModelsKey, _pinnedModels.toList());
     }
-
-    // Persist updates
-    final map = _providerConfigs.map((k, v) => MapEntry(k, v.toJson()));
-    await prefs.setString(_providerConfigsKey, jsonEncode(map));
-    await prefs.setStringList(_providersOrderKey, _providersOrder);
-    await prefs.setString(_providerGroupMapKey, jsonEncode(_providerGroupMap));
-    notifyListeners();
   }
 
   // Favorites (pinned models)
@@ -5194,6 +5449,14 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     await prefs.setString(_searchCommonKey, jsonEncode(options.toJson()));
   }
 
+  Future<void> setAutoRetryOptions(AutoRetryOptions options) async {
+    _autoRetry = options;
+    AutoRetryConfig.current = options;
+    notifyListeners();
+    final prefs = _preferences;
+    await prefs.setString(_autoRetryOptionsKey, jsonEncode(options.toJson()));
+  }
+
   Future<void> setSearchServiceSelected(int index) async {
     _searchServiceSelected = index.clamp(
       0,
@@ -5373,6 +5636,10 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._customThemes = _customThemes;
     copy._selectedCustomThemeId = _selectedCustomThemeId;
     copy._chatMessageBackgroundStyle = _chatMessageBackgroundStyle;
+    copy._assistantBubbleFitContent = _assistantBubbleFitContent;
+    copy._assistantBubbleSplitParagraphs = _assistantBubbleSplitParagraphs;
+    copy._chatBubbleStyleOverrides = _chatBubbleStyleOverrides;
+    copy._userChatBubbleStyleOverrides = _userChatBubbleStyleOverrides;
     copy._mobileAssistantEditTabOrder = _mobileAssistantEditTabOrder;
     copy._hiddenMobileAssistantEditTabs = _hiddenMobileAssistantEditTabs;
     copy._chatInputButtonOrder = _chatInputButtonOrder;

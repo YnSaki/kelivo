@@ -26,6 +26,10 @@
   --cuplivo-user-avatar-background: Canvas;
   --cuplivo-assistant-avatar-background: Canvas;
   --cuplivo-font-scale: 1;
+  --cuplivo-default-app-font: system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --cuplivo-default-code-font: ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", monospace;
   --cuplivo-background-mask-top: transparent;
   --cuplivo-background-mask-bottom: transparent;
   --cuplivo-content-top-inset: 8px;
@@ -34,11 +38,14 @@
 
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+.katex .ovalbox .fbox { border-radius: 0.5em; }
 body {
   position: relative;
   background: transparent;
   color: var(--cuplivo-on-surface);
-  font: calc(15px * var(--cuplivo-font-scale))/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: calc(15px * var(--cuplivo-font-scale))/1.55 var(--cuplivo-default-app-font);
+  font-family: var(--cuplivo-app-font, var(--cuplivo-default-app-font));
   -webkit-tap-highlight-color: transparent;
 }
 #chat-background {
@@ -419,8 +426,7 @@ body[data-background-style="solid"] :is(
   padding: 0;
   color: var(--cuplivo-code-text, var(--cuplivo-on-surface));
   background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", monospace;
+  font-family: var(--cuplivo-code-font, var(--cuplivo-default-code-font));
   font-size: calc(13px * var(--cuplivo-font-scale));
   line-height: 1.5;
 }
@@ -932,4 +938,59 @@ body[data-style-process-shadow="true"] :is(
   .message.is-assistant .bubble > .tool
 ) {
   box-shadow: var(--cuplivo-style-process-shadow);
+}
+
+@media print {
+  html, body.print-mode {
+    /* The viewport's real background is Flutter-owned (backgroundOwner=
+       'flutter' hides the layers above); print must paint an explicit
+       theme surface floor, otherwise dark themes print on white paper
+       with translucent dark bubbles. The decorative wallpaper layers
+       stay hidden (never printed). */
+    background: var(--cuplivo-surface) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body.print-mode::before,
+  body.print-mode #chat-background {
+    display: none !important;
+  }
+  body.print-mode {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body.print-mode #timeline {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  body.print-mode #virtual-window-loader,
+  body.print-mode .spacer,
+  body.print-mode .code-block-chevron,
+  body.print-mode .code-block-action,
+  body.print-mode .action {
+    display: none !important;
+  }
+  body.print-mode .markdown pre,
+  body.print-mode .code-block {
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    break-inside: auto;
+  }
+  body.print-mode .code-block code,
+  body.print-mode .markdown pre code {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+  }
+  body.print-mode .message {
+    break-inside: avoid;
+  }
+  body.print-mode .markdown table {
+    break-inside: auto;
+  }
+}
+@page {
+  size: A4;
+  margin: 14mm;
 }
