@@ -10,22 +10,19 @@ import 'package:super_sliver_list/super_sliver_list.dart';
 import '../../../core/models/assistant.dart';
 import '../../../core/models/chat_input_data.dart';
 import '../../../core/models/chat_message.dart';
-import '../../../core/models/quick_phrase.dart';
 import '../../../core/providers/asr_provider.dart';
 import '../../../core/providers/assistant_provider.dart';
 import '../../../core/providers/group_chat_provider.dart';
-import '../../../core/providers/quick_phrase_provider.dart';
+import '../../../core/providers/quick_instruction_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/user_provider.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/generation_engine.dart';
 import '../../../desktop/message_edit_dialog.dart';
-import '../../../desktop/quick_phrase_popover.dart';
 import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../shared/widgets/snackbar.dart';
-import '../../../utils/platform_utils.dart';
 import '../../chat/models/message_edit_result.dart';
 import '../../chat/widgets/message_edit_sheet.dart';
 import '../../chat/widgets/message_more_sheet.dart';
@@ -40,9 +37,9 @@ import '../../home/services/message_generation_service.dart';
 import '../../home/services/ocr_service.dart';
 import '../../home/services/tool_approval_service.dart';
 import '../../home/widgets/chat_input_bar.dart';
+import '../../home/widgets/instruction_injection_sheet.dart';
 import '../../home/widgets/message_list_view.dart';
-import '../../quick_phrase/pages/quick_phrases_page.dart';
-import '../../quick_phrase/widgets/quick_phrase_menu.dart';
+import '../../instruction_injection/pages/instruction_injection_page.dart';
 import '../controllers/group_chat_orchestrator.dart';
 import '../models/chat_input_mode.dart';
 import '../services/group_chat_slot_runner.dart';
@@ -341,33 +338,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
     });
   }
 
-  Future<void> _showQuickPhraseMenu() async {
-    final quickPhraseProvider = context.read<QuickPhraseProvider>();
-    final phrases = quickPhraseProvider.globalPhrases;
-    if (phrases.isEmpty) return;
-
-    final RenderBox? inputBox =
-        _inputBarKey.currentContext?.findRenderObject() as RenderBox?;
-    if (inputBox == null) return;
-    final topLeft = inputBox.localToGlobal(Offset.zero);
-    final position = Offset(topLeft.dx, inputBox.size.height);
-
+  Future<void> _showQuickInstructionMenu() async {
+    final provider = context.read<QuickInstructionProvider>();
+    await provider.initialize();
+    if (!mounted) return;
     _inputFocus.unfocus();
-
-    final QuickPhrase? selected;
-    if (PlatformUtils.isDesktop) {
-      selected = await showDesktopQuickPhrasePopover(
-        context,
-        anchorKey: _inputBarKey,
-        phrases: phrases,
-      );
-    } else {
-      selected = await showQuickPhraseMenu(
-        context: context,
-        phrases: phrases,
-        position: position,
-      );
-    }
+    final selected = await showInstructionInjectionSheet(
+      context,
+      assistantId: null,
+      conversationId: null,
+      selectedInvocationIds: const <String>{},
+      onToggleInvocation: (_) {},
+      inputBoxOnly: true,
+    );
     if (selected == null || !mounted) return;
 
     final text = _inputController.text;
@@ -378,11 +361,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final end = (sel.end >= 0 && sel.end <= text.length && sel.end >= start)
         ? sel.end
         : start;
-    final newText = text.replaceRange(start, end, selected.content);
+    final newText = text.replaceRange(start, end, selected.prompt);
     _inputController.value = _inputController.value.copyWith(
       text: newText,
       selection: TextSelection.collapsed(
-        offset: start + selected.content.length,
+        offset: start + selected.prompt.length,
       ),
       composing: TextRange.empty,
     );
@@ -546,7 +529,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final currentAssistant = context
         .watch<AssistantProvider>()
         .currentAssistant;
-    final quickPhrases = context.watch<QuickPhraseProvider>().globalPhrases;
 
     return Scaffold(
       appBar: AppBar(
@@ -661,12 +643,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
               showToolsHubButton: false,
               supportsReasoning: false,
               showMoreButton: false,
-              showQuickPhraseButton: quickPhrases.isNotEmpty,
+              showQuickPhraseButton: true,
               asrProvider: context.read<AsrProvider>(),
-              onQuickPhrase: () => unawaited(_showQuickPhraseMenu()),
+              onQuickPhrase: () => unawaited(_showQuickInstructionMenu()),
               onLongPressQuickPhrase: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const QuickPhrasesPage()),
+                  MaterialPageRoute(
+                    builder: (_) => const InstructionInjectionPage(),
+                  ),
                 );
               },
               onPickCamera: _isDesktop
