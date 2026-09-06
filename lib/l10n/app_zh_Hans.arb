@@ -3631,7 +3631,7 @@
   "webConversationStylesImportFile": "本地文件或 ZIP",
   "webConversationStylesImportGithub": "GitHub 仓库或样式文件",
   "webConversationStylesGithubTitle": "从 GitHub 导入",
-  "webConversationStylesGithubHint": "GitHub 仓库、tree、blob 或 raw 样式文件 URL",
+  "webConversationStylesGithubHint": "仓库或样式文件 URL",
   "webConversationStylesSelectTitle": "选择要导入的样式",
   "webConversationStylesSelectAll": "全选",
   "webConversationStylesDeselectAll": "取消全选",

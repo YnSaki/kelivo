@@ -5,7 +5,9 @@ import 'package:Cuplivo/core/models/web_conversation_style.dart';
 import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/features/settings/pages/display_settings_page.dart';
 import 'package:Cuplivo/features/settings/pages/web_conversation_styles_page.dart';
+import 'package:Cuplivo/icons/lucide_adapter.dart';
 import 'package:Cuplivo/l10n/app_localizations.dart';
+import 'package:Cuplivo/shared/widgets/ios_form_text_field.dart';
 import 'package:Cuplivo/shared/widgets/ios_switch.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +99,36 @@ void main() {
     await pumpPage(tester, const WebConversationStylesPage());
 
     expect(find.text('Experimental: WebView rendering'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('github import dialog stays compact and stacks vertically', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    // Narrow-surface expansion of the bounded field itself is covered by
+    // test/shared/widgets/ios_form_text_field_test.dart; this end-to-end
+    // test uses the default width because the FlutterTest/Ahem glyph squares
+    // make the import-source tiles overflow on narrow test surfaces.
+    await pumpPage(tester, const WebConversationStylesPage());
+
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(WebConversationStylesPage)),
+    )!;
+    await tester.tap(find.byIcon(Lucide.Download));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10n.webConversationStylesImportGithub));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final label = find.text(l10n.webConversationStylesImportGithub);
+    final field = find.byType(TextField);
+    expect(label, findsOneWidget);
+    expect(field, findsOneWidget);
+    expect(find.text(l10n.webConversationStylesGithubHint), findsOneWidget);
+    expect(tester.getTopLeft(label).dy, lessThan(tester.getTopLeft(field).dy));
+    expect(tester.getSize(find.byType(IosFormTextField)).height, lessThan(250));
+    expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
   });
 

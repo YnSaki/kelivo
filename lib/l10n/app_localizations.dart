@@ -17596,7 +17596,7 @@ abstract class AppLocalizations {
   /// No description provided for @webConversationStylesGithubHint.
   ///
   /// In en, this message translates to:
-  /// **'GitHub repository, tree, blob, or raw style file URL'**
+  /// **'Repo or style file URL'**
   String get webConversationStylesGithubHint;
 
   /// No description provided for @webConversationStylesSelectTitle.

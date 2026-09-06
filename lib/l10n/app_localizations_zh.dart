@@ -9366,8 +9366,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get webConversationStylesGithubTitle => '从 GitHub 导入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 仓库、tree、blob 或 raw 样式文件 URL';
+  String get webConversationStylesGithubHint => '仓库或样式文件 URL';
 
   @override
   String get webConversationStylesSelectTitle => '选择要导入的样式';
@@ -19083,8 +19082,7 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get webConversationStylesGithubTitle => '从 GitHub 导入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 仓库、tree、blob 或 raw 样式文件 URL';
+  String get webConversationStylesGithubHint => '仓库或样式文件 URL';
 
   @override
   String get webConversationStylesSelectTitle => '选择要导入的样式';
@@ -28802,8 +28800,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get webConversationStylesGithubTitle => '從 GitHub 匯入';
 
   @override
-  String get webConversationStylesGithubHint =>
-      'GitHub 儲存庫、tree、blob 或 raw 樣式檔案 URL';
+  String get webConversationStylesGithubHint => '儲存庫或樣式檔案 URL';
 
   @override
   String get webConversationStylesSelectTitle => '選擇要匯入的樣式';
