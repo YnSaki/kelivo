@@ -411,6 +411,7 @@ class HandoffToolService {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: conversationId,
         thinkingBudget: budget,
       )).trim();
       if (title.isNotEmpty) {

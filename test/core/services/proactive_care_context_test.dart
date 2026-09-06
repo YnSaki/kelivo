@@ -445,6 +445,7 @@ void main() {
                     maxTokens,
                     stream = true,
                     requestId,
+                    conversationId,
                     retryOverride,
                   }) {
                     capturedMessages = messages;

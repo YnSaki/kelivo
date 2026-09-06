@@ -171,6 +171,7 @@ Future<void> _runHeadlessCareFlow(
       modelId: modelCfg.modelId,
       assistant: assistant,
       apiMessages: apiMessages,
+      conversationId: recent.conversation?.id,
       fallbackThinkingBudget: fallbackThinkingBudget,
     );
     if (reply.isEmpty) {
@@ -210,6 +211,7 @@ Future<void> _runHeadlessCareFlow(
             {'role': 'assistant', 'content': reply},
           ],
           decisionPrompt: decisionPrompt,
+          conversationId: recent.conversation?.id,
           fallbackThinkingBudget: fallbackThinkingBudget,
         );
         if (newTime != null) {

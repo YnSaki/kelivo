@@ -222,6 +222,7 @@ void main() {
             extraBody,
             required stream,
             requestId,
+            conversationId,
             required allowImagesApiRouting,
             required ocrActive,
             partialImageNotice,
