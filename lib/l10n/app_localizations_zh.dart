@@ -9556,6 +9556,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageStyleSettingsPageTitle => '消息样式';
 
   @override
+  String get quickInstructionCreateTypeTitle => '新建快捷指令';
+
+  @override
+  String get quickInstructionCreateInjection => '新建指令注入';
+
+  @override
+  String get quickInstructionCreatePhrase => '新建快捷短语';
+
+  @override
+  String get quickInstructionCreateCustom => '自定义';
+
+  @override
   String get quickInstructionAdvancedSettings => '高级设置';
 
   @override
@@ -19315,6 +19327,18 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get messageStyleSettingsPageTitle => '消息样式';
+
+  @override
+  String get quickInstructionCreateTypeTitle => '新建快捷指令';
+
+  @override
+  String get quickInstructionCreateInjection => '新建指令注入';
+
+  @override
+  String get quickInstructionCreatePhrase => '新建快捷短语';
+
+  @override
+  String get quickInstructionCreateCustom => '自定义';
 
   @override
   String get quickInstructionAdvancedSettings => '高级设置';
@@ -29078,6 +29102,18 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get messageStyleSettingsPageTitle => '訊息樣式';
+
+  @override
+  String get quickInstructionCreateTypeTitle => '新增快捷指令';
+
+  @override
+  String get quickInstructionCreateInjection => '新增指令注入';
+
+  @override
+  String get quickInstructionCreatePhrase => '新增快捷短語';
+
+  @override
+  String get quickInstructionCreateCustom => '自訂';
 
   @override
   String get quickInstructionAdvancedSettings => '進階設定';

@@ -17935,6 +17935,30 @@ abstract class AppLocalizations {
   /// **'Message Style'**
   String get messageStyleSettingsPageTitle;
 
+  /// No description provided for @quickInstructionCreateTypeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create quick instruction'**
+  String get quickInstructionCreateTypeTitle;
+
+  /// No description provided for @quickInstructionCreateInjection.
+  ///
+  /// In en, this message translates to:
+  /// **'New instruction injection'**
+  String get quickInstructionCreateInjection;
+
+  /// No description provided for @quickInstructionCreatePhrase.
+  ///
+  /// In en, this message translates to:
+  /// **'New quick phrase'**
+  String get quickInstructionCreatePhrase;
+
+  /// No description provided for @quickInstructionCreateCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get quickInstructionCreateCustom;
+
   /// No description provided for @quickInstructionAdvancedSettings.
   ///
   /// In en, this message translates to:

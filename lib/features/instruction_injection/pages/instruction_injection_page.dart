@@ -10,6 +10,7 @@ import '../../../core/providers/instruction_injection_group_provider.dart';
 import '../../../core/providers/mcp_provider.dart';
 import '../../../core/providers/quick_instruction_provider.dart';
 import '../../../core/services/haptics.dart';
+import '../../../core/services/quick_instruction_store.dart';
 import '../../../features/home/services/local_tools_service.dart';
 import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
@@ -19,6 +20,8 @@ import '../../../shared/widgets/ios_switch.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../theme/app_font_weights.dart';
 import '../../../theme/app_semantic_colors.dart';
+
+enum _QuickInstructionCreationType { instructionInjection, quickPhrase, custom }
 
 class InstructionInjectionPage extends StatefulWidget {
   const InstructionInjectionPage({super.key, this.embedded = false});
@@ -40,7 +43,108 @@ class _InstructionInjectionPageState extends State<InstructionInjectionPage> {
     });
   }
 
-  Future<void> _showAddEditSheet({QuickInstruction? item}) async {
+  Future<void> _showCreateSheet() async {
+    final type = await _showCreationTypeSheet();
+    if (!mounted || type == null) return;
+    await _showAddEditSheet(initialItem: _draftFor(type));
+  }
+
+  QuickInstruction _draftFor(_QuickInstructionCreationType type) {
+    return switch (type) {
+      _QuickInstructionCreationType.instructionInjection => QuickInstruction(
+        id: '',
+        title: '',
+        prompt: '',
+        group: QuickInstructionStore.instructionInjectionGroup,
+        placement: QuickInstructionPlacement.systemPrompt,
+      ),
+      _QuickInstructionCreationType.quickPhrase => QuickInstruction(
+        id: '',
+        title: '',
+        prompt: '',
+        group: QuickInstructionStore.migratedQuickPhraseGroup,
+        placement: QuickInstructionPlacement.inputBox,
+      ),
+      _QuickInstructionCreationType.custom => QuickInstruction(
+        id: '',
+        title: '',
+        prompt: '',
+      ),
+    };
+  }
+
+  Future<_QuickInstructionCreationType?> _showCreationTypeSheet() {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    return showModalBottomSheet<_QuickInstructionCreationType>(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                l10n.quickInstructionCreateTypeTitle,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: AppFontWeights.semibold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _CreationTypeOption(
+                key: const ValueKey('quick-instruction-create-injection'),
+                icon: Lucide.Bot,
+                title: l10n.quickInstructionCreateInjection,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_QuickInstructionCreationType.instructionInjection),
+              ),
+              const SizedBox(height: 4),
+              _CreationTypeOption(
+                key: const ValueKey('quick-instruction-create-phrase'),
+                icon: Lucide.MessageSquare,
+                title: l10n.quickInstructionCreatePhrase,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_QuickInstructionCreationType.quickPhrase),
+              ),
+              const SizedBox(height: 4),
+              _CreationTypeOption(
+                key: const ValueKey('quick-instruction-create-custom'),
+                icon: Lucide.Settings2,
+                title: l10n.quickInstructionCreateCustom,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_QuickInstructionCreationType.custom),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddEditSheet({
+    QuickInstruction? item,
+    QuickInstruction? initialItem,
+  }) async {
+    assert(item == null || initialItem == null);
     final cs = Theme.of(context).colorScheme;
     final provider = context.read<QuickInstructionProvider>();
 
@@ -52,7 +156,10 @@ class _InstructionInjectionPageState extends State<InstructionInjectionPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return InstructionInjectionEditSheet(item: item);
+        return InstructionInjectionEditSheet(
+          item: item,
+          initialItem: initialItem,
+        );
       },
     );
 
@@ -153,7 +260,7 @@ class _InstructionInjectionPageState extends State<InstructionInjectionPage> {
               icon: Lucide.Plus,
               color: Theme.of(context).colorScheme.onSurface,
               size: 22,
-              onTap: () => _showAddEditSheet(),
+              onTap: _showCreateSheet,
             ),
           ),
           const SizedBox(width: 12),
@@ -492,9 +599,14 @@ class QuickInstructionEditResult {
 }
 
 class InstructionInjectionEditSheet extends StatefulWidget {
-  const InstructionInjectionEditSheet({super.key, required this.item});
+  const InstructionInjectionEditSheet({
+    super.key,
+    required this.item,
+    this.initialItem,
+  }) : assert(item == null || initialItem == null);
 
   final QuickInstruction? item;
+  final QuickInstruction? initialItem;
 
   @override
   State<InstructionInjectionEditSheet> createState() =>
@@ -531,7 +643,7 @@ class _InstructionInjectionEditSheetState
   @override
   void initState() {
     super.initState();
-    final item = widget.item;
+    final item = widget.item ?? widget.initialItem;
     _titleController = TextEditingController(text: item?.title ?? '');
     _groupController = TextEditingController(text: item?.group ?? '');
     _promptController = TextEditingController(text: item?.prompt ?? '');
@@ -1018,6 +1130,53 @@ InputDecoration _fieldDecoration(
       borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
     ),
   );
+}
+
+class _CreationTypeOption extends StatelessWidget {
+  const _CreationTypeOption({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 52,
+      child: IosCardPress(
+        borderRadius: BorderRadius.circular(14),
+        baseColor: cs.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        onTap: onTap,
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: AppFontWeights.medium,
+                ),
+              ),
+            ),
+            Icon(
+              Lucide.ChevronRight,
+              size: 18,
+              color: cs.onSurface.withValues(alpha: 0.45),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _OptionRow extends StatelessWidget {

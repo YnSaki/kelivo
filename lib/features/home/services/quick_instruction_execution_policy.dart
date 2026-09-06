@@ -137,10 +137,16 @@ class _QuickInstructionCommandPolicy extends CommandPolicy {
 
     for (final invocation in analysis.invocations) {
       final normalized = _canonicalInvocation(invocation);
+      final basenameNormalized = _canonicalInvocation(
+        invocation,
+        executable: _executableBasename(invocation.executable),
+      );
       final blockedBy = <String>[];
       for (final entry in entries) {
         if (entry.policy.shellBlockPatterns.any(
-          (pattern) => _matchesGlob(normalized, pattern),
+          (pattern) =>
+              _matchesGlob(normalized, pattern) ||
+              _matchesGlob(basenameNormalized, pattern),
         )) {
           blockedBy.add(entry.title);
         }
@@ -160,9 +166,12 @@ class _QuickInstructionCommandPolicy extends CommandPolicy {
   }
 }
 
-String _canonicalInvocation(CommandInvocation invocation) {
+String _canonicalInvocation(
+  CommandInvocation invocation, {
+  String? executable,
+}) {
   final tokens = <String>[
-    _quoteToken(invocation.executable),
+    _quoteToken(executable ?? invocation.executable),
     ...invocation.arguments.map(_quoteToken),
     for (final redirect in invocation.redirections)
       redirect.type == RedirectionType.mergeStreams
@@ -170,6 +179,12 @@ String _canonicalInvocation(CommandInvocation invocation) {
           : '${_redirectionOperator(redirect.type)}${_quoteToken(redirect.target)}',
   ];
   return tokens.join(' ');
+}
+
+String _executableBasename(String executable) {
+  final normalized = executable.replaceAll('\\', '/');
+  final separator = normalized.lastIndexOf('/');
+  return separator < 0 ? normalized : normalized.substring(separator + 1);
 }
 
 String _quoteToken(String token) {

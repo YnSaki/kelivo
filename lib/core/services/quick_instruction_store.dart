@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:Cuplivo/core/database/business_preferences.dart';
 import 'package:Cuplivo/core/models/quick_instruction.dart';
 import 'package:Cuplivo/core/models/quick_phrase.dart';
+import 'package:Cuplivo/core/models/workspace.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -17,6 +18,211 @@ class QuickInstructionStore {
   static const String migrationReceiptKey =
       'quick_instructions_legacy_migration_v1';
   static const String migratedQuickPhraseGroup = 'Quick Phrases';
+  static const String instructionInjectionGroup = 'Instruction Injections';
+  static const String builtInPlanId = 'quick_instruction_builtin_plan_v1';
+  static const String builtInPlanSeedReceiptKey =
+      'quick_instruction_builtin_plan_seeded_v1';
+  static const String builtInPlanPrompt =
+      'You are now in Plan Mode. Investigate the request and produce a '
+      'decision-complete, implementation-ready plan; do not implement it. '
+      'Use read-only inspection to resolve repository and environment facts '
+      'before asking questions. Ask only questions whose answers materially '
+      'change the design. Do not edit files, change configuration, install '
+      'dependencies, run commands that mutate local or external state, create '
+      'commits or pull requests, or claim that work is complete. The final '
+      'response must clearly state the objective, scope and exclusions, '
+      'affected components and interfaces, data flow and persistence '
+      'implications, compatibility and migration behavior, edge cases and '
+      'failure handling, and verification criteria, in an ordered plan that '
+      'another engineer can execute without making further product or '
+      'architecture decisions.';
+  static const List<String> builtInPlanShellBlockPatterns = <String>[
+    '* >*',
+    '* 2>*',
+    '* &>*',
+    'rm *',
+    'rmdir *',
+    'mv *',
+    'cp *',
+    'mkdir *',
+    'touch *',
+    'truncate *',
+    'install *',
+    'ln *',
+    'chmod *',
+    'chown *',
+    'tee *',
+    'dd *',
+    'patch *',
+    'apply_patch *',
+    'rsync *',
+    'scp *',
+    'zip *',
+    'unzip *',
+    'tar *',
+    'wget *',
+    'sh *',
+    'bash *',
+    'zsh *',
+    'python *',
+    'python3 *',
+    'node *',
+    'ruby *',
+    'perl *',
+    'php *',
+    'lua *',
+    'eval *',
+    'source *',
+    '. *',
+    'sudo *',
+    'env *',
+    'xargs *',
+    'vim *',
+    'vi *',
+    'nano *',
+    'ed *',
+    'sed -i *',
+    'sed --in-place *',
+    'git add *',
+    'git am *',
+    'git apply *',
+    'git branch *',
+    'git checkout *',
+    'git cherry-pick *',
+    'git clean *',
+    'git clone *',
+    'git commit *',
+    'git config *',
+    'git fetch *',
+    'git merge *',
+    'git mv *',
+    'git pull *',
+    'git push *',
+    'git rebase *',
+    'git remote *',
+    'git reset *',
+    'git restore *',
+    'git revert *',
+    'git rm *',
+    'git stash *',
+    'git submodule *',
+    'git switch *',
+    'git tag *',
+    'git worktree *',
+    'git * add *',
+    'git * am *',
+    'git * apply *',
+    'git * branch *',
+    'git * checkout *',
+    'git * cherry-pick *',
+    'git * clean *',
+    'git * clone *',
+    'git * commit *',
+    'git * config *',
+    'git * fetch *',
+    'git * merge *',
+    'git * mv *',
+    'git * pull *',
+    'git * push *',
+    'git * rebase *',
+    'git * remote *',
+    'git * reset *',
+    'git * restore *',
+    'git * revert *',
+    'git * rm *',
+    'git * stash *',
+    'git * submodule *',
+    'git * switch *',
+    'git * tag *',
+    'git * worktree *',
+    'apt *',
+    'apt-get *',
+    'apk *',
+    'brew *',
+    'dnf *',
+    'yum *',
+    'pacman *',
+    'pip install *',
+    'pip3 install *',
+    'npm install *',
+    'npm i *',
+    'npm add *',
+    'npm remove *',
+    'npm uninstall *',
+    'npm update *',
+    'npm publish *',
+    'npm run *',
+    'npm exec *',
+    'npx *',
+    'pnpm install *',
+    'pnpm add *',
+    'pnpm remove *',
+    'pnpm update *',
+    'pnpm publish *',
+    'pnpm run *',
+    'pnpm exec *',
+    'yarn install *',
+    'yarn add *',
+    'yarn remove *',
+    'yarn upgrade *',
+    'yarn publish *',
+    'yarn run *',
+    'dart pub *',
+    'dart run build_runner *',
+    'dart format *',
+    'flutter pub *',
+    'flutter build *',
+    'flutter gen-l10n *',
+    'cargo build *',
+    'cargo run *',
+    'cargo install *',
+    'cargo update *',
+    'cargo fmt *',
+    'go build *',
+    'go install *',
+    'go generate *',
+    'go fmt *',
+    'make *',
+    'cmake *',
+    'ninja *',
+    'gradle *',
+    './gradlew *',
+    'gh * create *',
+    'gh * edit *',
+    'gh * merge *',
+    'gh release *',
+    'docker *',
+    'podman *',
+    'terraform *',
+    'ansible *',
+    'ansible-playbook *',
+    'kubectl apply *',
+    'kubectl annotate *',
+    'kubectl create *',
+    'kubectl delete *',
+    'kubectl edit *',
+    'kubectl exec *',
+    'kubectl label *',
+    'kubectl patch *',
+    'kubectl replace *',
+    'kubectl rollout *',
+    'kubectl run *',
+    'kubectl scale *',
+    'kubectl set *',
+    'kubectl taint *',
+    'curl -o *',
+    'curl --output *',
+    'curl -O *',
+    'curl --remote-name *',
+    'curl -T *',
+    'curl --upload-file *',
+    'curl * -o *',
+    'curl * --output *',
+    'curl * -O *',
+    'curl * --remote-name *',
+    'curl * -T *',
+    'curl * --upload-file *',
+  ];
   static const String activeIdKey = 'instruction_injections_active_id_v1';
   static const String activeIdsKey = 'instruction_injections_active_ids_v1';
   static const String activeIdsByAssistantKey =
@@ -61,13 +267,12 @@ class QuickInstructionStore {
 
   Future<List<QuickInstruction>> getAll() async {
     final cached = _cache;
-    if (cached != null) return List<QuickInstruction>.from(cached);
+    if (cached != null) return _seedBuiltInPlanIfNeeded(cached);
 
     final raw = _preferences.getString(itemsKey);
     if (raw == null || raw.isEmpty) {
       final seeded = await _seedDefaultFromLearningMode();
-      _cache = seeded;
-      return List<QuickInstruction>.from(seeded);
+      return _seedBuiltInPlanIfNeeded(seeded);
     }
 
     try {
@@ -108,7 +313,7 @@ class QuickInstructionStore {
       }
       _cache = items;
       if (upgraded) await save(items);
-      return List<QuickInstruction>.from(items);
+      return _seedBuiltInPlanIfNeeded(items);
     } catch (error, stackTrace) {
       debugPrint(
         'QuickInstructionStore.getAll: invalid persisted payload: '
@@ -116,6 +321,65 @@ class QuickInstructionStore {
       );
       rethrow;
     }
+  }
+
+  static QuickInstruction get builtInPlan => QuickInstruction(
+    id: builtInPlanId,
+    title: 'plan',
+    prompt: builtInPlanPrompt,
+    group: 'Modes',
+    placement: QuickInstructionPlacement.beforeUserMessage,
+    triggerMode: QuickInstructionTriggerMode.persistent,
+    retainInHistory: true,
+    toolPolicy: QuickInstructionToolPolicy(
+      enabled: true,
+      disabledFilesystemToolNames: const <String>[
+        WorkspaceToolNames.write,
+        WorkspaceToolNames.patch,
+        WorkspaceToolNames.delete,
+        WorkspaceToolNames.mkdir,
+        WorkspaceToolNames.move,
+        WorkspaceToolNames.zip,
+        WorkspaceToolNames.unzip,
+        WorkspaceToolNames.download,
+      ],
+      shellBlockPatterns: builtInPlanShellBlockPatterns,
+    ),
+  );
+
+  Future<List<QuickInstruction>> _seedBuiltInPlanIfNeeded(
+    List<QuickInstruction> current,
+  ) async {
+    if (_preferences.getBool(builtInPlanSeedReceiptKey) == true) {
+      return List<QuickInstruction>.from(current);
+    }
+
+    final next = List<QuickInstruction>.from(current);
+    final alreadyPresent = next.any((item) => item.id == builtInPlanId);
+    if (!alreadyPresent) {
+      next.add(builtInPlan);
+      await save(next);
+    }
+
+    final persisted = await _decodeItems(_preferences.getString(itemsKey));
+    final persistedPlan = persisted
+        .where((item) => item.id == builtInPlanId)
+        .firstOrNull;
+    if (persistedPlan == null) {
+      throw StateError('Built-in plan quick instruction was not persisted.');
+    }
+    if (!alreadyPresent &&
+        jsonEncode(persistedPlan.toJson()) !=
+            jsonEncode(builtInPlan.toJson())) {
+      throw StateError('Built-in plan quick instruction verification failed.');
+    }
+    if (!await _preferences.setBool(builtInPlanSeedReceiptKey, true)) {
+      throw StateError(
+        'Could not persist built-in plan quick instruction receipt.',
+      );
+    }
+    _cache = next;
+    return List<QuickInstruction>.from(next);
   }
 
   Future<List<QuickInstruction>> _seedDefaultFromLearningMode() async {
@@ -177,7 +441,7 @@ class QuickInstructionStore {
           _MigrationCandidate(
             item: current[index],
             originSuffix: '-Instruction Injection',
-            canRename: true,
+            canRename: current[index].id != builtInPlanId,
           ),
       ];
 

@@ -1,4 +1,5 @@
 import 'package:Cuplivo/core/models/quick_instruction.dart';
+import 'package:Cuplivo/core/services/quick_instruction_store.dart';
 import 'package:Cuplivo/features/home/services/quick_instruction_execution_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -111,6 +112,18 @@ void main() {
   });
 
   group('QuickInstructionExecutionPolicy shell commands', () {
+    QuickInstructionExecutionPolicy builtInPlanPolicy() {
+      return QuickInstructionExecutionPolicy.fromSources(
+        systemInstructions: const <QuickInstruction>[],
+        anchorInvocations: <QuickInstructionInvocationSnapshot>[
+          QuickInstructionInvocationSnapshot.fromInstruction(
+            QuickInstructionStore.builtInPlan,
+            order: 0,
+          ),
+        ],
+      );
+    }
+
     test('commands not matched by a block-list remain allowed', () {
       final policy = QuickInstructionExecutionPolicy.fromSources(
         systemInstructions: <QuickInstruction>[
@@ -250,6 +263,47 @@ void main() {
         'shell_command_incomplete_analysis',
       );
       expect(policy.checkShellCommand('echo "unterminated'), isNotNull);
+    });
+
+    test('built-in plan blocks redirects and absolute-path executables', () {
+      final policy = builtInPlanPolicy();
+
+      expect(policy.checkShellCommand('printf data > output.txt'), isNotNull);
+      expect(policy.checkShellCommand('printf data 2> errors.txt'), isNotNull);
+      expect(policy.checkShellCommand('/bin/rm output.txt'), isNotNull);
+      expect(policy.checkShellCommand('/usr/bin/touch output.txt'), isNotNull);
+    });
+
+    test('built-in plan blocks nested shells and common write commands', () {
+      final policy = builtInPlanPolicy();
+
+      for (final command in <String>[
+        'sh -c "rm output.txt"',
+        'git commit -m update',
+        'sed -i s/old/new/ file.txt',
+        'dart format lib',
+        'flutter build apk',
+        'npm install package',
+        'kubectl apply -f resource.yaml',
+        'curl --output result.json https://example.com',
+      ]) {
+        expect(policy.checkShellCommand(command), isNotNull, reason: command);
+      }
+    });
+
+    test('built-in plan keeps representative read-only commands available', () {
+      final policy = builtInPlanPolicy();
+
+      for (final command in <String>[
+        'pwd',
+        'ls -la',
+        'cat pubspec.yaml',
+        'rg QuickInstruction lib',
+        'git status --short',
+        'git diff --stat',
+      ]) {
+        expect(policy.checkShellCommand(command), isNull, reason: command);
+      }
     });
   });
 }

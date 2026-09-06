@@ -10031,6 +10031,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageStyleSettingsPageTitle => 'Message Style';
 
   @override
+  String get quickInstructionCreateTypeTitle => 'Create quick instruction';
+
+  @override
+  String get quickInstructionCreateInjection => 'New instruction injection';
+
+  @override
+  String get quickInstructionCreatePhrase => 'New quick phrase';
+
+  @override
+  String get quickInstructionCreateCustom => 'Custom';
+
+  @override
   String get quickInstructionAdvancedSettings => 'Advanced settings';
 
   @override
