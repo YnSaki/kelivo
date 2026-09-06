@@ -18,6 +18,7 @@ import '../../icons/lucide_adapter.dart';
 import 'export_capture_scope.dart';
 import 'snackbar.dart';
 import 'tabbed_preview_block.dart';
+import 'webview_gesture_claim.dart';
 
 enum _HtmlTab { preview, code }
 
@@ -517,10 +518,22 @@ class _HtmlPreviewBlockState extends State<HtmlPreviewBlock> {
     if (Platform.isWindows) {
       final c = _winCtrl;
       if (c == null) return const SizedBox.shrink();
-      return winweb.Webview(c);
+      // The texture-composited Windows WebView forwards wheel/drag events
+      // through a passive Listener, so without the claim the same gesture
+      // also scrolls the enclosing message list. Keep HTML scrolling inside
+      // the box and the list untouched.
+      return WebviewScrollClaim(child: winweb.Webview(c));
     }
     final c = _flutterCtrl;
     if (c == null) return const SizedBox.shrink();
+    if (Platform.isAndroid) {
+      // On Android the surrounding list's drag recognizer otherwise wins the
+      // arena and the embedded WebView never scrolls its HTML.
+      return WebViewWidget(
+        controller: c,
+        gestureRecognizers: WebviewEagerGestureRecognizer.recognizers,
+      );
+    }
     return WebViewWidget(controller: c);
   }
 
