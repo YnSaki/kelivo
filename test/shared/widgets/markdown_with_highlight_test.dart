@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:Cuplivo/shared/widgets/markdown_line_lexer.dart';
 import 'package:Cuplivo/utils/markdown_code_scanner.dart';
@@ -576,6 +577,74 @@ Inline ***strong emphasis*** text.
       );
     },
   );
+
+  testWidgets('paragraph selection keeps line breaks through streaming', (
+    tester,
+  ) async {
+    // The incremental blocks path only engages for streaming text of 512+
+    // chars, so the paragraph fill is padded past that threshold. Sentences
+    // are joined with a space and none of them trails the blank line, so the
+    // original text has nothing the renderer would trim in either path.
+    final text =
+        '${List.filled(10, 'First paragraph with enough text to engage incremental blocks.').join(' ')}\n\nSecond paragraph.';
+    final streaming = ValueNotifier(true);
+    addTearDown(streaming.dispose);
+    String? selected;
+    await tester.pumpWidget(
+      _settingsHarness(
+        onSettingsReady: (_) {},
+        child: SelectionArea(
+          onSelectionChanged: (content) => selected = content?.plainText,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: streaming,
+              builder: (_, value, _) =>
+                  MarkdownWithCodeHighlight(text: text, streaming: value),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final value in [true, false]) {
+      streaming.value = value;
+      await tester.pumpAndSettle();
+      final region = tester.state<SelectableRegionState>(
+        find.byType(SelectableRegion),
+      );
+      region.selectAll(SelectionChangedCause.keyboard);
+      await tester.pumpAndSettle();
+      expect(selected, text, reason: 'streaming=$value');
+      region.clearSelection();
+      await tester.pump();
+
+      // A drag across the gap must include the same break as Select All.
+      final first = _paragraphContaining('First paragraph');
+      final second = _paragraphContaining('Second paragraph');
+      final start = first.localToGlobal(const Offset(1, 8));
+      final end = second.localToGlobal(Offset(second.size.width - 1, 8));
+      for (final reverse in [true, false]) {
+        // Separate the gestures so reversing at the previous endpoint does
+        // not become a double click and select a word instead of a range.
+        await tester.pump(const Duration(milliseconds: 400));
+        final gesture = await tester.startGesture(
+          reverse ? end : start,
+          kind: ui.PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveTo(reverse ? start : end);
+        await tester.pump();
+        await gesture.up();
+        await gesture.removePointer();
+        await tester.pumpAndSettle();
+        expect(selected, text, reason: 'streaming=$value reverse=$reverse');
+        region.clearSelection();
+        await tester.pump();
+      }
+    }
+  }, variant: TargetPlatformVariant.desktop());
 
   testWidgets(
     'MarkdownWithCodeHighlight renders grouped raw citation metadata as separate capsules',
