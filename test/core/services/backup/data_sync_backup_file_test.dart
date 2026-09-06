@@ -576,6 +576,67 @@ void main() {
     );
 
     test(
+      'pack skips Unix domain socket files (qBittorrent ipc-socket)',
+      skip: Platform.isWindows
+          ? 'Unix domain sockets are unavailable on Windows'
+          : false,
+      () async {
+        final wsDir = Directory('${root.path}/workspaces/default');
+        await wsDir.create(recursive: true);
+        await File('${wsDir.path}/qBittorrent.conf').writeAsString('bt = 1');
+
+        // A live AF_UNIX socket in the workspace tree — exactly what a
+        // proot/qbittorrent setup leaves behind (config/ipc-socket). Opening
+        // it as a regular file fails with ENOENT and used to abort the export.
+        final socketDir = Directory('${wsDir.path}/proton/qBittorrent/config');
+        await socketDir.create(recursive: true);
+        final socketPath = '${socketDir.path}/ipc-socket';
+        final server = await ServerSocket.bind(
+          InternetAddress(socketPath, type: InternetAddressType.unix),
+          0,
+        );
+        addTearDown(() => server.close());
+
+        final sync = DataSync(
+          preferences: businessPrefs,
+          chatService: ChatService(),
+        );
+        final zipFile = await sync.prepareBackupFile(
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: false,
+              attachments: true,
+              workspaces: true,
+              fontsAndAvatars: true,
+              settings: true,
+              skills: true,
+            ),
+          ),
+        );
+
+        final input = InputFileStream(zipFile.path);
+        final Archive archive;
+        try {
+          archive = ZipDecoder().decodeStream(input);
+        } finally {
+          await input.close();
+        }
+        expect(
+          archive.findFile('workspaces/default/qBittorrent.conf'),
+          isNotNull,
+        );
+        expect(
+          archive.findFile(
+            'workspaces/default/proton/qBittorrent/config/ipc-socket',
+          ),
+          isNull,
+        );
+
+        await DataSync.cleanupTemporaryBackupFile(zipFile);
+      },
+    );
+
+    test(
       'prepareBackupFile reports stages in order (generating, packing)',
       () async {
         final uploadDir = Directory('${root.path}/upload');

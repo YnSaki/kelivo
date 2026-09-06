@@ -765,6 +765,11 @@ class DataSync {
   /// traversed at all. The output set is identical to a full-recursive walk
   /// with a per-file dot filter; only the traversal work differs. Symlinks
   /// are never followed. Returns empty when the directory does not exist.
+  ///
+  /// Only regular files are collected. Special nodes (Unix domain sockets —
+  /// e.g. a qBittorrent `ipc-socket` in a workspace — pipes, device nodes)
+  /// are skipped with a debug log: they cannot be opened as regular files and
+  /// would otherwise abort the whole backup/export.
   static List<({File file, String rel})> _listFiles(
     Directory dir, {
     bool skipDot = false,
@@ -790,8 +795,33 @@ class DataSync {
       if (ent is Directory) {
         _listFilesInto(ent, rel, skipDot, out);
       } else if (ent is File) {
+        if (!_isRegularFile(ent)) continue;
         out.add((file: ent, rel: rel));
       }
+    }
+  }
+
+  /// True when [file] is a regular file (not a socket, pipe, device node,
+  /// or a path that vanished between listing and stat).
+  static bool _isRegularFile(File file) {
+    try {
+      final stat = file.statSync();
+      if (stat.type == FileSystemEntityType.file) return true;
+      // Unix sockets and FIFOs cannot be opened as regular files; they must
+      // never reach the ZIP packer, whose open would fail and abort the
+      // whole export. Devices (e.g. /dev) are equally unpublishable.
+      debugPrint(
+        'DataSync: skipping non-regular file in backup tree: '
+        '${file.path} (${stat.type})',
+      );
+      return false;
+    } on FileSystemException catch (e) {
+      // Listed but gone before stat — the file cannot be packed anyway.
+      debugPrint(
+        'DataSync: skipping unreadable file in backup tree: '
+        '${file.path}: $e',
+      );
+      return false;
     }
   }
 
