@@ -33,6 +33,8 @@ class ConversationRows extends Table {
       text().withDefault(const Constant('normal'))();
   TextColumn get workspaceDirectoryOverridesJson =>
       text().withDefault(const Constant('{}'))();
+  TextColumn get persistentQuickInstructionIdsJson =>
+      text().withDefault(const Constant('[]'))();
 
   /// Per-conversation chat model binding (schema v22, nullable). Mirror of
   /// assistant_rows.chat_model_provider/chat_model_id naming. Non-null means
@@ -94,6 +96,9 @@ class MessageRows extends Table {
   /// JSON-encoded MessageQuote citation reference (schema v20, issue #312).
   /// Nullable TEXT so existing rows and non-reply messages stay untouched.
   TextColumn get quoteJson => text().nullable()();
+
+  /// Frozen quick-instruction invocations for this user-message version.
+  TextColumn get quickInstructionInvocationsJson => text().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -519,7 +524,7 @@ class AppDatabase extends _$AppDatabase {
   /// Repair incomplete upgrades where user_version already advanced but some
   /// ALTER TABLE / CREATE TABLE steps were skipped/failed (silent catch).
   ///
-  /// Covers every column/table added by the v5–v20 migrations that are
+  /// Covers every column/table added by the v5–v22 migrations that are
   /// wrapped in silent try/catch — missing these makes inserts crash with
   /// "table X has no column named Y". Runs in beforeOpen (rescues existing
   /// broken DBs whose user_version already passed the failed step) and at the
@@ -662,6 +667,11 @@ class AppDatabase extends _$AppDatabase {
       'quote_json',
       'ALTER TABLE message_rows ADD COLUMN quote_json TEXT NULL',
     );
+    await _ensureColumn(
+      'message_rows',
+      'quick_instruction_invocations_json',
+      'ALTER TABLE message_rows ADD COLUMN quick_instruction_invocations_json TEXT NULL',
+    );
 
     // --- conversation_rows ---
     await _ensureColumn(
@@ -689,6 +699,11 @@ class AppDatabase extends _$AppDatabase {
       'conversation_rows',
       'chat_model_id',
       'ALTER TABLE conversation_rows ADD COLUMN chat_model_id TEXT NULL',
+    );
+    await _ensureColumn(
+      'conversation_rows',
+      'persistent_quick_instruction_ids_json',
+      "ALTER TABLE conversation_rows ADD COLUMN persistent_quick_instruction_ids_json TEXT NOT NULL DEFAULT '[]'",
     );
     await customStatement(
       "UPDATE conversation_rows SET conversation_kind = 'normal' "
@@ -1016,6 +1031,30 @@ class AppDatabase extends _$AppDatabase {
             conversationRows.chatModelId,
           );
         } catch (_) {}
+        // Quick-instruction snapshots (port #693 landed on master with the
+        // same v22 number under parallel development; both feats share one
+        // migration, heal covers every open path).
+        try {
+          await migrator.addColumn(
+            messageRows,
+            messageRows.quickInstructionInvocationsJson,
+          );
+        } catch (error) {
+          debugPrint(
+            'v22 migration could not add quick-instruction snapshots: $error',
+          );
+        }
+        try {
+          await migrator.addColumn(
+            conversationRows,
+            conversationRows.persistentQuickInstructionIdsJson,
+          );
+        } catch (error) {
+          debugPrint(
+            'v22 migration could not add persistent quick instructions: '
+            '$error',
+          );
+        }
       }
       // Final pass: heal any column/table that still did not land.
       await _healSchemaIfNeeded();

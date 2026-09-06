@@ -44,6 +44,7 @@ class _InMemoryChatService extends ChatService {
     String? parentConversationId,
     String conversationKind = Conversation.kindNormal,
     bool setAsCurrent = true,
+    List<String>? persistentQuickInstructionIds,
   }) async {
     final conversation = Conversation(
       title: title ?? 'New Chat',
@@ -51,6 +52,7 @@ class _InMemoryChatService extends ChatService {
       mcpServerIds: mcpServerIds,
       parentConversationId: parentConversationId,
       conversationKind: conversationKind,
+      persistentQuickInstructionIds: persistentQuickInstructionIds,
     );
     await _testRepo.putConversation(conversation);
     return conversation;

@@ -8,8 +8,6 @@ import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/assistant_provider.dart';
 import '../../../core/providers/asr_provider.dart';
 import '../../../core/providers/mcp_provider.dart';
-import '../../../core/providers/quick_phrase_provider.dart';
-import '../../../core/providers/instruction_injection_provider.dart';
 import '../../../core/providers/world_book_provider.dart';
 import '../utils/model_display_helper.dart';
 import '../utils/input_bar_button_layout.dart';
@@ -62,10 +60,8 @@ class ChatInputSection extends StatelessWidget {
     this.onPickCamera,
     this.onPickPhotos,
     this.onUploadFiles,
-    this.onToggleLearningMode,
     this.onOpenWorldBook, // 新增世界书支持桌面端
     this.onOpenSkills,
-    this.onLongPressLearning,
     this.onClearContext,
     this.onCompressContext,
     this.conversationId,
@@ -112,10 +108,8 @@ class ChatInputSection extends StatelessWidget {
   final VoidCallback? onPickCamera;
   final VoidCallback? onPickPhotos;
   final VoidCallback? onUploadFiles;
-  final VoidCallback? onToggleLearningMode;
   final VoidCallback? onOpenWorldBook;
   final VoidCallback? onOpenSkills;
-  final VoidCallback? onLongPressLearning;
   final VoidCallback? onClearContext;
   final VoidCallback? onCompressContext;
   final String? conversationId;
@@ -218,7 +212,7 @@ class ChatInputSection extends StatelessWidget {
       onCancelQueuedInput: onCancelQueuedInput,
       showToolsHubButton: _shouldShowToolsHubButton(pk, mid),
       toolsHubActive: _isToolsActive(context, a),
-      showQuickPhraseButton: _hasQuickPhrases(context, a),
+      showQuickPhraseButton: onQuickPhrase != null,
       onQuickPhrase: onQuickPhrase,
       onLongPressQuickPhrase: onLongPressQuickPhrase,
       inputBarButtonOrder: buttonLayout.orderedIds,
@@ -242,9 +236,6 @@ class ChatInputSection extends StatelessWidget {
       onUploadFiles: isTablet || unlocked(inputBarButtonUpload)
           ? onUploadFiles
           : null,
-      onToggleLearningMode: isTablet || unlocked(inputBarButtonLearning)
-          ? onToggleLearningMode
-          : null,
       onOpenWorldBook:
           hasWorldBooks && (isTablet || unlocked(inputBarButtonWorldBook))
           ? onOpenWorldBook
@@ -252,15 +243,6 @@ class ChatInputSection extends StatelessWidget {
       onOpenSkills: isTablet || unlocked(inputBarButtonSkills)
           ? onOpenSkills
           : null,
-      onLongPressLearning: isTablet || unlocked(inputBarButtonLearning)
-          ? onLongPressLearning
-          : null,
-      learningModeActive: isTablet || unlocked(inputBarButtonLearning)
-          ? context
-                .watch<InstructionInjectionProvider>()
-                .activeIdsFor(assistantId)
-                .isNotEmpty
-          : false,
       worldBookActive: isTablet || unlocked(inputBarButtonWorldBook)
           ? context
                 .watch<WorldBookProvider>()
@@ -348,14 +330,5 @@ class ChatInputSection extends StatelessWidget {
     }
     if (a == null) return false;
     return a.localToolIds.isNotEmpty || a.workspaceEnabled;
-  }
-
-  bool _hasQuickPhrases(BuildContext context, Assistant? a) {
-    final quickPhraseProvider = context.watch<QuickPhraseProvider>();
-    final globalCount = quickPhraseProvider.globalPhrases.length;
-    final assistantCount = a != null
-        ? quickPhraseProvider.getForAssistant(a.id).length
-        : 0;
-    return (globalCount + assistantCount) > 0;
   }
 }

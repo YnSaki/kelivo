@@ -53,6 +53,10 @@ class Conversation {
   /// Mirror of `Assistant.chatModelId` naming.
   String? chatModelId;
 
+  /// Conversation-scoped quick instructions attached to each new ordinary
+  /// user turn. Draft conversations retain this list in memory until landed.
+  List<String> persistentQuickInstructionIds;
+
   static const String kindNormal = 'normal';
   static const String kindGroup = 'group';
 
@@ -77,6 +81,7 @@ class Conversation {
     Map<String, String>? workspaceDirectoryOverrides,
     this.chatModelProvider,
     this.chatModelId,
+    List<String>? persistentQuickInstructionIds,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now(),
@@ -88,6 +93,9 @@ class Conversation {
        chatSuggestions = chatSuggestions ?? [],
        workspaceDirectoryOverrides = Map<String, String>.of(
          workspaceDirectoryOverrides ?? const <String, String>{},
+       ),
+       persistentQuickInstructionIds = List<String>.of(
+         persistentQuickInstructionIds ?? const <String>[],
        );
 
   Conversation copyWith({
@@ -114,6 +122,7 @@ class Conversation {
     // uses the plain `??` pattern, and mixing it with a sentinel pattern
     // inside the same model is forbidden — so clearing goes through a flag.
     bool clearChatModel = false,
+    List<String>? persistentQuickInstructionIds,
   }) {
     return Conversation(
       id: id ?? this.id,
@@ -138,6 +147,8 @@ class Conversation {
           ? null
           : (chatModelProvider ?? this.chatModelProvider),
       chatModelId: clearChatModel ? null : (chatModelId ?? this.chatModelId),
+      persistentQuickInstructionIds:
+          persistentQuickInstructionIds ?? this.persistentQuickInstructionIds,
     );
   }
 
@@ -161,6 +172,7 @@ class Conversation {
       'workspaceDirectoryOverrides': workspaceDirectoryOverrides,
       'chatModelProvider': chatModelProvider,
       'chatModelId': chatModelId,
+      'persistentQuickInstructionIds': persistentQuickInstructionIds,
     };
   }
 
@@ -200,6 +212,11 @@ class Conversation {
           <String, String>{},
       chatModelProvider: bindingComplete ? bindingProvider : null,
       chatModelId: bindingComplete ? bindingModelId : null,
+      persistentQuickInstructionIds:
+          (json['persistentQuickInstructionIds'] as List?)
+              ?.map((value) => value.toString())
+              .toList(growable: false) ??
+          const <String>[],
     );
   }
 }

@@ -16,6 +16,7 @@ import 'dart:convert';
 import '../../home/widgets/file_processing_indicator.dart';
 import '../pages/image_viewer_page.dart';
 import '../../../core/models/chat_message.dart';
+import '../../../core/utils/quick_instruction_presentation.dart';
 import 'quote_block.dart';
 import '../../../icons/lucide_adapter.dart';
 import '../../../icons/reasoning_icons.dart';
@@ -1211,7 +1212,9 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                                   } else {
                                     await Clipboard.setData(
                                       ClipboardData(
-                                        text: widget.message.content,
+                                        text: quickInstructionDecoratedContent(
+                                          widget.message,
+                                        ),
                                       ),
                                     );
                                     if (mounted) {
@@ -1393,6 +1396,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
             ),
           )
         : null;
+    final quickInstructionChips = _buildUserQuickInstructionChips(context);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1473,7 +1477,11 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                     const SizedBox(height: 8),
                   ],
                   if (mediaPreview != null) mediaPreview,
-                  if (mediaPreview != null && textBubble != null)
+                  if (mediaPreview != null &&
+                      (quickInstructionChips != null || textBubble != null))
+                    const SizedBox(height: 8),
+                  if (quickInstructionChips != null) quickInstructionChips,
+                  if (quickInstructionChips != null && textBubble != null)
                     const SizedBox(height: 8),
                   if (textBubble != null) textBubble,
                 ],
@@ -1505,7 +1513,11 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                                 widget.onCopy ??
                                 () {
                                   Clipboard.setData(
-                                    ClipboardData(text: widget.message.content),
+                                    ClipboardData(
+                                      text: quickInstructionDecoratedContent(
+                                        widget.message,
+                                      ),
+                                    ),
                                   );
                                   showAppSnackBar(
                                     context,
@@ -1614,6 +1626,40 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     );
   }
 
+  Widget? _buildUserQuickInstructionChips(BuildContext context) {
+    final snapshots = widget.message.quickInstructionInvocations;
+    if (snapshots.isEmpty) return null;
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final snapshot in snapshots)
+          Container(
+            key: ValueKey(
+              'message-quick-instruction:${widget.message.id}:'
+              '${snapshot.instructionId}',
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.22)),
+            ),
+            child: Text(
+              snapshot.title,
+              style: TextStyle(
+                color: cs.onPrimaryContainer,
+                fontSize: 12,
+                fontWeight: AppFontWeights.medium,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   void _showUserContextMenuAt(Offset globalPosition) async {
     final l10n = AppLocalizations.of(context)!;
     // Haptic feedback
@@ -1632,7 +1678,9 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
               widget.onCopy!.call();
             } else {
               await Clipboard.setData(
-                ClipboardData(text: widget.message.content),
+                ClipboardData(
+                  text: quickInstructionDecoratedContent(widget.message),
+                ),
               );
               if (mounted) {
                 showAppSnackBar(

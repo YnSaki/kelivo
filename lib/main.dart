@@ -35,8 +35,7 @@ import 'core/providers/assistant_provider.dart';
 import 'core/providers/group_chat_provider.dart';
 import 'core/providers/tag_provider.dart';
 import 'core/providers/update_provider.dart';
-import 'core/providers/quick_phrase_provider.dart';
-import 'core/providers/instruction_injection_provider.dart';
+import 'core/providers/quick_instruction_provider.dart';
 import 'core/providers/instruction_injection_group_provider.dart';
 import 'core/providers/world_book_provider.dart';
 import 'core/providers/memory_provider.dart';
@@ -331,13 +330,11 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => UpdateProvider()),
         ChangeNotifierProvider(
-          create: (ctx) => QuickPhraseProvider(
+          create: (ctx) => QuickInstructionProvider(
             preferences: preferences,
             chatService: ctx.read<ChatService>(),
+            assistantProvider: ctx.read<AssistantProvider>(),
           ),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => InstructionInjectionProvider(preferences: preferences),
         ),
         ChangeNotifierProvider(
           create: (_) =>
@@ -361,7 +358,7 @@ class MyApp extends StatelessWidget {
             preferences: preferences,
             assistantProvider: ctx.read<AssistantProvider>(),
             worldBookProvider: ctx.read<WorldBookProvider>(),
-            quickPhraseProvider: ctx.read<QuickPhraseProvider>(),
+            quickInstructionProvider: ctx.read<QuickInstructionProvider>(),
             mcpProvider: ctx.read<McpProvider>(),
             memoryProvider: ctx.read<MemoryProvider>(),
           ),

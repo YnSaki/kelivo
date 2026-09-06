@@ -12,15 +12,14 @@ import '../../../core/models/chat_input_data.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/models/message_quote.dart';
+import '../../../core/models/quick_instruction.dart';
 import '../../../utils/markdown_subsequence_match.dart';
 import '../../../utils/quote_plain_text.dart';
-import '../../../core/models/quick_phrase.dart';
 import '../../../core/providers/assistant_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/mcp_provider.dart';
 import '../../../core/providers/tts_provider.dart';
-import '../../../core/providers/quick_phrase_provider.dart';
-import '../../../core/providers/instruction_injection_provider.dart';
+import '../../../core/providers/quick_instruction_provider.dart';
 import '../../../core/providers/memory_provider.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/generation_engine.dart';
@@ -62,6 +61,7 @@ import '../services/translation_service.dart';
 import '../services/file_upload_service.dart';
 import '../widgets/chat_input_bar.dart';
 import '../utils/conversation_model_binding.dart';
+import '../widgets/quick_instruction_editing_controller.dart';
 import '../../model/widgets/model_select_sheet.dart';
 
 /// Translation data for UI state (expanded/collapsed).
@@ -100,7 +100,7 @@ class HomePageController extends ChangeNotifier {
     required GlobalKey<ScaffoldState> scaffoldKey,
     required GlobalKey inputBarKey,
     required FocusNode inputFocus,
-    required TextEditingController inputController,
+    required QuickInstructionEditingController inputController,
     required ChatInputBarController mediaController,
     required ScrollController scrollController,
   }) : this._(
@@ -136,7 +136,7 @@ class HomePageController extends ChangeNotifier {
   final GlobalKey<ScaffoldState> _scaffoldKey;
   final GlobalKey _inputBarKey;
   final FocusNode _inputFocus;
-  final TextEditingController _inputController;
+  final QuickInstructionEditingController _inputController;
   final ChatInputBarController _mediaController;
   ScrollController _scrollController;
 
@@ -236,7 +236,7 @@ class HomePageController extends ChangeNotifier {
   GlobalKey<ScaffoldState> get scaffoldKey => _scaffoldKey;
   GlobalKey get inputBarKey => _inputBarKey;
   FocusNode get inputFocus => _inputFocus;
-  TextEditingController get inputController => _inputController;
+  QuickInstructionEditingController get inputController => _inputController;
   ChatInputBarController get mediaController => _mediaController;
   ScrollController get scrollController => _scrollController;
   Animation<double> get convoFade => _convoFade;
@@ -595,21 +595,23 @@ class HomePageController extends ChangeNotifier {
 
   void _initializeProviders() {
     try {
-      final quickPhraseProvider = _context.read<QuickPhraseProvider>();
+      final quickInstructionProvider = _context
+          .read<QuickInstructionProvider>();
       Future.microtask(() async {
         try {
-          await quickPhraseProvider.initialize();
-        } catch (_) {}
+          await quickInstructionProvider.initialize();
+        } catch (error, stackTrace) {
+          debugPrint(
+            'Quick instruction initialization failed: '
+            '$error\n$stackTrace',
+          );
+        }
       });
-    } catch (_) {}
-    try {
-      final instructionProvider = _context.read<InstructionInjectionProvider>();
-      Future.microtask(() async {
-        try {
-          await instructionProvider.initialize();
-        } catch (_) {}
-      });
-    } catch (_) {}
+    } on ProviderNotFoundException catch (error, stackTrace) {
+      debugPrint(
+        'QuickInstructionProvider is not registered: $error\n$stackTrace',
+      );
+    }
     try {
       final memoryProvider = _context.read<MemoryProvider>();
       Future.microtask(() async {
@@ -869,7 +871,8 @@ class HomePageController extends ChangeNotifier {
     final content = input.text.trim();
     if (content.isEmpty &&
         input.imagePaths.isEmpty &&
-        input.documents.isEmpty) {
+        input.documents.isEmpty &&
+        input.quickInstructions.isEmpty) {
       return ChatInputSubmissionResult.rejected;
     }
     final editState = _userMessageEditState;
@@ -880,9 +883,20 @@ class HomePageController extends ChangeNotifier {
       await regenerateAtMessage(newMsg);
       return ChatInputSubmissionResult.sent;
     }
-    if (currentConversation == null) {
+    var activeConversation = currentConversation;
+    if (activeConversation == null) {
       await _createNewConversation();
+      // Creation crosses an async boundary. Resolve the conversation for this
+      // submission only after ChatController has received the new draft.
+      activeConversation = currentConversation;
     }
+    final conversation = activeConversation;
+    if (conversation == null) return ChatInputSubmissionResult.rejected;
+    final conversationId = conversation.id;
+    input = await _messageGenerationService.freezeUserQuickInstructions(
+      conversationId: conversationId,
+      input: input,
+    );
 
     ChatInputSubmissionResult result;
     if (multiAIEngine.isActive &&
@@ -904,7 +918,7 @@ class HomePageController extends ChangeNotifier {
           .getLoadedCurrentAssistant();
       final gid = await multiAIEngine.startRound(
         input: input,
-        conversation: currentConversation!,
+        conversation: conversation,
         settings: settings,
         assistant: assistant,
       );
@@ -977,6 +991,9 @@ class HomePageController extends ChangeNotifier {
       allowImagesApiRouting: input.allowImagesApiRouting,
       extraBody: Map<String, dynamic>.of(input.extraBody),
       quote: input.quote,
+      quoteSnippet: input.quoteSnippet,
+      quickInstructions: input.quickInstructions,
+      quickInstructionsFrozen: true,
     );
     final result = await _viewModel.sendMessage(syntheticInput);
     if (result != ChatInputSubmissionResult.rejected) {
@@ -1000,10 +1017,12 @@ class HomePageController extends ChangeNotifier {
   }
 
   void _replaceInputWithSuggestion(String text) {
-    _inputController.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-      composing: TextRange.empty,
+    _inputController.setBodyValue(
+      TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+        composing: TextRange.empty,
+      ),
     );
     _mediaController.syncDraft();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1021,10 +1040,12 @@ class HomePageController extends ChangeNotifier {
     final restored = _viewModel.cancelCurrentQueuedInput();
     if (restored == null) return;
 
-    _inputController.value = TextEditingValue(
-      text: restored.text,
-      selection: TextSelection.collapsed(offset: restored.text.length),
-      composing: TextRange.empty,
+    _inputController.setBodyValue(
+      TextEditingValue(
+        text: restored.text,
+        selection: TextSelection.collapsed(offset: restored.text.length),
+        composing: TextRange.empty,
+      ),
     );
     _mediaController.restoreInput(restored);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1343,10 +1364,12 @@ class HomePageController extends ChangeNotifier {
     }
     await _createNewConversation();
     if (initialDraft != null) {
-      _inputController.value = TextEditingValue(
-        text: initialDraft.text,
-        selection: TextSelection.collapsed(offset: initialDraft.text.length),
-        composing: TextRange.empty,
+      _inputController.setBodyValue(
+        TextEditingValue(
+          text: initialDraft.text,
+          selection: TextSelection.collapsed(offset: initialDraft.text.length),
+          composing: TextRange.empty,
+        ),
       );
       _mediaController.restoreInput(initialDraft);
       notifyListeners();
@@ -1550,7 +1573,7 @@ class HomePageController extends ChangeNotifier {
     }
 
     final hasDraft =
-        _inputController.text.trim().isNotEmpty ||
+        _inputController.bodyText.trim().isNotEmpty ||
         _mediaController.hasDraftMedia;
     if (hasDraft) {
       final overwrite = await _confirmOverwriteInputDraft(ctx);
@@ -1576,10 +1599,11 @@ class HomePageController extends ChangeNotifier {
   Future<void> saveUserMessageEditOnly() async {
     final editState = _userMessageEditState;
     if (editState == null) return;
-    final input = _mediaController.snapshotInput(_inputController.text);
+    final input = _mediaController.snapshotInput(_inputController.bodyText);
     if (input.text.trim().isEmpty &&
         input.imagePaths.isEmpty &&
-        input.documents.isEmpty) {
+        input.documents.isEmpty &&
+        input.quickInstructions.isEmpty) {
       return;
     }
     final newMsg = await _saveEditedUserMessageVersion(
@@ -1597,10 +1621,12 @@ class HomePageController extends ChangeNotifier {
       includeMediaFilePathsAsImages: false,
     );
     final messageId = message.id;
-    _inputController.value = TextEditingValue(
-      text: input.text,
-      selection: TextSelection.collapsed(offset: input.text.length),
-      composing: TextRange.empty,
+    _inputController.setBodyValue(
+      TextEditingValue(
+        text: input.text,
+        selection: TextSelection.collapsed(offset: input.text.length),
+        composing: TextRange.empty,
+      ),
     );
     // Restore the composer from the message's own request metadata (routing
     // decision + image options), falling back to the current preference for
@@ -1614,6 +1640,8 @@ class HomePageController extends ChangeNotifier {
             message.requestAllowImagesApiRouting ??
             _mediaController.allowImagesApiRouting,
         extraBody: message.requestExtraBody,
+        quickInstructions: message.quickInstructionInvocations,
+        quickInstructionsFrozen: true,
       ),
     );
     _userMessageEditState = UserMessageEditState(
@@ -1663,6 +1691,11 @@ class HomePageController extends ChangeNotifier {
       messageId: editState.messageId,
       content: content,
       timestamp: timestamp,
+      quickInstructionInvocationsJson: input.quickInstructions.isEmpty
+          ? null
+          : QuickInstructionInvocationSnapshot.encodeList(
+              input.quickInstructions,
+            ),
     );
     if (newMsg == null) return null;
     // Overwrite the version's request metadata with the CURRENT composer
@@ -2296,8 +2329,7 @@ class HomePageController extends ChangeNotifier {
     final l10n = AppLocalizations.of(_context)!;
     final task = synthesizeTasks.firstWhere((t) => t.type == taskType);
     final prompt = _resolveSynthesizePrompt(l10n, task.defaultPromptKey);
-    _inputController.text = prompt;
-    _inputController.selection = TextSelection.collapsed(offset: prompt.length);
+    _inputController.setBodyText(prompt);
     _mediaController.syncDraft();
 
     notifyListeners();
@@ -2656,13 +2688,13 @@ class HomePageController extends ChangeNotifier {
   }
 
   // ============================================================================
-  // Public Methods - Quick Phrases
+  // Public Methods - Quick Instructions
   // ============================================================================
 
-  Future<void> handleQuickPhraseSelection(QuickPhrase? selected) async {
+  Future<void> insertQuickInstruction(QuickInstruction? selected) async {
     if (selected == null) return;
-    final text = _inputController.text;
-    final selection = _inputController.selection;
+    final text = _inputController.bodyText;
+    final selection = _inputController.bodySelection;
     final start = (selection.start >= 0 && selection.start <= text.length)
         ? selection.start
         : text.length;
@@ -2673,13 +2705,15 @@ class HomePageController extends ChangeNotifier {
         ? selection.end
         : start;
 
-    final newText = text.replaceRange(start, end, selected.content);
-    _inputController.value = _inputController.value.copyWith(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset: start + selected.content.length,
+    final newText = text.replaceRange(start, end, selected.prompt);
+    _inputController.setBodyValue(
+      _inputController.bodyValue.copyWith(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: start + selected.prompt.length,
+        ),
+        composing: TextRange.empty,
       ),
-      composing: TextRange.empty,
     );
     _mediaController.syncDraft();
     notifyListeners();
@@ -2721,16 +2755,18 @@ class HomePageController extends ChangeNotifier {
     final lines = text.split('\n').map((line) => '> $line').join('\n');
     final quoted = '$lines\n\n';
 
-    final currentText = _inputController.text;
-    final cursor = _inputController.selection.start;
+    final currentText = _inputController.bodyText;
+    final cursor = _inputController.bodySelection.start;
     final insertPos = (cursor >= 0 && cursor <= currentText.length)
         ? cursor
         : currentText.length;
     final newText = currentText.replaceRange(insertPos, insertPos, quoted);
-    _inputController.value = _inputController.value.copyWith(
-      text: newText,
-      selection: TextSelection.collapsed(offset: insertPos + quoted.length),
-      composing: TextRange.empty,
+    _inputController.setBodyValue(
+      _inputController.bodyValue.copyWith(
+        text: newText,
+        selection: TextSelection.collapsed(offset: insertPos + quoted.length),
+        composing: TextRange.empty,
+      ),
     );
     _mediaController.syncDraft();
     _inputFocus.requestFocus();
