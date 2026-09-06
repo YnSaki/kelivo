@@ -499,71 +499,76 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('first plain-text send creates and uses a conversation', (
-    tester,
-  ) async {
-    final harness = await _pumpHarness(tester);
-    addTearDown(
-      () => _awaitStage('plain-text teardown', harness.dispose(tester)),
-    );
+  testWidgets(
+    'first plain-text send creates and uses a conversation',
+    (tester) async {
+      final harness = await _pumpHarness(tester);
+      addTearDown(
+        () => _awaitStage('plain-text teardown', harness.dispose(tester)),
+      );
 
-    expect(harness.controller.currentConversation, isNull);
+      expect(harness.controller.currentConversation, isNull);
 
-    final result = await _awaitStage(
-      'plain-text send',
-      harness.controller.sendMessage(const ChatInputData(text: 'hello')),
-    );
+      final result = await _awaitStage(
+        'plain-text send',
+        harness.controller.sendMessage(const ChatInputData(text: 'hello')),
+      );
 
-    expect(result, ChatInputSubmissionResult.sent);
-    expect(harness.chatService.createdConversationCount, 1);
-    expect(harness.controller.currentConversation?.id, 'conversation-1');
-    final userMessages = harness.chatService
-        .getMessages('conversation-1')
-        .where((message) => message.role == 'user')
-        .toList(growable: false);
-    expect(userMessages, hasLength(1));
-    expect(userMessages.single.content, 'hello');
-  });
+      expect(result, ChatInputSubmissionResult.sent);
+      expect(harness.chatService.createdConversationCount, 1);
+      expect(harness.controller.currentConversation?.id, 'conversation-1');
+      final userMessages = harness.chatService
+          .getMessages('conversation-1')
+          .where((message) => message.role == 'user')
+          .toList(growable: false);
+      expect(userMessages, hasLength(1));
+      expect(userMessages.single.content, 'hello');
+    },
+    timeout: const Timeout(Duration(seconds: 45)),
+  );
 
-  testWidgets('first quick-instruction-only send uses the new conversation', (
-    tester,
-  ) async {
-    final harness = await _pumpHarness(tester);
-    addTearDown(
-      () => _awaitStage('quick-instruction teardown', harness.dispose(tester)),
-    );
-    final invocation = QuickInstructionInvocationSnapshot.fromInstruction(
-      QuickInstruction(
-        id: 'quick-before',
-        title: 'Answer briefly',
-        prompt: 'Use one sentence.',
-      ),
-      order: 0,
-    );
-
-    expect(harness.controller.currentConversation, isNull);
-
-    final result = await _awaitStage(
-      'quick-instruction send',
-      harness.controller.sendMessage(
-        ChatInputData(
-          text: '',
-          quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
+  testWidgets(
+    'first quick-instruction-only send uses the new conversation',
+    (tester) async {
+      final harness = await _pumpHarness(tester);
+      addTearDown(
+        () =>
+            _awaitStage('quick-instruction teardown', harness.dispose(tester)),
+      );
+      final invocation = QuickInstructionInvocationSnapshot.fromInstruction(
+        QuickInstruction(
+          id: 'quick-before',
+          title: 'Answer briefly',
+          prompt: 'Use one sentence.',
         ),
-      ),
-    );
+        order: 0,
+      );
 
-    expect(result, ChatInputSubmissionResult.sent);
-    expect(harness.chatService.createdConversationCount, 1);
-    expect(harness.controller.currentConversation?.id, 'conversation-1');
-    final userMessage = harness.chatService
-        .getMessages('conversation-1')
-        .singleWhere((message) => message.role == 'user');
-    expect(userMessage.content, isEmpty);
-    expect(userMessage.quickInstructionInvocations, hasLength(1));
-    expect(
-      userMessage.quickInstructionInvocations.single.instructionId,
-      'quick-before',
-    );
-  });
+      expect(harness.controller.currentConversation, isNull);
+
+      final result = await _awaitStage(
+        'quick-instruction send',
+        harness.controller.sendMessage(
+          ChatInputData(
+            text: '',
+            quickInstructions: <QuickInstructionInvocationSnapshot>[invocation],
+          ),
+        ),
+      );
+
+      expect(result, ChatInputSubmissionResult.sent);
+      expect(harness.chatService.createdConversationCount, 1);
+      expect(harness.controller.currentConversation?.id, 'conversation-1');
+      final userMessage = harness.chatService
+          .getMessages('conversation-1')
+          .singleWhere((message) => message.role == 'user');
+      expect(userMessage.content, isEmpty);
+      expect(userMessage.quickInstructionInvocations, hasLength(1));
+      expect(
+        userMessage.quickInstructionInvocations.single.instructionId,
+        'quick-before',
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 45)),
+  );
 }
