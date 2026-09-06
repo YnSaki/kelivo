@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/models/workspace.dart';
 import '../../../core/services/workspace/linux_sandbox_service.dart';
+import '../../../core/services/workspace/workspace_terminal_native_bridge.dart';
 
 /// Per-dependency install state inside a workspace's install queue.
 enum DepInstallStatus {
@@ -49,8 +50,12 @@ class DependencyInstallController extends ChangeNotifier {
   DependencyInstallController({
     DependencyInstallRunner? installer,
     KeepScreenOnSwitch? keepScreenOn,
+    Future<void> Function(String workspaceHostPath)? beforeBaseMutation,
   }) : _runner = installer ?? LinuxSandboxService.instance.installPackage,
-       _keepScreenOn = keepScreenOn ?? _serviceKeepScreenOn;
+       _keepScreenOn = keepScreenOn ?? _serviceKeepScreenOn,
+       _beforeBaseMutation =
+           beforeBaseMutation ??
+           WorkspaceTerminalNativeBridge.instance.stopSessionForWorkspacePath;
 
   static Future<void> _serviceKeepScreenOn(bool hold) => hold
       ? LinuxSandboxService.instance.acquireKeepScreenOn()
@@ -58,6 +63,7 @@ class DependencyInstallController extends ChangeNotifier {
 
   final DependencyInstallRunner _runner;
   final KeepScreenOnSwitch _keepScreenOn;
+  final Future<void> Function(String workspaceHostPath) _beforeBaseMutation;
 
   final Map<String, List<_DepEntry>> _queues = <String, List<_DepEntry>>{};
   final Set<String> _running = <String>{};
@@ -132,6 +138,13 @@ class DependencyInstallController extends ChangeNotifier {
         notifyListeners();
         Object? error;
         try {
+          if (entry.depId == WorkspaceDependencyIds.base) {
+            try {
+              await _beforeBaseMutation(entry.hostPath);
+            } catch (error) {
+              throw WorkspaceTerminalStopException(error);
+            }
+          }
           await _runner(
             workspaceHostPath: entry.hostPath,
             depId: entry.depId,
