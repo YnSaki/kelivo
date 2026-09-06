@@ -45,6 +45,7 @@ typedef ProactiveCareDecisionSender =
       int? maxTokens,
       bool stream,
       String? requestId,
+      String? conversationId,
       AutoRetryOptions? retryOverride,
     });
 
@@ -525,6 +526,7 @@ class ProactiveCareMessageFlow {
     required String modelId,
     required Assistant assistant,
     required List<Map<String, dynamic>> apiMessages,
+    String? conversationId,
     int? fallbackThinkingBudget,
   }) async {
     // Layer-① collector (ADR-0034): accumulate the silent no-tool stream.
@@ -532,6 +534,7 @@ class ProactiveCareMessageFlow {
       config: config,
       modelId: modelId,
       messages: apiMessages,
+      conversationId: conversationId,
       thinkingBudget: assistant.thinkingBudget ?? fallbackThinkingBudget,
       // No temperature: silent background generation — a rejected sampling
       // parameter would fail the care reply invisibly (many models no longer
@@ -559,6 +562,7 @@ class ProactiveCareMessageFlow {
     required String userNickname,
     required List<Map<String, dynamic>> history,
     required String decisionPrompt,
+    String? conversationId,
     int? fallbackThinkingBudget,
     ProactiveCareDecisionSender? sendMessageStream,
     Duration decisionTimeout = _decisionTimeout,
@@ -621,6 +625,7 @@ class ProactiveCareMessageFlow {
       messages: apiMessages,
       tools: tools,
       assistant: assistant,
+      conversationId: conversationId,
       fallbackThinkingBudget: fallbackThinkingBudget,
       timeout: decisionTimeout,
       requestId: baseRequestId,
@@ -643,6 +648,7 @@ class ProactiveCareMessageFlow {
       messages: retryMessages,
       tools: tools,
       assistant: assistant,
+      conversationId: conversationId,
       fallbackThinkingBudget: fallbackThinkingBudget,
       timeout: decisionTimeout,
       requestId: '$baseRequestId-retry',
@@ -671,6 +677,7 @@ class ProactiveCareMessageFlow {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required Assistant assistant,
+    String? conversationId,
     required int? fallbackThinkingBudget,
     required Duration timeout,
     required String requestId,
@@ -739,6 +746,7 @@ class ProactiveCareMessageFlow {
         maxTokens: assistant.maxTokens,
         stream: false,
         requestId: requestId,
+        conversationId: conversationId,
         // This flow performs its own single retry ('-retry' suffix id); the
         // user-configurable backoff would double attempts on free-tier limits.
         retryOverride: const AutoRetryOptions.defaults(),

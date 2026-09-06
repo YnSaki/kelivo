@@ -122,6 +122,7 @@ class OcrService {
         stream: false,
         ocrActive: true,
         requestId: requestId,
+        conversationId: requestId,
       );
     } catch (e) {
       if (isUserCancelError(e)) rethrow;

@@ -45,6 +45,7 @@ class _FakeDecisionTransport {
     int? maxTokens,
     bool stream = true,
     String? requestId,
+    String? conversationId,
     AutoRetryOptions? retryOverride,
   }) {
     final index = sendCount++;

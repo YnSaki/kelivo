@@ -581,12 +581,21 @@ class ChatApiService {
     Map<String, dynamic>? extraBody,
     bool stream = true,
     String? requestId,
+    String? conversationId,
     bool allowImagesApiRouting = true,
     bool ocrActive = false,
     String Function(int received, int requested)? partialImageNotice,
     AutoRetryOptions? retryOverride,
   }) async* {
     final options = retryOverride ?? AutoRetryConfig.current;
+    // Resolve once per generation: retries and tool follow-up rounds reuse
+    // the same value (OpenCode `x-opencode-session`).
+    final sessionHeaders = providerSessionHeaders(
+      config,
+      conversationId: conversationId,
+      modelId: modelId,
+      extraHeaders: extraHeaders,
+    );
     final kind = ProviderConfig.classify(
       config.id,
       explicitType: config.providerType,
@@ -660,7 +669,7 @@ class ChatApiService {
           maxTokens: maxTokens,
           tools: tools,
           onToolCall: onToolCall,
-          extraHeaders: extraHeaders,
+          extraHeaders: sessionHeaders,
           extraBody: extraBody,
           stream: stream,
           useOpenAIImagesApi: useOpenAIImagesApi,
@@ -892,6 +901,7 @@ class ChatApiService {
     required ProviderConfig config,
     required String modelId,
     required String prompt,
+    String? conversationId,
     Map<String, String>? extraHeaders,
     Map<String, dynamic>? extraBody,
     int? thinkingBudget,
@@ -900,6 +910,7 @@ class ChatApiService {
       config: config,
       modelId: modelId,
       prompt: prompt,
+      conversationId: conversationId,
       extraHeaders: extraHeaders,
       extraBody: extraBody,
       thinkingBudget: thinkingBudget,
@@ -913,6 +924,7 @@ class ChatApiService {
     required ProviderConfig config,
     required String modelId,
     required String prompt,
+    String? conversationId,
     Map<String, String>? extraHeaders,
     Map<String, dynamic>? extraBody,
     int? thinkingBudget,
@@ -920,6 +932,12 @@ class ChatApiService {
     final kind = ProviderConfig.classify(
       config.id,
       explicitType: config.providerType,
+    );
+    final sessionHeaders = providerSessionHeaders(
+      config,
+      conversationId: conversationId,
+      modelId: modelId,
+      extraHeaders: extraHeaders,
     );
     final client = _clientFor(config, CancelToken());
     final upstreamModelId = _apiModelId(config, modelId);
@@ -1044,8 +1062,8 @@ class ChatApiService {
           'Content-Type': 'application/json',
         };
         headers.addAll(_customHeaders(config, modelId));
-        if (extraHeaders != null && extraHeaders.isNotEmpty) {
-          headers.addAll(extraHeaders);
+        if (sessionHeaders != null && sessionHeaders.isNotEmpty) {
+          headers.addAll(sessionHeaders);
         }
         final extra = _customBody(config, modelId);
         if (extra.isNotEmpty) body.addAll(extra);
@@ -1212,8 +1230,8 @@ class ChatApiService {
           'Content-Type': 'application/json',
         };
         headers.addAll(_customHeaders(config, modelId));
-        if (extraHeaders != null && extraHeaders.isNotEmpty) {
-          headers.addAll(extraHeaders);
+        if (sessionHeaders != null && sessionHeaders.isNotEmpty) {
+          headers.addAll(sessionHeaders);
         }
         final extra = _customBody(config, modelId);
         if (extra.isNotEmpty) body.addAll(extra);
@@ -1260,7 +1278,7 @@ class ChatApiService {
             messages: [
               {'role': 'user', 'content': prompt},
             ],
-            extraHeaders: extraHeaders,
+            extraHeaders: sessionHeaders,
             extraBody: extraBody,
             thinkingBudget: thinkingBudget,
             stream: false,
@@ -1329,8 +1347,8 @@ class ChatApiService {
           if (proj.isNotEmpty) headers['X-Goog-User-Project'] = proj;
         }
         headers.addAll(_customHeaders(config, modelId));
-        if (extraHeaders != null && extraHeaders.isNotEmpty) {
-          headers.addAll(extraHeaders);
+        if (sessionHeaders != null && sessionHeaders.isNotEmpty) {
+          headers.addAll(sessionHeaders);
         }
         final extra = _customBody(config, modelId);
         if (extra.isNotEmpty) body.addAll(extra);

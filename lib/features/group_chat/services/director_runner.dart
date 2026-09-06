@@ -32,6 +32,7 @@ typedef DirectorStreamSender =
       Map<String, dynamic>? extraBody,
       bool stream,
       String? requestId,
+      String? conversationId,
       bool allowImagesApiRouting,
       bool ocrActive,
       AutoRetryOptions? retryOverride,
@@ -171,6 +172,7 @@ class DirectorRunner {
           messages: apiMessages,
           tools: tools,
           assistantIds: assistantIds,
+          conversationId: group.conversationId,
           requestId: 'director-${group.id}-$requestStamp',
         );
         decision = result.decision;
@@ -198,6 +200,7 @@ class DirectorRunner {
             messages: retryMessages,
             tools: tools,
             assistantIds: assistantIds,
+            conversationId: group.conversationId,
             requestId: 'director-${group.id}-$requestStamp-retry',
           );
           decision = result.decision;
@@ -247,6 +250,7 @@ class DirectorRunner {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required List<String> assistantIds,
+    String? conversationId,
     required String requestId,
   }) async {
     DirectorDecision? decided;
@@ -284,6 +288,7 @@ class DirectorRunner {
         maxTokens: maxTokens,
         stream: false,
         requestId: requestId,
+        conversationId: conversationId,
         // DirectorRunner has its own retry loop; an additional auto-retry
         // would multiply attempts (own-loop x backoff) on free-tier limits.
         retryOverride: const AutoRetryOptions.defaults(),

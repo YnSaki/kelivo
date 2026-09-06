@@ -238,6 +238,7 @@ class TranslationService {
         ],
         thinkingBudget: budget,
         requestId: request.requestId,
+        conversationId: message.conversationId,
         updateInterval: liveUpdateInterval,
         onAccumulated: (value) {
           if (_isCurrent(request)) onTranslationUpdate(value);

@@ -1310,6 +1310,7 @@ class HomeViewModel extends ChangeNotifier {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
 
@@ -1623,6 +1624,7 @@ class HomeViewModel extends ChangeNotifier {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
       if (title.isNotEmpty) {
@@ -1741,6 +1743,7 @@ class HomeViewModel extends ChangeNotifier {
         config: cfg,
         modelId: mdlId,
         prompt: prompt,
+        conversationId: convo.id,
         thinkingBudget: budget,
       )).trim();
 
@@ -1822,6 +1825,7 @@ class HomeViewModel extends ChangeNotifier {
         messages: msgs,
         truncateIndex: collapsedTruncateIndex,
         locale: locale,
+        conversationId: conversationId,
         thinkingBudget: budget,
       );
       if (suggestions.isEmpty) return;
@@ -1916,6 +1920,7 @@ class HomeViewModel extends ChangeNotifier {
         userNickname: _contextProvider.read<UserProvider>().name,
         history: history,
         decisionPrompt: decisionPrompt,
+        conversationId: convo.id,
         fallbackThinkingBudget: settings.thinkingBudget,
       );
       if (newTime == null) {
@@ -2028,6 +2033,7 @@ class HomeViewModel extends ChangeNotifier {
         modelId: mdlId,
         assistant: assistant,
         apiMessages: apiMessages,
+        conversationId: convo.id,
         fallbackThinkingBudget: settings.thinkingBudget,
       );
       if (reply.isEmpty) {

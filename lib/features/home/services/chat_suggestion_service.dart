@@ -76,6 +76,7 @@ class ChatSuggestionService {
     required List<ChatMessage> messages,
     required int truncateIndex,
     required String locale,
+    String? conversationId,
     int? thinkingBudget,
   }) async {
     final content = buildContent(messages, truncateIndex: truncateIndex);
@@ -87,6 +88,7 @@ class ChatSuggestionService {
       config: settings.getProviderConfig(providerKey),
       modelId: modelId,
       prompt: prompt,
+      conversationId: conversationId,
       thinkingBudget: thinkingBudget,
     );
     return parseSuggestions(raw);

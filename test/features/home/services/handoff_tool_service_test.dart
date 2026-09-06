@@ -380,6 +380,7 @@ void main() {
               extraBody,
               required stream,
               String? requestId,
+              String? conversationId,
               required allowImagesApiRouting,
               required ocrActive,
               partialImageNotice,
