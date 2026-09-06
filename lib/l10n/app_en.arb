@@ -4228,7 +4228,7 @@
   "webConversationStylesImportFile": "Local file or ZIP",
   "webConversationStylesImportGithub": "GitHub repository or style file",
   "webConversationStylesGithubTitle": "Import from GitHub",
-  "webConversationStylesGithubHint": "GitHub repository, tree, blob, or raw style file URL",
+  "webConversationStylesGithubHint": "Repo or style file URL",
   "webConversationStylesSelectTitle": "Select styles to import",
   "webConversationStylesSelectAll": "Select all",
   "webConversationStylesDeselectAll": "Deselect all",

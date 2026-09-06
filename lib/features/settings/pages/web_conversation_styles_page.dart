@@ -224,6 +224,7 @@ class _WebConversationStylesPageState extends State<WebConversationStylesPage> {
             label: l10n.webConversationStylesImportGithub,
             controller: controller,
             hintText: l10n.webConversationStylesGithubHint,
+            inlineLabel: false,
             autofocus: true,
           ),
         ),
