@@ -35,6 +35,7 @@ class _FakeWorkspaceStore implements WorkspaceTerminalWorkspaceStore {
   List<Workspace> items;
   final Future<void> Function() _initialize;
   final List<String> calls = <String>[];
+  Object? persistFailure;
 
   @override
   Future<void> initialize() async {
@@ -59,6 +60,8 @@ class _FakeWorkspaceStore implements WorkspaceTerminalWorkspaceStore {
       'persist:$workspaceId:$keepTerminalAfterExit:'
       '$terminalPersistentKeepAlive:$autoStartLinuxSandbox',
     );
+    final failure = persistFailure;
+    if (failure != null) throw failure;
     final index = items.indexWhere((workspace) => workspace.id == workspaceId);
     if (index < 0) return;
     items[index] = items[index].copyWith(
@@ -117,6 +120,7 @@ class _FakeTerminal implements WorkspaceTerminalPort {
       <String, WorkspaceTerminalSessionState>{};
   final Set<String> startFailures = <String>{};
   final Set<String> stopFailures = <String>{};
+  final Map<String, Set<bool>> durableFailures = <String, Set<bool>>{};
   final List<String> calls = <String>[];
 
   @override
@@ -132,6 +136,9 @@ class _FakeTerminal implements WorkspaceTerminalPort {
     required WorkspaceTerminalNotificationStrings notificationStrings,
   }) async {
     calls.add('durable:$workspaceId:$durable');
+    if (durableFailures[workspaceId]?.contains(durable) ?? false) {
+      throw StateError('durable update failed for $workspaceId:$durable');
+    }
     final current = states[workspaceId]!;
     final next = WorkspaceTerminalSessionState(
       workspaceId: workspaceId,
@@ -394,6 +401,83 @@ void main() {
 
     expect(terminal.calls, isEmpty);
     expect(store.calls.last, 'persist:workspace-a:true:true:false');
+  });
+
+  test('durable persistence failure restores either running state', () async {
+    for (final initialDurable in <bool>[false, true]) {
+      final store = _FakeWorkspaceStore(<Workspace>[
+        _workspace('workspace-a', durable: initialDurable),
+      ])..persistFailure = StateError('persist failed');
+      final terminal = _FakeTerminal()
+        ..states['workspace-a'] = WorkspaceTerminalSessionState(
+          workspaceId: 'workspace-a',
+          state: WorkspaceTerminalProcessState.running,
+          durable: initialDurable,
+          autoStarted: false,
+          attachedViews: 1,
+        );
+      final coordinator = WorkspaceTerminalCoordinator(
+        workspaces: store,
+        sandbox: _FakeSandbox(),
+        terminal: terminal,
+        androidProbe: () => true,
+        requestNotificationPermission: () async => true,
+      )..updateNotificationStrings(_notification);
+
+      await expectLater(
+        coordinator.setDurable('workspace-a', !initialDurable),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(
+        terminal.states['workspace-a']!.durable,
+        initialDurable,
+        reason: 'native state must match the unchanged persisted policy',
+      );
+      expect(
+        store.workspaceById('workspace-a')!.terminalPersistentKeepAlive,
+        initialDurable,
+      );
+      expect(terminal.calls, <String>[
+        'durable:workspace-a:${!initialDurable}',
+        'durable:workspace-a:$initialDurable',
+      ]);
+    }
+  });
+
+  test('durable rollback failure reports both failure causes', () async {
+    final persistError = StateError('persist failed');
+    final store = _FakeWorkspaceStore(<Workspace>[_workspace('workspace-a')])
+      ..persistFailure = persistError;
+    final terminal = _FakeTerminal()
+      ..states['workspace-a'] = const WorkspaceTerminalSessionState(
+        workspaceId: 'workspace-a',
+        state: WorkspaceTerminalProcessState.running,
+        durable: false,
+        autoStarted: false,
+        attachedViews: 1,
+      )
+      ..durableFailures['workspace-a'] = <bool>{false};
+    final coordinator = WorkspaceTerminalCoordinator(
+      workspaces: store,
+      sandbox: _FakeSandbox(),
+      terminal: terminal,
+      androidProbe: () => true,
+      requestNotificationPermission: () async => true,
+    )..updateNotificationStrings(_notification);
+
+    Object? thrown;
+    try {
+      await coordinator.setDurable('workspace-a', true);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown, isA<WorkspaceTerminalDurabilityRollbackException>());
+    final error = thrown! as WorkspaceTerminalDurabilityRollbackException;
+    expect(identical(error.persistError, persistError), isTrue);
+    expect(error.rollbackError, isA<StateError>());
+    expect(terminal.states['workspace-a']!.durable, isTrue);
   });
 
   test(

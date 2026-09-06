@@ -112,6 +112,22 @@ class WorkspaceTerminalNotificationPermissionException implements Exception {
   String toString() => 'Terminal notification permission was denied';
 }
 
+/// Both the preference update and the compensating native rollback failed.
+class WorkspaceTerminalDurabilityRollbackException implements Exception {
+  const WorkspaceTerminalDurabilityRollbackException({
+    required this.persistError,
+    required this.rollbackError,
+  });
+
+  final Object persistError;
+  final Object rollbackError;
+
+  @override
+  String toString() =>
+      'Workspace terminal durable setting could not be persisted or rolled back: '
+      'persist=$persistError, rollback=$rollbackError';
+}
+
 /// Coordinates persisted workspace policy with the Android-owned terminal.
 class WorkspaceTerminalCoordinator {
   WorkspaceTerminalCoordinator({
@@ -295,19 +311,49 @@ class WorkspaceTerminalCoordinator {
       throw const WorkspaceTerminalNotificationPermissionException();
     }
     final state = await terminal.getSessionState(workspaceId);
+    var runtimeUpdated = false;
     if (state.running) {
       await terminal.setDurable(
         workspaceId,
         enabled,
         notificationStrings: notificationStrings,
       );
+      runtimeUpdated = true;
     }
-    await workspaces.persistSettings(
-      workspaceId,
-      keepTerminalAfterExit: true,
-      terminalPersistentKeepAlive: enabled,
-      autoStartLinuxSandbox: workspace.autoStartLinuxSandbox,
-    );
+    try {
+      await workspaces.persistSettings(
+        workspaceId,
+        keepTerminalAfterExit: true,
+        terminalPersistentKeepAlive: enabled,
+        autoStartLinuxSandbox: workspace.autoStartLinuxSandbox,
+      );
+    } catch (persistError, persistStackTrace) {
+      if (!runtimeUpdated) {
+        Error.throwWithStackTrace(persistError, persistStackTrace);
+      }
+      try {
+        await terminal.setDurable(
+          workspaceId,
+          state.durable,
+          notificationStrings: notificationStrings,
+        );
+      } catch (rollbackError, rollbackStackTrace) {
+        debugPrint(
+          'WorkspaceTerminalCoordinator: durable setting persistence failed '
+          'for $workspaceId: $persistError\n$persistStackTrace\n'
+          'Native rollback to ${state.durable} also failed: '
+          '$rollbackError\n$rollbackStackTrace',
+        );
+        Error.throwWithStackTrace(
+          WorkspaceTerminalDurabilityRollbackException(
+            persistError: persistError,
+            rollbackError: rollbackError,
+          ),
+          rollbackStackTrace,
+        );
+      }
+      Error.throwWithStackTrace(persistError, persistStackTrace);
+    }
   }
 
   Future<void> setAutoStart(String workspaceId, bool enabled) async {
