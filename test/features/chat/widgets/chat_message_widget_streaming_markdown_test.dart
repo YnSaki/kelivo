@@ -49,6 +49,69 @@ String _allRichTextPlainText(WidgetTester tester) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('ChatMessageWidget preserves table scroll when streaming ends', (
+    tester,
+  ) async {
+    markdownTableTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => markdownTableTargetPlatformOverride = null);
+    final streaming = ValueNotifier(true);
+    addTearDown(streaming.dispose);
+    await tester.pumpWidget(
+      _buildHarness(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 360,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: streaming,
+              builder: (context, value, _) => ChatMessageWidget(
+                message: ChatMessage(
+                  id: 'table-scroll',
+                  role: 'assistant',
+                  content:
+                      '| A | B | C | D | E |\n'
+                      '| --- | --- | --- | --- | --- |\n'
+                      '| apple | banana | cherry | date | elderberry |',
+                  conversationId: 'conversation-1',
+                  isStreaming: value,
+                ),
+                enableStreamingTextMotion: true,
+                showModelIcon: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final viewport = find.byKey(
+      const ValueKey('markdown-table-horizontal-scroll'),
+    );
+    final scroll = find.descendant(
+      of: viewport,
+      matching: find.byType(Scrollable),
+    );
+    final state = tester.state<ScrollableState>(scroll);
+    await tester.drag(viewport, const Offset(-100, 0));
+    await tester.pump(const Duration(milliseconds: 300));
+    final offset = state.position.pixels;
+    expect(offset, greaterThan(50));
+
+    final gesture = await tester.startGesture(tester.getCenter(viewport));
+    await gesture.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    final beforeComplete = state.position.pixels;
+    streaming.value = false;
+    await tester.pumpAndSettle();
+    expect(tester.state<ScrollableState>(scroll), same(state));
+    expect(state.position.pixels, beforeComplete);
+    await gesture.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    expect(state.position.pixels, greaterThan(beforeComplete));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'ChatMessageWidget keeps a partial streaming table row in table layout',
     (tester) async {

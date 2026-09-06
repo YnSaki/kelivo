@@ -126,10 +126,10 @@ class MarkdownWithCodeHighlight extends StatefulWidget {
 }
 
 class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
-  // Streamed text of 512+ chars is rendered as committed blocks plus a live
-  // tail (issue #334): committed blocks are parsed once and never re-parsed,
-  // so the debounce below only gates how often the whole document refreshes,
-  // not the per-tick parse cost (issue #232's original concern).
+  // Streamed text is rendered as committed blocks plus a live tail (issue
+  // #334): committed blocks are parsed once and never re-parsed, so the
+  // debounce below only gates how often the whole document refreshes, not the
+  // per-tick parse cost (issue #232's original concern).
   static const int _streamingDebounceThresholdChars = 8000;
   // Matches the stream controller's publish interval. A longer window would
   // batch several publishes into one render, and since the timeline is pinned
@@ -208,10 +208,11 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
       return value;
     }
 
-    // 512+ chars engage the incremental splitter; below that a full parse per
-    // tick is cheap and the tail behavior (no block boundaries yet) is simpler.
+    // Keep the same block tree from the first streaming frame through
+    // completion, so growing replies do not dispose interactive children
+    // (table scroll offsets, HTML preview state, code-block expansion).
     final useIncrementalBlocks =
-        widget.streaming && sanitizedText.length >= 512;
+        widget.streaming || _incrementalDocument.blocks.isNotEmpty;
     final sourceBlocks = useIncrementalBlocks
         ? _incrementalDocument.update(sanitizedText)
         : const <IncrementalMarkdownBlock>[];
@@ -597,10 +598,9 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
                 // Rendering the document as one string keeps the blank run
                 // between two blocks as a real line box. Rendering block by
                 // block drops it, so a long reply is laid out tighter while it
-                // streams and then grows the moment it finishes and switches to
-                // the whole-document render. Put the line back so both paths
-                // agree — unless the block before it ends in something whose own
-                // renderer eats the run.
+                // streams compared with a freshly loaded completed reply. Put
+                // the line back so both paths agree — unless the preceding
+                // block's renderer eats the run.
                 if (i > 0 &&
                     !_swallowsTrailingBlankLine(
                       blockContents[i - 1].text,
@@ -616,6 +616,7 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
                   key: ValueKey(
                     'markdown-source-block-${sourceBlocks[i].start}',
                   ),
+                  source: sourceBlocks[i].text,
                   payload: blockContents[i],
                   signature: themeSignature,
                   builder: buildMarkdown,
@@ -624,6 +625,7 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
             ],
           )
         : _CachedMarkdownBlock(
+            source: sanitizedText,
             payload: normalized!,
             signature: themeSignature,
             builder: buildMarkdown,
@@ -677,11 +679,15 @@ typedef _MarkdownBlockBuilder =
 class _CachedMarkdownBlock extends StatefulWidget {
   const _CachedMarkdownBlock({
     super.key,
+    required this.source,
     required this.payload,
     required this.signature,
     required this.builder,
   });
 
+  /// The raw block source before preprocessing. Append-only while streaming;
+  /// replaced wholesale when the message content is edited.
+  final String source;
   final MarkdownCodePayload payload;
   final String signature;
   final _MarkdownBlockBuilder builder;
@@ -698,7 +704,8 @@ class _CachedMarkdownBlockState extends State<_CachedMarkdownBlock> {
   @override
   void didUpdateWidget(covariant _CachedMarkdownBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.payload.text != widget.payload.text ||
+    if (oldWidget.source != widget.source ||
+        oldWidget.payload.text != widget.payload.text ||
         oldWidget.signature != widget.signature) {
       _rendered = null;
     }
@@ -719,7 +726,10 @@ class _CachedMarkdownBlockState extends State<_CachedMarkdownBlock> {
   Widget build(BuildContext context) {
     return _rendered ??= widget.builder(
       widget.payload,
-      _parseIdentity(widget.payload.text),
+      // Synthetic table cells and math delimiters change as tokens arrive;
+      // only a replacement of the source should reset interactive state.
+      // The splitter removes trailing newlines when a block becomes stable.
+      _parseIdentity(widget.source.trimRight()),
     );
   }
 }
