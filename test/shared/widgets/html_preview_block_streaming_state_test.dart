@@ -13,8 +13,13 @@ import 'package:provider/provider.dart';
 /// Streaming HTML fences must not remount `HtmlPreviewBlock` on every chunk:
 /// the preprocessing token embeds the content length and hash, so the
 /// tokenized payload changes non-appending while the raw fence source only
-/// grows. A remount restarts the preview spinner and resets the selected tab
-/// (issue #706 follow-up).
+/// grows. A remount restarts the preview spinner, loses the WebView, and
+/// resets the selected tab (issue #706 follow-up).
+///
+/// While streaming the preview body's observable child differs per platform:
+/// on Linux the WebView is unsupported so the block shows the "unsupported"
+/// state from the first frame; elsewhere it shows the loading spinner. Both
+/// are used as the identity anchor for the no-remount check.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -47,15 +52,14 @@ void main() {
     final blockFinder = find.byType(HtmlPreviewBlock);
     expect(blockFinder, findsOneWidget);
     final blockState = tester.state<State<HtmlPreviewBlock>>(blockFinder);
-    final previewBody = find.byKey(
-      ValueKey(
-        Platform.isLinux
-            ? 'html-preview-linux-unsupported'
-            : 'html-preview-loading',
-      ),
-    );
-    expect(previewBody, findsOneWidget);
-    final previewBodyElement = tester.element(previewBody);
+    // On Linux the preview WebView is unsupported, so the preview body shows
+    // the unsupported state instead of the loading spinner; the element
+    // identity of whatever the preview body shows is the no-remount anchor.
+    final previewObservable = Platform.isLinux
+        ? find.byKey(const ValueKey('html-preview-linux-unsupported'))
+        : find.byType(CircularProgressIndicator);
+    expect(previewObservable, findsOneWidget);
+    final previewElement = tester.element(previewObservable);
 
     html.value += '\n  <p>more</p>';
     await tester.pump();
@@ -65,7 +69,7 @@ void main() {
       tester.state<State<HtmlPreviewBlock>>(blockFinder),
       same(blockState),
     );
-    expect(tester.element(previewBody), same(previewBodyElement));
+    expect(tester.element(previewObservable), same(previewElement));
   });
 
   testWidgets('HtmlPreviewBlock keeps the user-selected tab while streaming', (

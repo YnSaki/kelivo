@@ -162,13 +162,19 @@ void main() {
       });
 
       final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload, hasLength(2));
       expect(payload['type'], 'memory_created');
       expect(payload['id'], isA<int>());
       expect(payload['id'], greaterThan(0));
-      expect(payload, hasLength(2));
+      final stored = context.read<MemoryProvider>().getForAssistant(
+        assistant.id,
+      );
+      expect(stored.single.content, 'user likes cats');
     });
 
-    testWidgets('edit_memory returns typed JSON confirmation', (tester) async {
+    testWidgets('edit_memory also returns typed JSON confirmation', (
+      tester,
+    ) async {
       final assistant = Assistant(
         id: 'assistant-edit',
         name: 'Assistant',
@@ -207,6 +213,8 @@ void main() {
       final payload = jsonDecode(result) as Map<String, dynamic>;
       expect(payload, {'type': 'memory_edited', 'id': memory.id});
       expect(payload, hasLength(2));
+      final stored = memoryProvider.getForAssistant(assistant.id);
+      expect(stored.single.content, 'updated content');
     });
 
     testWidgets('no memory tools when memory disabled', (tester) async {
