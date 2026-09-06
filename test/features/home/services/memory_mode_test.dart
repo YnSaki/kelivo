@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -128,7 +130,7 @@ void main() {
       expect(toolNames, contains('read_memory'));
     });
 
-    testWidgets('create_memory returns XML record with id and content', (
+    testWidgets('create_memory returns typed JSON confirmation with id', (
       tester,
     ) async {
       final assistant = Assistant(
@@ -159,16 +161,20 @@ void main() {
         'content': 'user likes cats',
       });
 
-      expect(result, startsWith('<record>'));
-      expect(result, contains('<id>'));
-      expect(result, contains('<content>user likes cats</content>'));
-      expect(result, endsWith('</record>'));
-      final idMatch = RegExp(r'<id>(\d+)</id>').firstMatch(result);
-      expect(idMatch, isNotNull);
-      expect(int.parse(idMatch!.group(1)!), greaterThan(0));
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload, hasLength(2));
+      expect(payload['type'], 'memory_created');
+      expect(payload['id'], isA<int>());
+      expect(payload['id'], greaterThan(0));
+      final stored = context.read<MemoryProvider>().getForAssistant(
+        assistant.id,
+      );
+      expect(stored.single.content, 'user likes cats');
     });
 
-    testWidgets('edit_memory also returns XML record', (tester) async {
+    testWidgets('edit_memory also returns typed JSON confirmation', (
+      tester,
+    ) async {
       final assistant = Assistant(
         id: 'assistant-edit',
         name: 'Assistant',
@@ -204,10 +210,11 @@ void main() {
         'content': 'updated content',
       });
 
-      expect(result, startsWith('<record>'));
-      expect(result, contains('<id>${memory.id}</id>'));
-      expect(result, contains('<content>updated content</content>'));
-      expect(result, endsWith('</record>'));
+      final payload = jsonDecode(result) as Map<String, dynamic>;
+      expect(payload, {'type': 'memory_edited', 'id': memory.id});
+      expect(payload, hasLength(2));
+      final stored = memoryProvider.getForAssistant(assistant.id);
+      expect(stored.single.content, 'updated content');
     });
 
     testWidgets('no memory tools when memory disabled', (tester) async {
