@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:Cuplivo/core/database/business_preferences.dart';
 import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/l10n/app_localizations.dart';
@@ -45,9 +47,15 @@ void main() {
     final blockFinder = find.byType(HtmlPreviewBlock);
     expect(blockFinder, findsOneWidget);
     final blockState = tester.state<State<HtmlPreviewBlock>>(blockFinder);
-    final spinner = find.byType(CircularProgressIndicator);
-    expect(spinner, findsOneWidget);
-    final spinnerElement = tester.element(spinner);
+    final previewBody = find.byKey(
+      ValueKey(
+        Platform.isLinux
+            ? 'html-preview-linux-unsupported'
+            : 'html-preview-loading',
+      ),
+    );
+    expect(previewBody, findsOneWidget);
+    final previewBodyElement = tester.element(previewBody);
 
     html.value += '\n  <p>more</p>';
     await tester.pump();
@@ -57,10 +65,7 @@ void main() {
       tester.state<State<HtmlPreviewBlock>>(blockFinder),
       same(blockState),
     );
-    expect(
-      tester.element(find.byType(CircularProgressIndicator)),
-      same(spinnerElement),
-    );
+    expect(tester.element(previewBody), same(previewBodyElement));
   });
 
   testWidgets('HtmlPreviewBlock keeps the user-selected tab while streaming', (
