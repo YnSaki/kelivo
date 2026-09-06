@@ -94,6 +94,7 @@ void main() {
       });
 
       final chatService = ChatService();
+      addTearDown(chatService.close);
       await chatService.init();
       final result = await CherryImporter.importFromCherryStudio(
         preferences: businessPrefs,
@@ -198,6 +199,7 @@ void main() {
       });
 
       final chatService = ChatService();
+      addTearDown(chatService.close);
       await chatService.init();
       final result = await CherryImporter.importFromCherryStudio(
         preferences: businessPrefs,
@@ -227,6 +229,7 @@ void main() {
       });
 
       final service = ChatService();
+      addTearDown(service.close);
       await service.init();
       await expectLater(
         CherryImporter.importFromCherryStudio(
