@@ -862,10 +862,14 @@ class HomePageController extends ChangeNotifier {
       await regenerateAtMessage(newMsg);
       return ChatInputSubmissionResult.sent;
     }
-    if (currentConversation == null) {
+    var activeConversation = currentConversation;
+    if (activeConversation == null) {
       await _createNewConversation();
+      // Creation crosses an async boundary. Resolve the conversation for this
+      // submission only after ChatController has received the new draft.
+      activeConversation = currentConversation;
     }
-    final conversationId = currentConversation?.id;
+    final conversationId = activeConversation?.id;
     if (conversationId == null) return ChatInputSubmissionResult.rejected;
     input = await _messageGenerationService.freezeUserQuickInstructions(
       conversationId: conversationId,
@@ -892,7 +896,7 @@ class HomePageController extends ChangeNotifier {
           .getLoadedCurrentAssistant();
       final gid = await multiAIEngine.startRound(
         input: input,
-        conversation: currentConversation!,
+        conversation: activeConversation,
         settings: settings,
         assistant: assistant,
       );
