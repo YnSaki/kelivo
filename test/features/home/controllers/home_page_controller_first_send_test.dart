@@ -338,7 +338,6 @@ class _Harness {
     required this.quickInstructions,
     required this.mcp,
     required this.engine,
-    required this.responseStream,
   });
 
   final HomePageController controller;
@@ -348,16 +347,11 @@ class _Harness {
   final QuickInstructionProvider quickInstructions;
   final McpProvider mcp;
   final GenerationEngine engine;
-  final StreamController<ChatStreamChunk> responseStream;
 
   Future<void> dispose(WidgetTester tester) async {
     final conversationId = controller.currentConversation?.id;
     if (conversationId != null) {
       engine.cancelConversation(conversationId);
-    }
-    await pumpEventQueue();
-    if (!responseStream.isClosed) {
-      await responseStream.close();
     }
     await pumpEventQueue();
     await tester.pump(const Duration(milliseconds: 150));
@@ -402,7 +396,6 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
     preferences: preferences,
     contextProvider: () => providerContext,
   );
-  final responseStream = StreamController<ChatStreamChunk>();
   final engine = GenerationEngine(
     chatService: chatService,
     streamProvider:
@@ -425,7 +418,9 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
           required allowImagesApiRouting,
           required ocrActive,
           partialImageNotice,
-        }) => responseStream.stream,
+        }) => Stream<ChatStreamChunk>.value(
+          ChatStreamChunk(content: 'ok', isDone: true, totalTokens: 1),
+        ),
   );
 
   HomePageController? controller;
@@ -464,7 +459,6 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
     quickInstructions: quickInstructions,
     mcp: mcp,
     engine: engine,
-    responseStream: responseStream,
   );
 }
 
