@@ -279,6 +279,8 @@ Future<ModelSelection?> showModelSelector(
   String? initialProviderKey,
   String? initialModelId,
   void Function(List<ModelSelection>)? onMultiSelectConfirm,
+  bool showFollowAssistant = false,
+  Future<void> Function()? onFollowAssistant,
 }) async {
   if (_modelSelectorOpen) return null;
   _modelSelectorOpen = true;
@@ -294,6 +296,8 @@ Future<ModelSelection?> showModelSelector(
         initialProviderKey: initialProviderKey,
         initialModelId: initialModelId,
         onMultiSelectConfirm: onMultiSelectConfirm,
+        showFollowAssistant: showFollowAssistant,
+        onFollowAssistant: onFollowAssistant,
       );
     }
     final cs = Theme.of(context).colorScheme;
@@ -309,6 +313,8 @@ Future<ModelSelection?> showModelSelector(
         initialProviderKey: initialProviderKey,
         initialModelId: initialModelId,
         onMultiSelectConfirm: onMultiSelectConfirm,
+        showFollowAssistant: showFollowAssistant,
+        onFollowAssistant: onFollowAssistant,
       ),
     );
   } finally {
@@ -334,15 +340,31 @@ Future<void> showModelSelectSheet(
     final assistant = conversation.assistantId != null
         ? assistantProvider.getById(conversation.assistantId!)
         : assistantProvider.currentAssistant;
-    final resolved = resolveChatModel(settings, assistant, conversation);
+    final resolved = resolveChatModel(
+      settings,
+      assistant,
+      conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
+    );
     initialProviderKey = resolved.providerKey;
     initialModelId = resolved.modelId;
   }
+  // "Follow assistant" clears the conversation binding (ADR-0055): shown when
+  // a binding is stored (while the toggle is off the effective model already
+  // follows the assistant, but the stored override must be removable too).
+  final binding =
+      conversation != null && conversationModelBindingActive(conversation);
   final sel = await showModelSelector(
     context,
     initialProviderKey: initialProviderKey,
     initialModelId: initialModelId,
     onMultiSelectConfirm: onMultiSelectConfirm,
+    showFollowAssistant: binding,
+    onFollowAssistant: binding
+        ? () => chatService.clearConversationModelBinding(
+            conversationId: conversation.id,
+          )
+        : null,
   );
   if (sel == null) return;
   if (!updateAssistant) {
@@ -355,8 +377,8 @@ Future<void> showModelSelectSheet(
     conversation: conversation,
   );
   if (target == ConversationModelWriteTarget.conversationBinding) {
-    // ADR-0045: bound conversations (or toggle-on first switch) freeze to
-    // their own binding; the assistant is never touched by in-chat switches.
+    // ADR-0055: with the toggle ON an in-conversation switch is local — the
+    // first switch creates the binding; the assistant is never touched.
     final wasUnbound = !conversationModelBindingActive(conversation);
     await chatService.setConversationModelBinding(
       conversationId: conversation!.id,
@@ -393,6 +415,8 @@ class _ModelSelectSheet extends StatefulWidget {
     this.onMultiSelectConfirm,
     this.preselectedKeys,
     this.lockedKeys,
+    this.showFollowAssistant = false,
+    this.onFollowAssistant,
   });
   final String? limitProviderKey;
   final String? initialProviderKey;
@@ -400,6 +424,8 @@ class _ModelSelectSheet extends StatefulWidget {
   final void Function(List<ModelSelection>)? onMultiSelectConfirm;
   final Set<String>? preselectedKeys;
   final Set<String>? lockedKeys;
+  final bool showFollowAssistant;
+  final Future<void> Function()? onFollowAssistant;
   @override
   State<_ModelSelectSheet> createState() => _ModelSelectSheetState();
 }
@@ -1110,6 +1136,13 @@ class _ModelSelectSheetState extends State<_ModelSelectSheet> {
                                   ),
                                 ),
                             ],
+                          ),
+                        ),
+                      if (widget.showFollowAssistant)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                          child: _FollowAssistantRow(
+                            onTap: widget.onFollowAssistant,
                           ),
                         ),
                     ],
@@ -1956,6 +1989,8 @@ Future<ModelSelection?> _showDesktopModelSelector(
   String? initialProviderKey,
   String? initialModelId,
   void Function(List<ModelSelection>)? onMultiSelectConfirm,
+  bool showFollowAssistant = false,
+  Future<void> Function()? onFollowAssistant,
 }) async {
   return showGeneralDialog<ModelSelection>(
     context: context,
@@ -1967,6 +2002,8 @@ Future<ModelSelection?> _showDesktopModelSelector(
       initialProviderKey: initialProviderKey,
       initialModelId: initialModelId,
       onMultiSelectConfirm: onMultiSelectConfirm,
+      showFollowAssistant: showFollowAssistant,
+      onFollowAssistant: onFollowAssistant,
     ),
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
@@ -1989,6 +2026,8 @@ class _DesktopModelSelectDialogBody extends StatefulWidget {
     this.onMultiSelectConfirm,
     this.preselectedKeys,
     this.lockedKeys,
+    this.showFollowAssistant = false,
+    this.onFollowAssistant,
   });
   final String? limitProviderKey;
   final String? initialProviderKey;
@@ -1996,6 +2035,8 @@ class _DesktopModelSelectDialogBody extends StatefulWidget {
   final void Function(List<ModelSelection>)? onMultiSelectConfirm;
   final Set<String>? preselectedKeys;
   final Set<String>? lockedKeys;
+  final bool showFollowAssistant;
+  final Future<void> Function()? onFollowAssistant;
   @override
   State<_DesktopModelSelectDialogBody> createState() =>
       _DesktopModelSelectDialogBodyState();
@@ -2428,6 +2469,13 @@ class _DesktopModelSelectDialogBodyState
                               ],
                             ),
                           ),
+                        if (widget.showFollowAssistant)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 12, bottom: 4),
+                            child: _FollowAssistantRow(
+                              onTap: widget.onFollowAssistant,
+                            ),
+                          ),
                         Expanded(
                           child: _loading
                               ? const Center(child: CircularProgressIndicator())
@@ -2826,3 +2874,48 @@ class _DesktopModelSelectDialogBodyState
   }
 }
 // (desktop tactile row removed in favor of IosCardPress for consistency)
+
+/// "Follow assistant" action row of the model selector: clears the current
+/// conversation's model binding so it dynamically inherits the assistant
+/// model again (ADR-0055). Shared by the mobile bottom sheet and the desktop
+/// dialog so the visual language stays unified.
+class _FollowAssistantRow extends StatelessWidget {
+  const _FollowAssistantRow({required this.onTap});
+
+  final Future<void> Function()? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    return IosCardPress(
+      baseColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      onTap: () {
+        final tap = onTap;
+        if (tap == null) return;
+        Navigator.of(context).maybePop();
+        tap();
+      },
+      child: Row(
+        children: [
+          Icon(
+            Lucide.RotateCcw,
+            size: 14,
+            color: cs.onSurface.withValues(alpha: 0.65),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            l10n.modelSelectSheetFollowAssistantTitle,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: AppFontWeights.medium,
+              color: cs.onSurface.withValues(alpha: 0.65),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

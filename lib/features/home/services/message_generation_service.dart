@@ -425,13 +425,20 @@ class MessageGenerationService {
   }
 
   /// Get current model and provider via the effective chain
-  /// (ADR-0045): conversation binding → assistant → global default.
+  /// (ADR-0055): toggle ON = conversation binding → assistant → global
+  /// default; toggle OFF = assistant → global (bindings ignored but kept).
   ({String? providerKey, String? modelId}) getModelConfig(
     SettingsProvider settings,
     Assistant? assistant, {
     Conversation? conversation,
+    required bool conversationModelIndependent,
   }) {
-    return resolveChatModel(settings, assistant, conversation);
+    return resolveChatModel(
+      settings,
+      assistant,
+      conversation,
+      conversationModelIndependent: conversationModelIndependent,
+    );
   }
 
   /// Calculate version info for regeneration.

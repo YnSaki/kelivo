@@ -2282,6 +2282,7 @@
   "displaySettingsPageConversationModelIndependentTitle": "Independent Conversation Models",
   "displaySettingsPageConversationModelIndependentSubtitle": "New conversations freeze their model at creation and no longer follow assistant model changes. Switching a model in a conversation affects only that conversation.",
   "conversationModelIndependentFreezeNotice": "Model switched for this conversation only",
+  "modelSelectSheetFollowAssistantTitle": "Follow assistant model",
   "chainOfThoughtExpandSteps": "Show {count} more steps",
   "@chainOfThoughtExpandSteps": {
     "placeholders": {

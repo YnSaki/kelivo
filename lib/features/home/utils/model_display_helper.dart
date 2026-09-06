@@ -52,9 +52,15 @@ ModelDisplayInfo getModelDisplayInfo(
   SettingsProvider settings, {
   Assistant? assistant,
   Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
   // Determine provider and model: conversation binding → assistant → global
-  final resolved = resolveChatModel(settings, assistant, conversation);
+  final resolved = resolveChatModel(
+    settings,
+    assistant,
+    conversation,
+    conversationModelIndependent: conversationModelIndependent,
+  );
   final providerKey = resolved.providerKey;
   final modelId = resolved.modelId;
 
@@ -89,23 +95,29 @@ ModelDisplayInfo getModelDisplayInfo(
   );
 }
 
-/// The effective chat model chain (ADR-0045):
-/// conversation binding → assistant binding → global default.
-/// Toggle-agnostic — the toggle only gates write/creation-time behavior.
+/// The effective chat model chain (ADR-0055):
+/// - toggle ON: `convo.chatModel* → assistant.chatModel* → global default`;
+/// - toggle OFF: `assistant.chatModel* → global default` (a stored binding is
+///   ignored but preserved, so the conversation follows the assistant again;
+///   re-enabling the toggle restores the binding).
 ({String? providerKey, String? modelId}) resolveChatModel(
   SettingsProvider settings,
   Assistant? assistant,
-  Conversation? conversation,
-) {
+  Conversation? conversation, {
+  required bool conversationModelIndependent,
+}) {
+  if (conversationModelIndependent &&
+      conversation != null &&
+      conversation.chatModelProvider != null &&
+      conversation.chatModelId != null) {
+    return (
+      providerKey: conversation.chatModelProvider,
+      modelId: conversation.chatModelId,
+    );
+  }
   return (
-    providerKey:
-        conversation?.chatModelProvider ??
-        assistant?.chatModelProvider ??
-        settings.currentModelProvider,
-    modelId:
-        conversation?.chatModelId ??
-        assistant?.chatModelId ??
-        settings.currentModelId,
+    providerKey: assistant?.chatModelProvider ?? settings.currentModelProvider,
+    modelId: assistant?.chatModelId ?? settings.currentModelId,
   );
 }
 
@@ -116,8 +128,14 @@ ModelDisplayInfo getModelDisplayInfo(
   SettingsProvider settings, {
   Assistant? assistant,
   Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
-  return resolveChatModel(settings, assistant, conversation);
+  return resolveChatModel(
+    settings,
+    assistant,
+    conversation,
+    conversationModelIndependent: conversationModelIndependent,
+  );
 }
 
 /// Gets the ProviderConfig for the active model.
@@ -125,11 +143,13 @@ ProviderConfig? getActiveProviderConfig(
   SettingsProvider settings, {
   Assistant? assistant,
   Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
   final providerKey = resolveChatModel(
     settings,
     assistant,
     conversation,
+    conversationModelIndependent: conversationModelIndependent,
   ).providerKey;
   if (providerKey == null) return null;
   return settings.getProviderConfig(providerKey);

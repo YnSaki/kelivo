@@ -207,7 +207,7 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onDocumentProcessing;
   final String? conversationId;
 
-  /// Conversation model binding source for capability gates (ADR-0045).
+  /// Conversation model binding source for capability gates (ADR-0055).
   /// Null for group chat / settings contexts — falls back to assistant → global.
   final Conversation? conversation;
 
@@ -413,7 +413,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     final settings = context.watch<SettingsProvider>();
     final ap = context.watch<AssistantProvider>();
     final a = ap.currentAssistant;
-    final resolved = resolveChatModel(settings, a, widget.conversation);
+    final resolved = resolveChatModel(
+      settings,
+      a,
+      widget.conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
+    );
     final providerKey = resolved.providerKey;
     final modelId = resolved.modelId;
     if (providerKey == null || modelId == null) {
@@ -454,7 +459,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     final settings = context.watch<SettingsProvider>();
     final ap = context.watch<AssistantProvider>();
     final a = ap.currentAssistant;
-    final resolved = resolveChatModel(settings, a, widget.conversation);
+    final resolved = resolveChatModel(
+      settings,
+      a,
+      widget.conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
+    );
     final providerKey = resolved.providerKey;
     final modelId = resolved.modelId;
     if (providerKey == null || modelId == null) {
@@ -2068,12 +2078,18 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
 
         // Search button (stateful icon depending on provider config).
-        // ADR-0045: built-in search support follows the conversation's
-        // effective model, so a bound conversation never mismatches.
+        // ADR-0055: built-in search support follows the conversation's
+        // effective model (binding applies while the toggle is on), so a
+        // bound conversation never mismatches.
         final settings = context.watch<SettingsProvider>();
         final ap = context.watch<AssistantProvider>();
         final a = ap.currentAssistant;
-        final resolved = resolveChatModel(settings, a, widget.conversation);
+        final resolved = resolveChatModel(
+          settings,
+          a,
+          widget.conversation,
+          conversationModelIndependent: settings.conversationModelIndependent,
+        );
         final currentProviderKey = resolved.providerKey;
         final currentModelId = resolved.modelId;
         final cfg = (currentProviderKey != null)

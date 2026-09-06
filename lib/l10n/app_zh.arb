@@ -1889,6 +1889,7 @@
   "displaySettingsPageConversationModelIndependentTitle": "会话模型独立",
   "displaySettingsPageConversationModelIndependentSubtitle": "新会话创建时锁定其初始模型，之后不再跟随助手模型变化；会话内切换模型仅影响该会话。",
   "conversationModelIndependentFreezeNotice": "已切换模型，仅对当前会话生效",
+  "modelSelectSheetFollowAssistantTitle": "跟随助手模型",
   "chainOfThoughtExpandSteps": "展开更多 {count} 步",
   "@chainOfThoughtExpandSteps": {
     "placeholders": {

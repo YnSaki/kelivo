@@ -44,8 +44,9 @@ class Conversation {
   /// A missing key means the assistant default is inherited dynamically.
   Map<String, String> workspaceDirectoryOverrides;
 
-  /// Per-conversation chat model binding (nullable). Non-null means the
-  /// conversation has its own model and never follows the assistant again.
+  /// Per-conversation chat model binding (nullable, atomic pair — both or
+  /// none; a partial pair is treated as unbound). Non-null means the
+  /// conversation has its own model while the independence toggle is ON.
   /// Mirror of `Assistant.chatModelProvider` naming.
   String? chatModelProvider;
 
@@ -109,6 +110,10 @@ class Conversation {
     Map<String, String>? workspaceDirectoryOverrides,
     String? chatModelProvider,
     String? chatModelId,
+    // Stopgap mirroring `Assistant.copyWith(clearChatModel:)`: this model
+    // uses the plain `??` pattern, and mixing it with a sentinel pattern
+    // inside the same model is forbidden — so clearing goes through a flag.
+    bool clearChatModel = false,
   }) {
     return Conversation(
       id: id ?? this.id,
@@ -129,8 +134,10 @@ class Conversation {
       conversationKind: conversationKind ?? this.conversationKind,
       workspaceDirectoryOverrides:
           workspaceDirectoryOverrides ?? this.workspaceDirectoryOverrides,
-      chatModelProvider: chatModelProvider ?? this.chatModelProvider,
-      chatModelId: chatModelId ?? this.chatModelId,
+      chatModelProvider: clearChatModel
+          ? null
+          : (chatModelProvider ?? this.chatModelProvider),
+      chatModelId: clearChatModel ? null : (chatModelId ?? this.chatModelId),
     );
   }
 
@@ -158,6 +165,11 @@ class Conversation {
   }
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
+    // The binding is an atomic pair; restore data is untrusted — a partial
+    // pair is normalized to unbound (never `Gemini + claude-4`).
+    final bindingProvider = json['chatModelProvider'] as String?;
+    final bindingModelId = json['chatModelId'] as String?;
+    final bindingComplete = bindingProvider != null && bindingModelId != null;
     return Conversation(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -186,8 +198,8 @@ class Conversation {
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           <String, String>{},
-      chatModelProvider: json['chatModelProvider'] as String?,
-      chatModelId: json['chatModelId'] as String?,
+      chatModelProvider: bindingComplete ? bindingProvider : null,
+      chatModelId: bindingComplete ? bindingModelId : null,
     );
   }
 }

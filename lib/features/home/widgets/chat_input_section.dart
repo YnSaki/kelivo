@@ -121,7 +121,7 @@ class ChatInputSection extends StatelessWidget {
   final String? conversationId;
 
   /// Resolved once by the home page; capability gates inside the bar derive
-  /// the effective model from it (ADR-0045).
+  /// the effective model from it (ADR-0055).
   final Conversation? conversation;
 
   final String? sendButtonTooltip;
@@ -143,12 +143,14 @@ class ChatInputSection extends StatelessWidget {
     final a = ap.currentAssistant;
     final assistantId = a?.id;
 
-    // Use unified helper to get model identifiers (ADR-0045: a bound
-    // conversation's capability gates follow its own model, not the assistant).
+    // Use unified helper to get model identifiers (ADR-0055: a bound
+    // conversation's capability gates follow its own model only while the
+    // independence toggle is on; off = the assistant model applies).
     final modelIds = getActiveModelIds(
       settings,
       assistant: a,
       conversation: conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
     final pk = modelIds.providerKey;
     final mid = modelIds.modelId;

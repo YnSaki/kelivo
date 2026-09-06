@@ -444,6 +444,7 @@ class ChatActions {
       settings,
       assistant,
       conversation: conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
 
     if (modelConfig.providerKey == null || modelConfig.modelId == null) {
@@ -643,6 +644,7 @@ class ChatActions {
       settings,
       assistant,
       conversation: conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
 
     if (modelConfig.providerKey == null || modelConfig.modelId == null) {
@@ -820,6 +822,7 @@ class ChatActions {
       settings,
       assistant,
       conversation: conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
     if (modelConfig.providerKey == null || modelConfig.modelId == null) {
       return ChatActionResult.noModel();

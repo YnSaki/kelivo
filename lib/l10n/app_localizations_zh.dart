@@ -5440,6 +5440,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get conversationModelIndependentFreezeNotice => '已切换模型，仅对当前会话生效';
 
   @override
+  String get modelSelectSheetFollowAssistantTitle => '跟随助手模型';
+
+  @override
   String chainOfThoughtExpandSteps(Object count) {
     return '展开更多 $count 步';
   }
@@ -15099,6 +15102,9 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get conversationModelIndependentFreezeNotice => '已切换模型，仅对当前会话生效';
 
   @override
+  String get modelSelectSheetFollowAssistantTitle => '跟随助手模型';
+
+  @override
   String chainOfThoughtExpandSteps(Object count) {
     return '展开更多 $count 步';
   }
@@ -24754,6 +24760,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get conversationModelIndependentFreezeNotice => '已切換模型，僅對目前會話生效';
+
+  @override
+  String get modelSelectSheetFollowAssistantTitle => '跟隨助手模型';
 
   @override
   String chainOfThoughtExpandSteps(Object count) {

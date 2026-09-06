@@ -64,7 +64,8 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Optional snapshot resolver for the "conversation model independence"
-  /// feature. Returns null when the toggle is off or nothing resolvable.
+  /// feature (ADR-0055). Returns null when the toggle is off or nothing
+  /// resolvable.
   ConversationModelSnapshotResolver? _creationModelSnapshotResolver;
   void setCreationModelSnapshotResolver(
     ConversationModelSnapshotResolver resolver,
@@ -73,8 +74,7 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Applies a model selection to a conversation binding (the single write
-  /// outlet for in-conversation model switches). Conversations are pinned to
-  /// their binding afterwards — they never follow the assistant again.
+  /// outlet for in-conversation model switches with the toggle ON).
   ///
   /// Draft/temporary conversations are updated in memory only: persisting an
   /// empty draft (e.g. "new chat → switch model" without a first message)
@@ -84,6 +84,24 @@ class ChatService extends ChangeNotifier {
     required String conversationId,
     required String providerKey,
     required String modelId,
+  }) {
+    return _applyConversationModelBinding(
+      conversationId: conversationId,
+      providerKey: providerKey,
+      modelId: modelId,
+    );
+  }
+
+  /// Clears a conversation binding ("follow assistant"): the conversation
+  /// goes back to dynamically inheriting the assistant model.
+  Future<void> clearConversationModelBinding({required String conversationId}) {
+    return _applyConversationModelBinding(conversationId: conversationId);
+  }
+
+  Future<void> _applyConversationModelBinding({
+    required String conversationId,
+    String? providerKey,
+    String? modelId,
   }) async {
     if (!_initialized) await init();
     var conversation =
@@ -477,7 +495,9 @@ class ChatService extends ChangeNotifier {
     // creation. Group chats never take a binding (per-speaker models rule).
     if (conversationKind == Conversation.kindNormal) {
       final snapshot = await _resolveCreationSnapshot(assistantId);
-      if (snapshot != null && snapshot.providerKey != null) {
+      if (snapshot != null &&
+          snapshot.providerKey != null &&
+          snapshot.modelId != null) {
         conversation.chatModelProvider = snapshot.providerKey;
         conversation.chatModelId = snapshot.modelId;
       }
@@ -567,8 +587,11 @@ class ChatService extends ChangeNotifier {
       assistantId: assistantId,
     );
     // Conversation model independence: draft conversations snapshot too.
+    // Atomic pair: both fields must be resolvable, otherwise stay unbound.
     final snapshot = await _resolveCreationSnapshot(assistantId);
-    if (snapshot != null && snapshot.providerKey != null) {
+    if (snapshot != null &&
+        snapshot.providerKey != null &&
+        snapshot.modelId != null) {
       conversation.chatModelProvider = snapshot.providerKey;
       conversation.chatModelId = snapshot.modelId;
     }

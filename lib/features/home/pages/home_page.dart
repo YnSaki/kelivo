@@ -840,6 +840,7 @@ class _HomePageState extends State<HomePage>
       settings,
       assistant: assistant,
       conversation: _controller.currentConversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
 
     final title = _controller.isTemporaryConversation
@@ -3063,14 +3064,16 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _openReasoningSettings() async {
-    // ADR-0045: the option availability gates (X-high / max reasoning) must
-    // follow the conversation's effective model, not just the assistant's.
+    // ADR-0055: the option availability gates (X-high / max reasoning) must
+    // follow the conversation's effective model (only while the independence
+    // toggle is on; off = assistant model applies).
     final settings = context.read<SettingsProvider>();
     final assistant = context.read<AssistantProvider>().currentAssistant;
     final resolved = resolveChatModel(
       settings,
       assistant,
       _controller.currentConversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
     if (PlatformUtils.isDesktop) {
       await showDesktopReasoningBudgetPopover(
@@ -3196,6 +3199,7 @@ class _HomePageState extends State<HomePage>
       settings,
       assistant: a,
       conversation: _controller.currentConversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
     );
     final pk = modelIds.providerKey;
     final mid = modelIds.modelId;

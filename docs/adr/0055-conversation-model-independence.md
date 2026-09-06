@@ -1,4 +1,4 @@
-# ADR-0045: Conversation Model Independence (会话模型独立)
+# ADR-0055: Conversation Model Independence (会话模型独立)
 
 In-chat model switches once wrote to the assistant (`Assistant.chatModel*`)
 via `showModelSelectSheet`, so switching in one conversation leaked to every
@@ -14,28 +14,39 @@ two new nullable columns on `conversation_rows`
 (`chat_model_provider` / `chat_model_id`, schema v22, mirroring
 `Assistant.chatModel*` naming).
 
-- **Effective model chain (toggle-agnostic)**: `convo.chatModel* → assistant
-  .chatModel* → global default`. One chain, zero read-side branching; the
-  toggle only gates write/creation behavior.
+- **Effective model chain (toggle-aware)**: toggle ON = `convo.chatModel* →
+  assistant.chatModel* → global default`; toggle OFF =
+  `assistant.chatModel* → global default`. Turning the toggle off *ignores but
+  keeps* existing bindings (the conversation follows the assistant again);
+  turning it back on restores them.
+- **Atomic pair**: the binding is both-or-none. A partial pair (provider
+  without model or vice versa, e.g. from damaged restore data) is normalized
+  to unbound at every read boundary (`Conversation.fromJson`, both
+  `ChatDatabaseRepository` conversation row mappers, and
+  `conversationModelBindingActive`), so `Gemini + claude-4` hybrids can never
+  resolve.
 - **Snapshot at creation**: with the toggle ON, new `kindNormal` conversations
   (via `ChatService.createConversation` and `createDraftConversation` —
   handoff, proactive care, and forks all funnel through them) snapshot the
   effective model. Group conversations never bind (per-speaker models rule).
-  Unresolvable (both null) stays unbound.
-- **Write-target rule**: an in-conversation model switch writes the
-  conversation binding when the conversation is bound (regardless of toggle)
-  or when the toggle is ON (first switch creates the binding, with a
-  one-shot "仅当前会话生效" snackbar); unbound + toggle OFF writes the
-  assistant (status quo). The assistant is never touched by in-chat switches
-  while the toggle is ON.
-- **Sticky**: bindings survive the toggle being switched off. Toggling off
-  only stops future snapshots and restores the old write target for
-  still-unbound conversations. There is no clearing operation.
+  Unresolvable (either field null) stays unbound.
+- **Write-target rule**: with the toggle OFF an in-conversation switch writes
+  the assistant (status quo, even when a binding is stored — the binding is
+  ignored but preserved); with the toggle ON it writes the conversation
+  binding (the first switch creates it, with a one-shot "仅当前会话生效"
+  snackbar). The assistant is never touched by in-chat switches while the
+  toggle is ON.
+- **Clear operation ("follow assistant")**: when the conversation stores a
+  binding, the model selector shows a "跟随助手模型" row (ADR-0055 in
+  `model_select_sheet.dart`, mobile bottom sheet and desktop dialog) that
+  clears the binding via `ChatService.clearConversationModelBinding`; the
+  conversation then dynamically follows the assistant model (it does not copy
+  the current effective value).
 - **Coverage**: send, regenerate, and continue-after-tool all resolve
   through the chain (the chat `getModelConfig` call sites), as do the model
-  capsule, input-bar image-routing/warning gates, and the model selector's
-  preselect. Regenerate follows the chain (not per-message replay) so a
-  bound conversation stays on its own model.
+  capsule, input-bar image-routing/warning gates, reasoning availability
+  gates, and the model selector's preselect. Regenerate follows the chain
+  (not per-message replay) so a bound conversation stays on its own model.
 
 ## Considered options
 
@@ -50,7 +61,12 @@ two new nullable columns on `conversation_rows`
   from send and would make regenerate out of sync with the conversation's
   chosen model.
 - **Toggle OFF clears all bindings**: rejected — destructive and surprising;
-  a conversation's model would jump back to the assistant's.
+  a conversation's model would jump back to the assistant's. The chosen
+  ignore-but-keep behavior satisfies the acceptance criteria of issue #678
+  (off = assistant everywhere, re-on = stored overrides resume).
+- **Sticky read chain (toggle-agnostic)**: the first implementation; rejected
+  under review — with the toggle OFF a bound conversation kept using its own
+  model, contradicting the issue's "关闭后使用助手模型" requirement.
 
 ## Capability gates vs assistant-owned configuration
 
@@ -75,9 +91,12 @@ their own dedicated settings), and proactive care's assistant-level send flow.
 
 - New conversations default to OFF behavior; existing conversations never
   bind retroactively.
-- `Conversation` is a `??`-pattern `copyWith` model; the new fields are
-  nullable and need no clear flag (no clearing UI exists) — the usual
-  null-clear trap is intentionally not exposed.
+- `Conversation` is a `??`-pattern `copyWith` model. The new nullable fields
+  use a `clearChatModel` flag (mirroring `Assistant.copyWith(clearChatModel:)`)
+  instead of a sentinel: mixing the sentinel pattern with the existing `??`
+  pattern inside one model is forbidden, so the flag is the documented
+  stopgap for the null-clear trap.
 - Backup/restore, LAN sync, and trash recovery round-trip the two fields
   through the existing `Conversation.toJson/fromJson`; old builds ignore
-  them on restore; old zips restore with null bindings.
+  them on restore; old zips restore with null bindings; partial pairs are
+  normalized to unbound.

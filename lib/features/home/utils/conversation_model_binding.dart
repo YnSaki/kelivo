@@ -12,25 +12,29 @@ enum ConversationModelWriteTarget {
   global,
 }
 
-/// Write-target rule for in-conversation model switches (ADR-0045):
-/// - bound conversation → its own binding, regardless of the toggle;
-/// - unbound + toggle on → its own binding (the first switch creates it);
-/// - unbound + toggle off → the assistant (status quo).
+/// Write-target rule for in-conversation model switches (ADR-0055):
+/// - toggle on → the conversation binding (the first switch creates it);
+/// - toggle off → the assistant (status quo). Existing bindings are
+///   ignored-but-kept: consecutive switches write the assistant until the
+///   toggle is re-enabled.
 ConversationModelWriteTarget resolveConversationModelWriteTarget({
   required bool conversationModelIndependent,
   required Conversation? conversation,
 }) {
   if (conversation == null) return ConversationModelWriteTarget.assistant;
-  if (conversationModelBindingActive(conversation) ||
-      conversationModelIndependent) {
+  if (conversationModelIndependent) {
     return ConversationModelWriteTarget.conversationBinding;
   }
   return ConversationModelWriteTarget.assistant;
 }
 
-/// True when the conversation carries a model binding (fully or partially).
+/// True when the conversation carries a complete model binding.
+///
+/// The pair is atomic: a partial pair (one field alone, e.g. from damaged
+/// restore data or an interrupted write) is treated as unbound so no
+/// `provider-from-conversation + model-from-assistant` hybrid can resolve.
 bool conversationModelBindingActive(Conversation? conversation) {
   if (conversation == null) return false;
-  return conversation.chatModelProvider != null ||
+  return conversation.chatModelProvider != null &&
       conversation.chatModelId != null;
 }

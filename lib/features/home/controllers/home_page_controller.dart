@@ -2364,9 +2364,10 @@ class HomePageController extends ChangeNotifier {
     if (result.length == 1) {
       final sel = result.first;
       engine.exit();
-      // ADR-0045: the single-model downgrade is an in-conversation switch —
-      // bound or toggle-on conversations keep it local; the assistant is
-      // updated only when the conversation stays unbound with the toggle off.
+      // ADR-0055: the single-model downgrade is an in-conversation switch —
+      // with the toggle on it stays local (first switch creates the binding);
+      // with the toggle off it updates the assistant (stored bindings are
+      // ignored but kept, and resume when the toggle is re-enabled).
       final target = resolveConversationModelWriteTarget(
         conversationModelIndependent: _context
             .read<SettingsProvider>()

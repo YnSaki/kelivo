@@ -10210,6 +10210,12 @@ abstract class AppLocalizations {
   /// **'Model switched for this conversation only'**
   String get conversationModelIndependentFreezeNotice;
 
+  /// No description provided for @modelSelectSheetFollowAssistantTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow assistant model'**
+  String get modelSelectSheetFollowAssistantTitle;
+
   /// No description provided for @chainOfThoughtExpandSteps.
   ///
   /// In en, this message translates to:

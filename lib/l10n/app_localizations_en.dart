@@ -5688,6 +5688,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Model switched for this conversation only';
 
   @override
+  String get modelSelectSheetFollowAssistantTitle => 'Follow assistant model';
+
+  @override
   String chainOfThoughtExpandSteps(Object count) {
     return 'Show $count more steps';
   }

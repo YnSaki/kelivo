@@ -1186,6 +1186,11 @@ class ChatDatabaseRepository {
                 ..orderBy([(t) => OrderingTerm.asc(t.messageOrder)]))
               .get()
         : const <MessageRow>[];
+    // Atomic pair: a partial binding (one null column) is normalized to
+    // unbound so the read chain can never hybridize a provider from one row
+    // and a model from another.
+    final bindingComplete =
+        row.chatModelProvider != null && row.chatModelId != null;
     return Conversation(
       id: row.id,
       title: row.title,
@@ -1205,8 +1210,8 @@ class ChatDatabaseRepository {
       workspaceDirectoryOverrides: _decodeStringStringMap(
         row.workspaceDirectoryOverridesJson,
       ),
-      chatModelProvider: row.chatModelProvider,
-      chatModelId: row.chatModelId,
+      chatModelProvider: bindingComplete ? row.chatModelProvider : null,
+      chatModelId: bindingComplete ? row.chatModelId : null,
     );
   }
 
@@ -1228,6 +1233,11 @@ class ChatDatabaseRepository {
             [id],
           )
         : null;
+    // Atomic pair: same rule as the Drift row mapper — partial bindings are
+    // normalized to unbound at the repository boundary.
+    final bindingProvider = _readOptionalString(row, 'chat_model_provider');
+    final bindingModelId = _readOptionalString(row, 'chat_model_id');
+    final bindingComplete = bindingProvider != null && bindingModelId != null;
     return Conversation(
       id: id,
       title: row['title'] as String,
@@ -1256,8 +1266,9 @@ class ChatDatabaseRepository {
       workspaceDirectoryOverrides: _decodeStringStringMap(
         _readOptionalString(row, 'workspace_directory_overrides_json') ?? '{}',
       ),
-      chatModelProvider: _readOptionalString(row, 'chat_model_provider'),
-      chatModelId: _readOptionalString(row, 'chat_model_id'),
+      // Atomic pair normalization (same rule as the Drift row mapper above).
+      chatModelProvider: bindingComplete ? bindingProvider : null,
+      chatModelId: bindingComplete ? bindingModelId : null,
     );
   }
 
