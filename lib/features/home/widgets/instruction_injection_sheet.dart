@@ -20,6 +20,7 @@ class InstructionInjectionSheet extends StatefulWidget {
     required this.selectedInvocationIds,
     required this.onToggleInvocation,
     this.editingUserMessage = false,
+    this.inputBoxOnly = false,
   });
 
   final String? assistantId;
@@ -27,6 +28,7 @@ class InstructionInjectionSheet extends StatefulWidget {
   final Set<String> selectedInvocationIds;
   final ValueChanged<QuickInstructionInvocationSnapshot> onToggleInvocation;
   final bool editingUserMessage;
+  final bool inputBoxOnly;
 
   @override
   State<InstructionInjectionSheet> createState() =>
@@ -57,8 +59,11 @@ class _InstructionInjectionSheetState extends State<InstructionInjectionSheet> {
           final activePersistentIds = provider
               .persistentIdsFor(widget.conversationId)
               .toSet();
+          final items = widget.inputBoxOnly
+              ? provider.inputBoxItems
+              : provider.items;
           final grouped = <String, List<QuickInstruction>>{};
-          for (final item in provider.items) {
+          for (final item in items) {
             (grouped[item.group.trim()] ??= <QuickInstruction>[]).add(item);
           }
 
@@ -77,7 +82,7 @@ class _InstructionInjectionSheetState extends State<InstructionInjectionSheet> {
                 },
               ),
               Expanded(
-                child: provider.items.isEmpty
+                child: items.isEmpty
                     ? _EmptyState(
                         onManage: () {
                           Navigator.of(sheetContext).maybePop();
@@ -146,7 +151,7 @@ class _InstructionInjectionSheetState extends State<InstructionInjectionSheet> {
                                       final snapshot =
                                           QuickInstructionInvocationSnapshot.fromInstruction(
                                             item,
-                                            order: provider.items.indexWhere(
+                                            order: items.indexWhere(
                                               (candidate) =>
                                                   candidate.id == item.id,
                                             ),
@@ -399,6 +404,7 @@ Future<QuickInstruction?> showInstructionInjectionSheet(
   required Set<String> selectedInvocationIds,
   required ValueChanged<QuickInstructionInvocationSnapshot> onToggleInvocation,
   bool editingUserMessage = false,
+  bool inputBoxOnly = false,
 }) {
   final cs = Theme.of(context).colorScheme;
   return showModalBottomSheet<QuickInstruction>(
@@ -414,6 +420,7 @@ Future<QuickInstruction?> showInstructionInjectionSheet(
       selectedInvocationIds: selectedInvocationIds,
       onToggleInvocation: onToggleInvocation,
       editingUserMessage: editingUserMessage,
+      inputBoxOnly: inputBoxOnly,
     ),
   );
 }

@@ -872,8 +872,9 @@ class HomePageController extends ChangeNotifier {
       // submission only after ChatController has received the new draft.
       activeConversation = currentConversation;
     }
-    final conversationId = activeConversation?.id;
-    if (conversationId == null) return ChatInputSubmissionResult.rejected;
+    final conversation = activeConversation;
+    if (conversation == null) return ChatInputSubmissionResult.rejected;
+    final conversationId = conversation.id;
     input = await _messageGenerationService.freezeUserQuickInstructions(
       conversationId: conversationId,
       input: input,
@@ -899,7 +900,7 @@ class HomePageController extends ChangeNotifier {
           .getLoadedCurrentAssistant();
       final gid = await multiAIEngine.startRound(
         input: input,
-        conversation: activeConversation,
+        conversation: conversation,
         settings: settings,
         assistant: assistant,
       );

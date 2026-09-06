@@ -421,6 +421,7 @@ Future<_Harness> _pumpHarness(WidgetTester tester) async {
           extraBody,
           required stream,
           requestId,
+          conversationId,
           required allowImagesApiRouting,
           required ocrActive,
           partialImageNotice,
