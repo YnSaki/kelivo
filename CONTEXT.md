@@ -378,6 +378,12 @@
 - **UI shell**: Dual-shell, same content — centered Dialog on desktop, bottom sheet on mobile (same pattern as `ImageCompressionDialog` / `UpdateChangelogDialog`).
 - **Responses API native image generation (Responses 原生图像生成)**: Distinct from the Images API routing above. When the provider uses the Responses API (`useResponseApi == true`), the model can emit image output natively as output items of type `image_generation_call` (OpenAI) or `openrouter:image_generation` (OpenRouter), whose `result` carries base64 image data — possibly a full `data:` URL — rendered as saved local images. No `/images/generations` or `/images/edits` call is involved. Non-streaming responses must still scan the `output` array for image items even when `output_text` is present; the text short-circuit would otherwise drop the image.
 
+## Memory Tools (记忆工具)
+
+- **Status vs data split (状态与数据划分)**: Memory tool returns follow two distinct contracts. **Status returns** (`create_memory`, `edit_memory`, `delete_memory`) are typed JSON confirmation objects mirroring `_toolError`: `{"type":"memory_created","id":5}`, `{"type":"memory_edited","id":5}`, `{"type":"memory_deleted","id":7}` — a parseable terminal signal the model can recognize as the call having succeeded (issue #584; the historical Kelivo infinite-create loop was a missing success signal: create/edit echoed an unmarked `<record>` XML indistinguishable from the injected context block). **Data return** (`read_memory`) stays `<memories>` XML — its format is deliberately identical to the system-injected memories block (`message_builder_service.dart`), because edit/delete descriptions reference ids "shown in the `<memories>` context"; the success-signal problem does not apply to data payloads.
+- **No content echo**: Status success confirmations never echo the stored content — the model just sent it; the assigned id is the only new information. Echoing invites weak models to re-process the content and costs tokens. Error paths keep the full `_toolError` `{type,error,message,tool,instruction}` shape unchanged.
+- **Landing point**: `_handleMemoryToolCall` in `tool_handler_service.dart` is the single dispatcher. Proactive-care decision flow and group-chat director build their own handlers and never expose memory tools; handoff children run the same `ToolHandlerService`. Tool descriptions and the fixed Memory Tool system block do NOT describe return formats (deliberate — the typed JSON is self-describing; no prompt churn).
+
 ## Skill System
 
 ### Core Concept
