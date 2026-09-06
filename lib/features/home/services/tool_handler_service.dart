@@ -1150,7 +1150,7 @@ class ToolHandlerService {
           );
         }
         final m = await mp.add(assistantId: assistant!.id, content: content);
-        return AssistantMemory.buildRecordXml(m.id, m.content);
+        return jsonEncode({'type': 'memory_created', 'id': m.id});
       } else if (name == 'edit_memory') {
         final id = (args['id'] as num?)?.toInt() ?? -1;
         final content = (args['content'] ?? '').toString();
@@ -1178,7 +1178,7 @@ class ToolHandlerService {
                 'Use the available memory records shown in context, or create a new memory instead of editing a missing one.',
           );
         }
-        return AssistantMemory.buildRecordXml(m.id, m.content);
+        return jsonEncode({'type': 'memory_edited', 'id': m.id});
       } else if (name == 'delete_memory') {
         final id = (args['id'] as num?)?.toInt() ?? -1;
         if (id <= 0) {
@@ -1198,7 +1198,7 @@ class ToolHandlerService {
                 'Use the available memory records shown in context, or skip deleting a missing memory.',
           );
         }
-        return 'deleted';
+        return jsonEncode({'type': 'memory_deleted', 'id': id});
       } else if (name == 'read_memory') {
         await mp.initialize();
         final mems = mp.getForAssistant(assistant!.id);
