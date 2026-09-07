@@ -270,6 +270,42 @@ void main() {
     await repo.close();
   });
 
+  test(
+    'heal adds conversation model binding columns (v23 column shape)',
+    () async {
+      _createLegacyDb(
+        dbFile,
+        userVersion: 21,
+        missingIsPreset: false,
+        missingHandoffColumns: false,
+        missingV15RequestMetadata: false,
+        missingQuoteJson: false,
+        missingConversationModelBinding: true,
+      );
+
+      final repo = ChatDatabaseRepository.open(file: dbFile);
+      await repo.ensureReady();
+
+      // Must succeed: heal adds chat_model_provider / chat_model_id before the
+      // Drift INSERT, and the binding round-trips through the repository.
+      final conv = Conversation(
+        title: 'Conv',
+        assistantId: 'a1',
+        chatModelProvider: 'DeepSeek',
+        chatModelId: 'deepseek-v4-flash',
+      );
+      await repo.putConversation(conv);
+      final loaded = repo.getConversationSync(
+        conv.id,
+        includeMessageIds: false,
+      );
+      expect(loaded?.chatModelProvider, 'DeepSeek');
+      expect(loaded?.chatModelId, 'deepseek-v4-flash');
+
+      await repo.close();
+    },
+  );
+
   test('heal creates preference_rows (v21 table shape)', () async {
     _createLegacyDb(
       dbFile,
@@ -676,7 +712,9 @@ CREATE TABLE group_chat_rows (
       await repo.ensureReady();
 
       final version = await repo.db.customSelect('PRAGMA user_version').get();
-      expect(version.single.read<int>('user_version'), 22);
+      // The v22 migration block runs, then the ADR-0055 binding columns land
+      // under v23, so a v21 database ends at the current version 23.
+      expect(version.single.read<int>('user_version'), 23);
 
       final columns = await repo.db
           .customSelect('PRAGMA table_info(assistant_rows)')
@@ -858,6 +896,7 @@ void _createLegacyDb(
   bool includeConversationKindColumn = false,
   bool includeConversationV22Columns = false,
   bool missingPreferenceRows = true,
+  bool missingConversationModelBinding = true,
 }) {
   final raw = sqlite.sqlite3.open(dbFile.path);
   raw.execute('PRAGMA user_version = $userVersion;');
@@ -888,6 +927,9 @@ void _createLegacyDb(
   final workspaceV20ConversationColumn = includeWorkspaceV20Columns
       ? ",\n  workspace_directory_overrides_json TEXT NOT NULL DEFAULT '{}'"
       : '';
+  final conversationModelBindingColumns = missingConversationModelBinding
+      ? ''
+      : ",\n  chat_model_provider TEXT NULL,\n  chat_model_id TEXT NULL";
   final conversationKindColumn = includeConversationKindColumn
       ? ",\n  conversation_kind TEXT NOT NULL DEFAULT 'normal'"
       : '';
@@ -957,7 +999,7 @@ CREATE TABLE conversation_rows (
   summary TEXT NULL,
   last_summarized_message_count INTEGER NOT NULL DEFAULT 0,
   chat_suggestions_json TEXT NOT NULL DEFAULT '[]',
-  parent_conversation_id TEXT NULL$workspaceV20ConversationColumn$conversationKindColumn$conversationV22Columns
+  parent_conversation_id TEXT NULL$workspaceV20ConversationColumn$conversationKindColumn$conversationV22Columns$conversationModelBindingColumns
 );
 ''');
   final isPresetColumn = missingIsPreset

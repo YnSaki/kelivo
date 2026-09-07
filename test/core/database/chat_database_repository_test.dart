@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/native.dart';
 import 'package:Cuplivo/core/database/app_database.dart';
@@ -443,6 +445,86 @@ void main() {
           )).map((message) => message.content),
           ['Care reply'],
         );
+      },
+    );
+  });
+
+  group('ChatDatabaseRepository — partial binding rows (file-backed)', () {
+    late Directory tempDir;
+    late ChatDatabaseRepository repo;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('cuplivo_repo_binding_');
+      repo = ChatDatabaseRepository.open(file: File('${tempDir.path}/app.db'));
+      await repo.ensureReady();
+    });
+
+    tearDown(() async {
+      await repo.close();
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test(
+      'DB rows with partial chat-model binding read as unbound (Drift + sync)',
+      () async {
+        final clean = Conversation(
+          id: 'c-clean',
+          title: 'Clean',
+          chatModelProvider: 'OpenAI',
+          chatModelId: 'gpt-4o',
+        );
+        final providerOnly = Conversation(id: 'c-provider', title: 'P');
+        final modelOnly = Conversation(id: 'c-model', title: 'M');
+        await repo.putConversation(clean);
+        await repo.putConversation(providerOnly);
+        await repo.putConversation(modelOnly);
+        // Simulate damaged rows written outside the binding write outlets
+        // (e.g. interrupted restore): one field per row, never both.
+        await repo.db.customStatement(
+          'UPDATE conversation_rows SET chat_model_provider = ?, '
+          'chat_model_id = NULL WHERE id = ?',
+          ['Gemini', providerOnly.id],
+        );
+        await repo.db.customStatement(
+          'UPDATE conversation_rows SET chat_model_provider = NULL, '
+          'chat_model_id = ? WHERE id = ?',
+          ['gemini-3', modelOnly.id],
+        );
+
+        // Drift read surface (_conversationFromRow).
+        final driftProviderOnly = await repo.getConversation(providerOnly.id);
+        expect(driftProviderOnly?.chatModelProvider, isNull);
+        expect(driftProviderOnly?.chatModelId, isNull);
+        final driftModelOnly = await repo.getConversation(modelOnly.id);
+        expect(driftModelOnly?.chatModelProvider, isNull);
+        expect(driftModelOnly?.chatModelId, isNull);
+
+        // Raw-sync read surface (_conversationFromSqliteRow).
+        final rawProviderOnly = repo.getConversationSync(
+          providerOnly.id,
+          includeMessageIds: false,
+        );
+        expect(rawProviderOnly?.chatModelProvider, isNull);
+        expect(rawProviderOnly?.chatModelId, isNull);
+        final rawModelOnly = repo.getConversationSync(
+          modelOnly.id,
+          includeMessageIds: false,
+        );
+        expect(rawModelOnly?.chatModelProvider, isNull);
+        expect(rawModelOnly?.chatModelId, isNull);
+
+        // A complete pair keeps surviving untouched on both surfaces.
+        final driftClean = await repo.getConversation(clean.id);
+        expect(driftClean?.chatModelProvider, 'OpenAI');
+        expect(driftClean?.chatModelId, 'gpt-4o');
+        final rawClean = repo.getConversationSync(
+          clean.id,
+          includeMessageIds: false,
+        );
+        expect(rawClean?.chatModelProvider, 'OpenAI');
+        expect(rawClean?.chatModelId, 'gpt-4o');
       },
     );
   });

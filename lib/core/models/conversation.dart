@@ -44,6 +44,15 @@ class Conversation {
   /// A missing key means the assistant default is inherited dynamically.
   Map<String, String> workspaceDirectoryOverrides;
 
+  /// Per-conversation chat model binding (nullable, atomic pair — both or
+  /// none; a partial pair is treated as unbound). Non-null means the
+  /// conversation has its own model while the independence toggle is ON.
+  /// Mirror of `Assistant.chatModelProvider` naming.
+  String? chatModelProvider;
+
+  /// Mirror of `Assistant.chatModelId` naming.
+  String? chatModelId;
+
   /// Conversation-scoped quick instructions attached to each new ordinary
   /// user turn. Draft conversations retain this list in memory until landed.
   List<String> persistentQuickInstructionIds;
@@ -76,6 +85,8 @@ class Conversation {
     List<String>? chatSuggestions,
     this.conversationKind = kindNormal,
     Map<String, String>? workspaceDirectoryOverrides,
+    this.chatModelProvider,
+    this.chatModelId,
     List<String>? persistentQuickInstructionIds,
     this.proactiveCareEnabledOverride,
     this.proactiveCareNextMessageAt,
@@ -113,6 +124,12 @@ class Conversation {
     bool clearSummary = false,
     String? conversationKind,
     Map<String, String>? workspaceDirectoryOverrides,
+    String? chatModelProvider,
+    String? chatModelId,
+    // Stopgap mirroring `Assistant.copyWith(clearChatModel:)`: this model
+    // uses the plain `??` pattern, and mixing it with a sentinel pattern
+    // inside the same model is forbidden — so clearing goes through a flag.
+    bool clearChatModel = false,
     List<String>? persistentQuickInstructionIds,
     bool? proactiveCareEnabledOverride,
     DateTime? proactiveCareNextMessageAt,
@@ -138,6 +155,10 @@ class Conversation {
       conversationKind: conversationKind ?? this.conversationKind,
       workspaceDirectoryOverrides:
           workspaceDirectoryOverrides ?? this.workspaceDirectoryOverrides,
+      chatModelProvider: clearChatModel
+          ? null
+          : (chatModelProvider ?? this.chatModelProvider),
+      chatModelId: clearChatModel ? null : (chatModelId ?? this.chatModelId),
       persistentQuickInstructionIds:
           persistentQuickInstructionIds ?? this.persistentQuickInstructionIds,
       proactiveCareEnabledOverride: clearProactiveCareEnabledOverride
@@ -167,6 +188,8 @@ class Conversation {
       'chatSuggestions': chatSuggestions,
       'conversationKind': conversationKind,
       'workspaceDirectoryOverrides': workspaceDirectoryOverrides,
+      'chatModelProvider': chatModelProvider,
+      'chatModelId': chatModelId,
       'persistentQuickInstructionIds': persistentQuickInstructionIds,
       'proactiveCareEnabledOverride': proactiveCareEnabledOverride,
       'proactiveCareNextMessageAt': proactiveCareNextMessageAt
@@ -175,6 +198,11 @@ class Conversation {
   }
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
+    // The binding is an atomic pair; restore data is untrusted — a partial
+    // pair is normalized to unbound (never `Gemini + claude-4`).
+    final bindingProvider = json['chatModelProvider'] as String?;
+    final bindingModelId = json['chatModelId'] as String?;
+    final bindingComplete = bindingProvider != null && bindingModelId != null;
     return Conversation(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -203,6 +231,8 @@ class Conversation {
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           <String, String>{},
+      chatModelProvider: bindingComplete ? bindingProvider : null,
+      chatModelId: bindingComplete ? bindingModelId : null,
       persistentQuickInstructionIds:
           (json['persistentQuickInstructionIds'] as List?)
               ?.map((value) => value.toString())

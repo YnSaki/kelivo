@@ -313,6 +313,8 @@ class QuickInstructionStore {
       }
       _cache = items;
       if (upgraded) await save(items);
+      // await inside the try: an un-awaited future could let a seed failure
+      // slip past the error handling below.
       return await _seedBuiltInPlanIfNeeded(items);
     } catch (error, stackTrace) {
       debugPrint(

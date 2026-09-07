@@ -1,5 +1,6 @@
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/models/assistant.dart';
+import '../../../core/models/conversation.dart';
 
 /// Helper class for extracting model display information.
 ///
@@ -50,11 +51,18 @@ class ModelDisplayInfo {
 ModelDisplayInfo getModelDisplayInfo(
   SettingsProvider settings, {
   Assistant? assistant,
+  Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
-  // Determine provider and model from assistant or global defaults
-  final providerKey =
-      assistant?.chatModelProvider ?? settings.currentModelProvider;
-  final modelId = assistant?.chatModelId ?? settings.currentModelId;
+  // Determine provider and model: conversation binding → assistant → global
+  final resolved = resolveChatModel(
+    settings,
+    assistant,
+    conversation,
+    conversationModelIndependent: conversationModelIndependent,
+  );
+  final providerKey = resolved.providerKey;
+  final modelId = resolved.modelId;
 
   if (providerKey == null || modelId == null) {
     return const ModelDisplayInfo();
@@ -87,16 +95,58 @@ ModelDisplayInfo getModelDisplayInfo(
   );
 }
 
+/// The effective chat model chain (ADR-0055):
+/// - toggle ON: `convo.chatModel* → assistant.chatModel* → global default`;
+/// - toggle OFF: `assistant.chatModel* → global default` (a stored binding is
+///   ignored but preserved, so the conversation follows the assistant again;
+///   re-enabling the toggle restores the binding).
+///
+/// Both levels are atomic pairs: an assistant (or conversation) that carries
+/// only one of the two fields falls back to the whole next level — a partial
+/// `Gemini`/null assistant can never hybridize into `Gemini + global model`.
+({String? providerKey, String? modelId}) resolveChatModel(
+  SettingsProvider settings,
+  Assistant? assistant,
+  Conversation? conversation, {
+  required bool conversationModelIndependent,
+}) {
+  if (conversationModelIndependent &&
+      conversation != null &&
+      conversation.chatModelProvider != null &&
+      conversation.chatModelId != null) {
+    return (
+      providerKey: conversation.chatModelProvider,
+      modelId: conversation.chatModelId,
+    );
+  }
+  if (assistant != null &&
+      assistant.chatModelProvider != null &&
+      assistant.chatModelId != null) {
+    return (
+      providerKey: assistant.chatModelProvider,
+      modelId: assistant.chatModelId,
+    );
+  }
+  return (
+    providerKey: settings.currentModelProvider,
+    modelId: settings.currentModelId,
+  );
+}
+
 /// Gets just the provider key and model ID without display formatting.
 ///
 /// Use this when you only need the raw identifiers for API calls.
 ({String? providerKey, String? modelId}) getActiveModelIds(
   SettingsProvider settings, {
   Assistant? assistant,
+  Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
-  return (
-    providerKey: assistant?.chatModelProvider ?? settings.currentModelProvider,
-    modelId: assistant?.chatModelId ?? settings.currentModelId,
+  return resolveChatModel(
+    settings,
+    assistant,
+    conversation,
+    conversationModelIndependent: conversationModelIndependent,
   );
 }
 
@@ -104,9 +154,15 @@ ModelDisplayInfo getModelDisplayInfo(
 ProviderConfig? getActiveProviderConfig(
   SettingsProvider settings, {
   Assistant? assistant,
+  Conversation? conversation,
+  required bool conversationModelIndependent,
 }) {
-  final providerKey =
-      assistant?.chatModelProvider ?? settings.currentModelProvider;
+  final providerKey = resolveChatModel(
+    settings,
+    assistant,
+    conversation,
+    conversationModelIndependent: conversationModelIndependent,
+  ).providerKey;
   if (providerKey == null) return null;
   return settings.getProviderConfig(providerKey);
 }

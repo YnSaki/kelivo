@@ -21,6 +21,7 @@ import '../../../utils/assistant_regex.dart';
 import '../../../core/models/assistant_regex.dart';
 import '../controllers/stream_controller.dart' as stream_ctrl;
 import '../controllers/generation_controller.dart';
+import '../utils/model_display_helper.dart';
 import 'ask_user_interaction_service.dart';
 import 'message_builder_service.dart';
 import 'quick_instruction_execution_policy.dart';
@@ -556,15 +557,20 @@ class MessageGenerationService {
     );
   }
 
-  /// Get current model and provider from assistant or global settings.
+  /// Get current model and provider via the effective chain
+  /// (ADR-0055): toggle ON = conversation binding → assistant → global
+  /// default; toggle OFF = assistant → global (bindings ignored but kept).
   ({String? providerKey, String? modelId}) getModelConfig(
     SettingsProvider settings,
-    Assistant? assistant,
-  ) {
-    return (
-      providerKey:
-          assistant?.chatModelProvider ?? settings.currentModelProvider,
-      modelId: assistant?.chatModelId ?? settings.currentModelId,
+    Assistant? assistant, {
+    Conversation? conversation,
+    required bool conversationModelIndependent,
+  }) {
+    return resolveChatModel(
+      settings,
+      assistant,
+      conversation,
+      conversationModelIndependent: conversationModelIndependent,
     );
   }
 

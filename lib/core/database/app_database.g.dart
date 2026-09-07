@@ -206,6 +206,29 @@ class $ConversationRowsTable extends ConversationRows
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _chatModelProviderMeta = const VerificationMeta(
+    'chatModelProvider',
+  );
+  @override
+  late final GeneratedColumn<String> chatModelProvider =
+      GeneratedColumn<String>(
+        'chat_model_provider',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _chatModelIdMeta = const VerificationMeta(
+    'chatModelId',
+  );
+  @override
+  late final GeneratedColumn<String> chatModelId = GeneratedColumn<String>(
+    'chat_model_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -225,6 +248,8 @@ class $ConversationRowsTable extends ConversationRows
     persistentQuickInstructionIdsJson,
     proactiveCareEnabledOverride,
     proactiveCareNextMessageAt,
+    chatModelProvider,
+    chatModelId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -378,6 +403,24 @@ class $ConversationRowsTable extends ConversationRows
         ),
       );
     }
+    if (data.containsKey('chat_model_provider')) {
+      context.handle(
+        _chatModelProviderMeta,
+        chatModelProvider.isAcceptableOrUnknown(
+          data['chat_model_provider']!,
+          _chatModelProviderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chat_model_id')) {
+      context.handle(
+        _chatModelIdMeta,
+        chatModelId.isAcceptableOrUnknown(
+          data['chat_model_id']!,
+          _chatModelIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -455,6 +498,14 @@ class $ConversationRowsTable extends ConversationRows
         DriftSqlType.dateTime,
         data['${effectivePrefix}proactive_care_next_message_at'],
       ),
+      chatModelProvider: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_model_provider'],
+      ),
+      chatModelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_model_id'],
+      ),
     );
   }
 
@@ -484,6 +535,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
   final String persistentQuickInstructionIdsJson;
   final bool? proactiveCareEnabledOverride;
   final DateTime? proactiveCareNextMessageAt;
+
+  /// Per-conversation chat model binding (schema v23, nullable). Mirror of
+  /// assistant_rows.chat_model_provider/chat_model_id naming. Non-null means
+  /// the conversation no longer follows the assistant's model.
+  final String? chatModelProvider;
+  final String? chatModelId;
   const ConversationRow({
     required this.id,
     required this.title,
@@ -502,6 +559,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     required this.persistentQuickInstructionIdsJson,
     this.proactiveCareEnabledOverride,
     this.proactiveCareNextMessageAt,
+    this.chatModelProvider,
+    this.chatModelId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -543,6 +602,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
         proactiveCareNextMessageAt,
       );
     }
+    if (!nullToAbsent || chatModelProvider != null) {
+      map['chat_model_provider'] = Variable<String>(chatModelProvider);
+    }
+    if (!nullToAbsent || chatModelId != null) {
+      map['chat_model_id'] = Variable<String>(chatModelId);
+    }
     return map;
   }
 
@@ -579,6 +644,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           proactiveCareNextMessageAt == null && nullToAbsent
           ? const Value.absent()
           : Value(proactiveCareNextMessageAt),
+      chatModelProvider: chatModelProvider == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chatModelProvider),
+      chatModelId: chatModelId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chatModelId),
     );
   }
 
@@ -621,6 +692,10 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       proactiveCareNextMessageAt: serializer.fromJson<DateTime?>(
         json['proactiveCareNextMessageAt'],
       ),
+      chatModelProvider: serializer.fromJson<String?>(
+        json['chatModelProvider'],
+      ),
+      chatModelId: serializer.fromJson<String?>(json['chatModelId']),
     );
   }
   @override
@@ -654,6 +729,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       'proactiveCareNextMessageAt': serializer.toJson<DateTime?>(
         proactiveCareNextMessageAt,
       ),
+      'chatModelProvider': serializer.toJson<String?>(chatModelProvider),
+      'chatModelId': serializer.toJson<String?>(chatModelId),
     };
   }
 
@@ -675,6 +752,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     String? persistentQuickInstructionIdsJson,
     Value<bool?> proactiveCareEnabledOverride = const Value.absent(),
     Value<DateTime?> proactiveCareNextMessageAt = const Value.absent(),
+    Value<String?> chatModelProvider = const Value.absent(),
+    Value<String?> chatModelId = const Value.absent(),
   }) => ConversationRow(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -703,6 +782,10 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     proactiveCareNextMessageAt: proactiveCareNextMessageAt.present
         ? proactiveCareNextMessageAt.value
         : this.proactiveCareNextMessageAt,
+    chatModelProvider: chatModelProvider.present
+        ? chatModelProvider.value
+        : this.chatModelProvider,
+    chatModelId: chatModelId.present ? chatModelId.value : this.chatModelId,
   );
   ConversationRow copyWithCompanion(ConversationRowsCompanion data) {
     return ConversationRow(
@@ -747,6 +830,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       proactiveCareNextMessageAt: data.proactiveCareNextMessageAt.present
           ? data.proactiveCareNextMessageAt.value
           : this.proactiveCareNextMessageAt,
+      chatModelProvider: data.chatModelProvider.present
+          ? data.chatModelProvider.value
+          : this.chatModelProvider,
+      chatModelId: data.chatModelId.present
+          ? data.chatModelId.value
+          : this.chatModelId,
     );
   }
 
@@ -775,7 +864,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           ..write(
             'proactiveCareEnabledOverride: $proactiveCareEnabledOverride, ',
           )
-          ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt')
+          ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt, ')
+          ..write('chatModelProvider: $chatModelProvider, ')
+          ..write('chatModelId: $chatModelId')
           ..write(')'))
         .toString();
   }
@@ -799,6 +890,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     persistentQuickInstructionIdsJson,
     proactiveCareEnabledOverride,
     proactiveCareNextMessageAt,
+    chatModelProvider,
+    chatModelId,
   );
   @override
   bool operator ==(Object other) =>
@@ -823,7 +916,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
               this.persistentQuickInstructionIdsJson &&
           other.proactiveCareEnabledOverride ==
               this.proactiveCareEnabledOverride &&
-          other.proactiveCareNextMessageAt == this.proactiveCareNextMessageAt);
+          other.proactiveCareNextMessageAt == this.proactiveCareNextMessageAt &&
+          other.chatModelProvider == this.chatModelProvider &&
+          other.chatModelId == this.chatModelId);
 }
 
 class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
@@ -844,6 +939,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
   final Value<String> persistentQuickInstructionIdsJson;
   final Value<bool?> proactiveCareEnabledOverride;
   final Value<DateTime?> proactiveCareNextMessageAt;
+  final Value<String?> chatModelProvider;
+  final Value<String?> chatModelId;
   final Value<int> rowid;
   const ConversationRowsCompanion({
     this.id = const Value.absent(),
@@ -863,6 +960,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     this.persistentQuickInstructionIdsJson = const Value.absent(),
     this.proactiveCareEnabledOverride = const Value.absent(),
     this.proactiveCareNextMessageAt = const Value.absent(),
+    this.chatModelProvider = const Value.absent(),
+    this.chatModelId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ConversationRowsCompanion.insert({
@@ -883,6 +982,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     this.persistentQuickInstructionIdsJson = const Value.absent(),
     this.proactiveCareEnabledOverride = const Value.absent(),
     this.proactiveCareNextMessageAt = const Value.absent(),
+    this.chatModelProvider = const Value.absent(),
+    this.chatModelId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -906,6 +1007,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     Expression<String>? persistentQuickInstructionIdsJson,
     Expression<bool>? proactiveCareEnabledOverride,
     Expression<DateTime>? proactiveCareNextMessageAt,
+    Expression<String>? chatModelProvider,
+    Expression<String>? chatModelId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -935,6 +1038,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
         'proactive_care_enabled_override': proactiveCareEnabledOverride,
       if (proactiveCareNextMessageAt != null)
         'proactive_care_next_message_at': proactiveCareNextMessageAt,
+      if (chatModelProvider != null) 'chat_model_provider': chatModelProvider,
+      if (chatModelId != null) 'chat_model_id': chatModelId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -957,6 +1062,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     Value<String>? persistentQuickInstructionIdsJson,
     Value<bool?>? proactiveCareEnabledOverride,
     Value<DateTime?>? proactiveCareNextMessageAt,
+    Value<String?>? chatModelProvider,
+    Value<String?>? chatModelId,
     Value<int>? rowid,
   }) {
     return ConversationRowsCompanion(
@@ -985,6 +1092,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
           proactiveCareEnabledOverride ?? this.proactiveCareEnabledOverride,
       proactiveCareNextMessageAt:
           proactiveCareNextMessageAt ?? this.proactiveCareNextMessageAt,
+      chatModelProvider: chatModelProvider ?? this.chatModelProvider,
+      chatModelId: chatModelId ?? this.chatModelId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1059,6 +1168,12 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
         proactiveCareNextMessageAt.value,
       );
     }
+    if (chatModelProvider.present) {
+      map['chat_model_provider'] = Variable<String>(chatModelProvider.value);
+    }
+    if (chatModelId.present) {
+      map['chat_model_id'] = Variable<String>(chatModelId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1091,6 +1206,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
             'proactiveCareEnabledOverride: $proactiveCareEnabledOverride, ',
           )
           ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt, ')
+          ..write('chatModelProvider: $chatModelProvider, ')
+          ..write('chatModelId: $chatModelId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9362,6 +9479,8 @@ typedef $$ConversationRowsTableCreateCompanionBuilder =
       Value<String> persistentQuickInstructionIdsJson,
       Value<bool?> proactiveCareEnabledOverride,
       Value<DateTime?> proactiveCareNextMessageAt,
+      Value<String?> chatModelProvider,
+      Value<String?> chatModelId,
       Value<int> rowid,
     });
 typedef $$ConversationRowsTableUpdateCompanionBuilder =
@@ -9383,6 +9502,8 @@ typedef $$ConversationRowsTableUpdateCompanionBuilder =
       Value<String> persistentQuickInstructionIdsJson,
       Value<bool?> proactiveCareEnabledOverride,
       Value<DateTime?> proactiveCareNextMessageAt,
+      Value<String?> chatModelProvider,
+      Value<String?> chatModelId,
       Value<int> rowid,
     });
 
@@ -9552,6 +9673,16 @@ class $$ConversationRowsTableFilterComposer
 
   ColumnFilters<DateTime> get proactiveCareNextMessageAt => $composableBuilder(
     column: $table.proactiveCareNextMessageAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatModelProvider => $composableBuilder(
+    column: $table.chatModelProvider,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatModelId => $composableBuilder(
+    column: $table.chatModelId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9729,6 +9860,16 @@ class $$ConversationRowsTableOrderingComposer
         column: $table.proactiveCareNextMessageAt,
         builder: (column) => ColumnOrderings(column),
       );
+
+  ColumnOrderings<String> get chatModelProvider => $composableBuilder(
+    column: $table.chatModelProvider,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chatModelId => $composableBuilder(
+    column: $table.chatModelId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ConversationRowsTableAnnotationComposer
@@ -9815,6 +9956,16 @@ class $$ConversationRowsTableAnnotationComposer
         column: $table.proactiveCareNextMessageAt,
         builder: (column) => column,
       );
+
+  GeneratedColumn<String> get chatModelProvider => $composableBuilder(
+    column: $table.chatModelProvider,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get chatModelId => $composableBuilder(
+    column: $table.chatModelId,
+    builder: (column) => column,
+  );
 
   Expression<T> messageRowsRefs<T extends Object>(
     Expression<T> Function($$MessageRowsTableAnnotationComposer a) f,
@@ -9949,6 +10100,8 @@ class $$ConversationRowsTableTableManager
                     const Value.absent(),
                 Value<DateTime?> proactiveCareNextMessageAt =
                     const Value.absent(),
+                Value<String?> chatModelProvider = const Value.absent(),
+                Value<String?> chatModelId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationRowsCompanion(
                 id: id,
@@ -9970,6 +10123,8 @@ class $$ConversationRowsTableTableManager
                     persistentQuickInstructionIdsJson,
                 proactiveCareEnabledOverride: proactiveCareEnabledOverride,
                 proactiveCareNextMessageAt: proactiveCareNextMessageAt,
+                chatModelProvider: chatModelProvider,
+                chatModelId: chatModelId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9995,6 +10150,8 @@ class $$ConversationRowsTableTableManager
                     const Value.absent(),
                 Value<DateTime?> proactiveCareNextMessageAt =
                     const Value.absent(),
+                Value<String?> chatModelProvider = const Value.absent(),
+                Value<String?> chatModelId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationRowsCompanion.insert(
                 id: id,
@@ -10016,6 +10173,8 @@ class $$ConversationRowsTableTableManager
                     persistentQuickInstructionIdsJson,
                 proactiveCareEnabledOverride: proactiveCareEnabledOverride,
                 proactiveCareNextMessageAt: proactiveCareNextMessageAt,
+                chatModelProvider: chatModelProvider,
+                chatModelId: chatModelId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -5691,6 +5691,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'The fork carries every regenerated version of each message so you can still switch between them; off keeps only the selected answer.';
 
   @override
+  String get displaySettingsPageConversationModelIndependentTitle =>
+      'Independent Conversation Models';
+
+  @override
+  String get displaySettingsPageConversationModelIndependentSubtitle =>
+      'New conversations freeze their model at creation and no longer follow assistant model changes. Switching a model in a conversation affects only that conversation.';
+
+  @override
+  String get conversationModelIndependentFreezeNotice =>
+      'Model switched for this conversation only';
+
+  @override
+  String get modelSelectSheetFollowAssistantTitle => 'Follow assistant model';
+
+  @override
   String chainOfThoughtExpandSteps(Object count) {
     return 'Show $count more steps';
   }

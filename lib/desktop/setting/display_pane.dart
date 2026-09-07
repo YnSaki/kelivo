@@ -124,6 +124,8 @@ class _DisplaySettingsBody extends StatelessWidget {
                   _RowDivider(),
                   _ToggleRowForkKeepMessageVersions(),
                   _RowDivider(),
+                  _ToggleRowConversationModelIndependent(),
+                  _RowDivider(),
                   _ToggleRowShowUpdates(),
                   _RowDivider(),
                   _ToggleRowShowChatListDate(),
@@ -2542,6 +2544,22 @@ class _ToggleRowForkKeepMessageVersions extends StatelessWidget {
       value: sp.forkKeepMessageVersions,
       onChanged: (v) =>
           context.read<SettingsProvider>().setForkKeepMessageVersions(v),
+    );
+  }
+}
+
+class _ToggleRowConversationModelIndependent extends StatelessWidget {
+  const _ToggleRowConversationModelIndependent();
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final sp = context.watch<SettingsProvider>();
+    return _ToggleRow(
+      label: l10n.displaySettingsPageConversationModelIndependentTitle,
+      subtitle: l10n.displaySettingsPageConversationModelIndependentSubtitle,
+      value: sp.conversationModelIndependent,
+      onChanged: (v) =>
+          context.read<SettingsProvider>().setConversationModelIndependent(v),
     );
   }
 }

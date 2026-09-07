@@ -18,9 +18,11 @@ import 'dart:async';
 import 'dart:io';
 import '../../../core/models/assistant.dart';
 import '../../../core/models/chat_input_data.dart';
+import '../../../core/models/conversation.dart';
 import '../../../core/models/message_quote.dart';
 import '../../../core/models/quick_instruction.dart';
 import '../../../core/services/model_override_payload_parser.dart';
+import '../utils/model_display_helper.dart';
 import 'image_generation_options.dart';
 import '../../../utils/clipboard_images.dart';
 import '../../../core/providers/asr_provider.dart';
@@ -145,6 +147,7 @@ class ChatInputBar extends StatefulWidget {
     this.onDocumentProcessing,
     this.onConversationProactiveCare,
     this.conversationId,
+    this.conversation,
     this.sendButtonTooltip,
     this.backgroundImageActive = false,
     this.inputBackgroundOpacityLight =
@@ -209,6 +212,11 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onDocumentProcessing;
   final VoidCallback? onConversationProactiveCare;
   final String? conversationId;
+
+  /// Conversation model binding source for capability gates (ADR-0055).
+  /// Null for group chat / settings contexts — falls back to assistant → global.
+  final Conversation? conversation;
+
   final String? sendButtonTooltip;
   final bool backgroundImageActive;
   final double inputBackgroundOpacityLight;
@@ -469,8 +477,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     final settings = context.watch<SettingsProvider>();
     final ap = context.watch<AssistantProvider>();
     final a = ap.currentAssistant;
-    final providerKey = a?.chatModelProvider ?? settings.currentModelProvider;
-    final modelId = a?.chatModelId ?? settings.currentModelId;
+    final resolved = resolveChatModel(
+      settings,
+      a,
+      widget.conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
+    );
+    final providerKey = resolved.providerKey;
+    final modelId = resolved.modelId;
     if (providerKey == null || modelId == null) {
       _inputStatus.updateImageModeKey(
         null,
@@ -509,8 +523,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     final settings = context.watch<SettingsProvider>();
     final ap = context.watch<AssistantProvider>();
     final a = ap.currentAssistant;
-    final providerKey = a?.chatModelProvider ?? settings.currentModelProvider;
-    final modelId = a?.chatModelId ?? settings.currentModelId;
+    final resolved = resolveChatModel(
+      settings,
+      a,
+      widget.conversation,
+      conversationModelIndependent: settings.conversationModelIndependent,
+    );
+    final providerKey = resolved.providerKey;
+    final modelId = resolved.modelId;
     if (providerKey == null || modelId == null) {
       _inputStatus.updateImageWarningKey(null);
       return;
@@ -2273,13 +2293,21 @@ class _ChatInputBarState extends State<ChatInputBar>
           );
         }
 
-        // Search button (stateful icon depending on provider config)
+        // Search button (stateful icon depending on provider config).
+        // ADR-0055: built-in search support follows the conversation's
+        // effective model (binding applies while the toggle is on), so a
+        // bound conversation never mismatches.
         final settings = context.watch<SettingsProvider>();
         final ap = context.watch<AssistantProvider>();
         final a = ap.currentAssistant;
-        final currentProviderKey =
-            a?.chatModelProvider ?? settings.currentModelProvider;
-        final currentModelId = a?.chatModelId ?? settings.currentModelId;
+        final resolved = resolveChatModel(
+          settings,
+          a,
+          widget.conversation,
+          conversationModelIndependent: settings.conversationModelIndependent,
+        );
+        final currentProviderKey = resolved.providerKey;
+        final currentModelId = resolved.modelId;
         final cfg = (currentProviderKey != null)
             ? settings.getProviderConfig(currentProviderKey)
             : null;

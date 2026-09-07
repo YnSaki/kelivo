@@ -38,6 +38,12 @@ class ConversationRows extends Table {
   BoolColumn get proactiveCareEnabledOverride => boolean().nullable()();
   DateTimeColumn get proactiveCareNextMessageAt => dateTime().nullable()();
 
+  /// Per-conversation chat model binding (schema v23, nullable). Mirror of
+  /// assistant_rows.chat_model_provider/chat_model_id naming. Non-null means
+  /// the conversation no longer follows the assistant's model.
+  TextColumn get chatModelProvider => text().nullable()();
+  TextColumn get chatModelId => text().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -469,7 +475,7 @@ class AppDatabase extends _$AppDatabase {
   // self-heal below repairs such gaps on every open; without it the gap is
   // permanent because later upgrades skip the failed step's `from < N` block.
   // See docs/adr/0019-schema-self-heal.md.
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   /// Whether [table] has a physical column named [column] (sqlite name).
   Future<bool> _hasColumn(String table, String column) async {
@@ -522,7 +528,7 @@ class AppDatabase extends _$AppDatabase {
   /// Repair incomplete upgrades where user_version already advanced but some
   /// ALTER TABLE / CREATE TABLE steps were skipped/failed (silent catch).
   ///
-  /// Covers every column/table added by the v5–v22 migrations that are
+  /// Covers every column/table added by the v5–v23 migrations that are
   /// wrapped in silent try/catch — missing these makes inserts crash with
   /// "table X has no column named Y". Runs in beforeOpen (rescues existing
   /// broken DBs whose user_version already passed the failed step) and at the
@@ -532,7 +538,7 @@ class AppDatabase extends _$AppDatabase {
   /// this heal set and the regression tests in the same change. See AGENTS.md
   /// §3.20.
   Future<void> _healSchemaIfNeeded() async {
-    // --- assistant_rows (v5–v22) ---
+    // --- assistant_rows (v5–v23) ---
     await _ensureColumn(
       'assistant_rows',
       'memory_mode',
@@ -691,6 +697,17 @@ class AppDatabase extends _$AppDatabase {
       'conversation_rows',
       'workspace_directory_overrides_json',
       "ALTER TABLE conversation_rows ADD COLUMN workspace_directory_overrides_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    // Per-conversation chat model binding (schema v23, heal backstop).
+    await _ensureColumn(
+      'conversation_rows',
+      'chat_model_provider',
+      'ALTER TABLE conversation_rows ADD COLUMN chat_model_provider TEXT NULL',
+    );
+    await _ensureColumn(
+      'conversation_rows',
+      'chat_model_id',
+      'ALTER TABLE conversation_rows ADD COLUMN chat_model_id TEXT NULL',
     );
     await _ensureColumn(
       'conversation_rows',
@@ -1074,6 +1091,10 @@ WHERE proactive_care_next_message_at IS NULL
         } catch (_) {}
       }
       if (from < 22) {
+        // Quick-instruction snapshots (master #693) and proactive-care
+        // conversation/assistant columns (master #640) — both landed under
+        // schema v22 on master before this branch merged. Keep this block
+        // exactly as master shipped it.
         try {
           await migrator.addColumn(
             messageRows,
@@ -1128,6 +1149,25 @@ WHERE proactive_care_next_message_at IS NULL
             'message limit: $error',
           );
         }
+      }
+      if (from < 23) {
+        // Per-conversation chat model binding (conversation model
+        // independence). v22 was already shipped twice on master (ADR-0055's
+        // parallel development), so this feature takes v23: a DB at v22 gets
+        // the binding columns through this migration. Nullable columns; heal
+        // covers a skipped ALTER (kept in the heal set as the backstop).
+        try {
+          await migrator.addColumn(
+            conversationRows,
+            conversationRows.chatModelProvider,
+          );
+        } catch (_) {}
+        try {
+          await migrator.addColumn(
+            conversationRows,
+            conversationRows.chatModelId,
+          );
+        } catch (_) {}
       }
       // Final pass: heal any column/table that still did not land.
       await _healSchemaIfNeeded();

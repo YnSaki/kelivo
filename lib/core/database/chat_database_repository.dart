@@ -1353,6 +1353,11 @@ class ChatDatabaseRepository {
                 ..orderBy([(t) => OrderingTerm.asc(t.messageOrder)]))
               .get()
         : const <MessageRow>[];
+    // Atomic pair: a partial binding (one null column) is normalized to
+    // unbound so the read chain can never hybridize a provider from one row
+    // and a model from another.
+    final bindingComplete =
+        row.chatModelProvider != null && row.chatModelId != null;
     return Conversation(
       id: row.id,
       title: row.title,
@@ -1372,6 +1377,8 @@ class ChatDatabaseRepository {
       workspaceDirectoryOverrides: _decodeStringStringMap(
         row.workspaceDirectoryOverridesJson,
       ),
+      chatModelProvider: bindingComplete ? row.chatModelProvider : null,
+      chatModelId: bindingComplete ? row.chatModelId : null,
       persistentQuickInstructionIds: _decodeStringList(
         row.persistentQuickInstructionIdsJson,
       ),
@@ -1398,6 +1405,11 @@ class ChatDatabaseRepository {
             [id],
           )
         : null;
+    // Atomic pair: same rule as the Drift row mapper — partial bindings are
+    // normalized to unbound at the repository boundary.
+    final bindingProvider = _readOptionalString(row, 'chat_model_provider');
+    final bindingModelId = _readOptionalString(row, 'chat_model_id');
+    final bindingComplete = bindingProvider != null && bindingModelId != null;
     return Conversation(
       id: id,
       title: row['title'] as String,
@@ -1426,6 +1438,8 @@ class ChatDatabaseRepository {
       workspaceDirectoryOverrides: _decodeStringStringMap(
         _readOptionalString(row, 'workspace_directory_overrides_json') ?? '{}',
       ),
+      chatModelProvider: bindingComplete ? bindingProvider : null,
+      chatModelId: bindingComplete ? bindingModelId : null,
       persistentQuickInstructionIds: _decodeStringList(
         _readOptionalString(row, 'persistent_quick_instruction_ids_json') ??
             '[]',
@@ -1494,6 +1508,8 @@ class ChatDatabaseRepository {
       workspaceDirectoryOverridesJson: Value(
         jsonEncode(conversation.workspaceDirectoryOverrides),
       ),
+      chatModelProvider: Value(conversation.chatModelProvider),
+      chatModelId: Value(conversation.chatModelId),
       persistentQuickInstructionIdsJson: Value(
         jsonEncode(conversation.persistentQuickInstructionIds),
       ),
