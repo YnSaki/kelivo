@@ -1281,6 +1281,30 @@ abstract class AppLocalizations {
   /// **'AI generated'**
   String get storageSpaceAiGenerated;
 
+  /// No description provided for @storageSpaceFontsManageHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts marked \"In use\" are currently applied to the app or the code editor and cannot be deleted here.'**
+  String get storageSpaceFontsManageHint;
+
+  /// No description provided for @storageSpaceFontsInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'In use'**
+  String get storageSpaceFontsInUse;
+
+  /// No description provided for @storageSpaceNoFonts.
+  ///
+  /// In en, this message translates to:
+  /// **'No fonts'**
+  String get storageSpaceNoFonts;
+
+  /// Message shown after deleting font files from the storage page.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted {count} font files'**
+  String storageSpaceDeletedFontsDone(int count);
+
   /// No description provided for @storageSpaceMarkdownRefLimitation.
   ///
   /// In en, this message translates to:

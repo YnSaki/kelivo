@@ -721,6 +721,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get storageSpaceAiGenerated => 'AI generated';
 
   @override
+  String get storageSpaceFontsManageHint =>
+      'Fonts marked \"In use\" are currently applied to the app or the code editor and cannot be deleted here.';
+
+  @override
+  String get storageSpaceFontsInUse => 'In use';
+
+  @override
+  String get storageSpaceNoFonts => 'No fonts';
+
+  @override
+  String storageSpaceDeletedFontsDone(int count) {
+    return 'Deleted $count font files';
+  }
+
+  @override
   String get storageSpaceMarkdownRefLimitation =>
       'Note: Markdown-referenced local images are not counted. AI-generated images show as \'AI generated\' — do not delete them.';
 
