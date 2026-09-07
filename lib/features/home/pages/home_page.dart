@@ -3140,8 +3140,8 @@ class _HomePageState extends State<HomePage>
     final ap = context.read<AssistantProvider>();
     final a = ap.currentAssistant;
     final layout = resolveInputBarButtonLayout(
-      savedOrder: settings.chatInputButtonOrder,
-      savedMoreIds: settings.chatInputMoreButtonIds,
+      savedOrder: settings.chatInputButtonOrderPhone,
+      savedMoreIds: settings.chatInputMoreButtonIdsPhone,
       tabletLayout: false,
     );
     // Phone bucket = configured in-more ids (in config order) + row overflow.

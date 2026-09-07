@@ -61,8 +61,17 @@ void main() {
       await tester.tap(find.byType(IosSwitch).first);
       await tester.pump();
 
-      expect(settings.chatInputMoreButtonIds, contains(inputBarButtonModel));
-      expect(settings.chatInputButtonOrder, defaultInputBarButtonIds);
+      // 800x600 is below the tablet breakpoint (900), so the toggle writes the
+      // phone-layout bucket; the tablet bucket stays untouched (ADR-0054).
+      // First toggle also seeds the resolved order explicitly (sentinel
+      // unset → persist the default split).
+      expect(
+        settings.chatInputMoreButtonIdsPhone,
+        contains(inputBarButtonModel),
+      );
+      expect(settings.chatInputButtonOrderPhone, defaultInputBarButtonIds);
+      expect(settings.chatInputMoreButtonIds, isEmpty);
+      expect(settings.chatInputButtonOrder, isEmpty);
       final after = tester.widget<IosSwitch>(find.byType(IosSwitch).first);
       expect(after.value, isFalse);
 
@@ -138,13 +147,19 @@ void main() {
     list.onReorderItem!(0, 1);
     await tester.pumpAndSettle();
 
-    expect(settings.chatInputButtonOrder, isNotEmpty);
+    // 800x600 is below the tablet breakpoint (900): the first reorder seeds
+    // the PHONE bucket (order + resolved More), the tablet bucket stays
+    // untouched (ADR-0054) — same "first edit persists the resolved state
+    // explicitly" semantics, per form factor.
+    expect(settings.chatInputButtonOrderPhone, isNotEmpty);
     expect(
-      settings.chatInputMoreButtonIds,
+      settings.chatInputMoreButtonIdsPhone,
       containsAll(<String>[
         inputBarButtonProactiveCare,
         inputBarButtonCustomize,
       ]),
     );
+    expect(settings.chatInputButtonOrder, isEmpty);
+    expect(settings.chatInputMoreButtonIds, isEmpty);
   });
 }

@@ -45,8 +45,16 @@ class InputBarButtonsCustomizationPage extends StatelessWidget {
               size: 20,
               minSize: 44,
               semanticLabel: l10n.chatInputBarCustomizeResetTooltip,
-              onTap: () =>
-                  context.read<SettingsProvider>().resetChatInputButtons(),
+              onTap: () {
+                final settings = context.read<SettingsProvider>();
+                final tabletWide =
+                    MediaQuery.sizeOf(context).width >= AppBreakpoints.tablet;
+                if (tabletWide) {
+                  settings.resetChatInputButtons();
+                } else {
+                  settings.resetChatInputButtonsPhone();
+                }
+              },
             ),
           ),
           const SizedBox(width: 8),
@@ -114,9 +122,18 @@ Future<void> showInputBarButtonsCustomizationDialog(
                               tooltip: l10n.chatInputBarCustomizeResetTooltip,
                               icon: const Icon(Lucide.RotateCcw, size: 16),
                               color: cs.onSurface,
-                              onPressed: () => context
-                                  .read<SettingsProvider>()
-                                  .resetChatInputButtons(),
+                              onPressed: () {
+                                final settings = context
+                                    .read<SettingsProvider>();
+                                final tabletWide =
+                                    MediaQuery.sizeOf(context).width >=
+                                    AppBreakpoints.tablet;
+                                if (tabletWide) {
+                                  settings.resetChatInputButtons();
+                                } else {
+                                  settings.resetChatInputButtonsPhone();
+                                }
+                              },
                             ),
                           ),
                           IconButton(
@@ -167,19 +184,41 @@ class InputBarButtonsCustomizationContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final settings = context.watch<SettingsProvider>();
+    final isTabletWide =
+        MediaQuery.sizeOf(context).width >= AppBreakpoints.tablet;
     // Boot from the resolved layout (single source of truth): while the user
     // never customized, the switches reflect the platform's effective
     // placement — e.g. the customize entry is OFF (in the More bucket) by
     // default on every platform. A first toggle/reorder persists the resolved
-    // state explicitly.
+    // state explicitly. The layout bucket follows the current form factor
+    // (tablet/desktop keys vs phone keys, ADR-0054).
     final resolved = resolveInputBarButtonLayout(
-      savedOrder: settings.chatInputButtonOrder,
-      savedMoreIds: settings.chatInputMoreButtonIds,
-      tabletLayout: MediaQuery.sizeOf(context).width >= AppBreakpoints.tablet,
+      savedOrder: isTabletWide
+          ? settings.chatInputButtonOrder
+          : settings.chatInputButtonOrderPhone,
+      savedMoreIds: isTabletWide
+          ? settings.chatInputMoreButtonIds
+          : settings.chatInputMoreButtonIdsPhone,
+      tabletLayout: isTabletWide,
     );
     final ordered = resolved.orderedIds;
     final moreIds = resolved.moreIds;
     final visibleCount = ordered.where((id) => !moreIds.contains(id)).length;
+
+    Future<void> saveOrder(List<String> next) => isTabletWide
+        ? settings.setChatInputButtonOrder(next)
+        : settings.setChatInputButtonOrderPhone(next);
+
+    Future<void> saveMore(List<String> next) => isTabletWide
+        ? settings.setChatInputMoreButtonIds(next)
+        : settings.setChatInputMoreButtonIdsPhone(next);
+
+    // Sentinel-unset proxy for the CURRENT layout bucket: the first explicit
+    // edit persists the resolved (default) side first so the config becomes
+    // fully explicit ("customized explicitly on first toggle").
+    final bucketOrderUnset = isTabletWide
+        ? settings.chatInputButtonOrder.isEmpty
+        : settings.chatInputButtonOrderPhone.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -206,11 +245,10 @@ class InputBarButtonsCustomizationContent extends StatelessWidget {
               final next = ordered.toList();
               final moved = next.removeAt(oldIndex);
               next.insert(newIndex, moved);
-              final settings = context.read<SettingsProvider>();
-              if (settings.chatInputButtonOrder.isEmpty) {
-                await settings.setChatInputMoreButtonIds(moreIds.toList());
+              if (bucketOrderUnset) {
+                await saveMore(moreIds.toList());
               }
-              await settings.setChatInputButtonOrder(next);
+              await saveOrder(next);
             },
             proxyDecorator: (child, index, animation) {
               return AnimatedBuilder(
@@ -253,11 +291,10 @@ class InputBarButtonsCustomizationContent extends StatelessWidget {
                     } else {
                       nextMore.add(id);
                     }
-                    final settings = context.read<SettingsProvider>();
-                    if (settings.chatInputButtonOrder.isEmpty) {
-                      await settings.setChatInputButtonOrder(ordered);
+                    if (bucketOrderUnset) {
+                      await saveOrder(ordered);
                     }
-                    await settings.setChatInputMoreButtonIds(nextMore.toList());
+                    await saveMore(nextMore.toList());
                   },
                 ),
               );

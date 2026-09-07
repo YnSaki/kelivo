@@ -2673,6 +2673,42 @@ class _IosBackgroundSettingsPageState extends State<IosBackgroundSettingsPage> {
     super.initState();
     _statusFuture = IosBackgroundGenerationService.instance.getStatus();
     _keepAliveStatusFuture = IosKeepAliveService.instance.getStatus();
+    _reconcilePermissions();
+  }
+
+  /// One-shot reconcile, once per page visit (issue #570): after a backup
+  /// restore or LAN sync a toggle can claim ON while the OS permission was
+  /// never requested (e.g. old backup on a new device — the permission
+  /// belongs to the device, the toggle does not). Resolve the mismatch here,
+  /// in context: the OS prompts appear exactly while the user is looking at
+  /// the row. A previously-denied status never re-prompts (the native side
+  /// returns false immediately). Best-effort by design: a channel failure
+  /// logs and skips the reconcile — the FutureBuilders keep their own error
+  /// states (repo rule: recoverable errors log and continue).
+  Future<void> _reconcilePermissions() async {
+    try {
+      final genStatus = await _statusFuture;
+      if (!mounted) return;
+      final keepAliveStatus = await _keepAliveStatusFuture;
+      if (!mounted) return;
+      final sp = context.read<SettingsProvider>();
+      var reconciled = false;
+      if (sp.iosLocationKeepAliveEnabled &&
+          !keepAliveStatus.locationAuthorized) {
+        await IosKeepAliveService.instance.requestLocationAuthorization();
+        reconciled = true;
+      }
+      if (sp.iosBackgroundNotificationsEnabled &&
+          !genStatus.notificationsAuthorized) {
+        await IosBackgroundGenerationService.instance
+            .requestNotificationAuthorization();
+        reconciled = true;
+      }
+      if (!reconciled || !mounted) return;
+      _refreshStatus();
+    } catch (e) {
+      debugPrint('IosBackgroundSettingsPage: permission reconcile skipped: $e');
+    }
   }
 
   void _refreshStatus() {
@@ -2722,6 +2758,21 @@ class _IosBackgroundSettingsPageState extends State<IosBackgroundSettingsPage> {
       locationEnabled: settings.iosLocationKeepAliveEnabled,
       liveActivityPrivacyMode: settings.iosLiveActivityPrivacyMode,
     );
+  }
+
+  /// Row-tap handler for the "定位保活需要权限" state: request first (the act
+  /// of requesting registers the app in iOS Settings > Location Services even
+  /// when denied), fall back to the app settings page only when still denied.
+  Future<void> _resolveLocationPermission() async {
+    final granted = await IosKeepAliveService.instance
+        .requestLocationAuthorization();
+    if (!mounted) return;
+    if (!granted) {
+      await _openAppSettings();
+      return;
+    }
+    await _pushKeepAliveConfig();
+    _refreshStatus();
   }
 
   Future<void> _openAppSettings() async {
@@ -2922,7 +2973,7 @@ class _IosBackgroundSettingsPageState extends State<IosBackgroundSettingsPage> {
                         ? null
                         : status?.locationAuthorized == true
                         ? null
-                        : _openAppSettings,
+                        : _resolveLocationPermission,
                   ),
                   if ((status?.interruptionCount ?? 0) > 0) ...[
                     _iosDivider(context),
