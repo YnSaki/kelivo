@@ -173,7 +173,7 @@ void main() {
       );
     });
 
-    test('off budget omits thinking config for Gemma 4', () async {
+    test('off budget sends minimal thinking level for Gemma 4', () async {
       late Map<String, dynamic> capturedBody;
       final server = await _startGeminiServer((body) {
         capturedBody = body;
@@ -194,7 +194,10 @@ void main() {
       ).toList();
 
       expect(chunks.last.isDone, isTrue);
-      expect(_thinkingConfig(capturedBody), isNull);
+      expect(_thinkingConfig(capturedBody), {
+        'includeThoughts': false,
+        'thinkingLevel': 'minimal',
+      });
     });
   });
 
