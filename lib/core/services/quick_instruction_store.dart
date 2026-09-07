@@ -316,7 +316,7 @@ class QuickInstructionStore {
       return await _seedBuiltInPlanIfNeeded(items);
     } catch (error, stackTrace) {
       debugPrint(
-        'QuickInstructionStore.getAll: invalid persisted payload: '
+        'QuickInstructionStore.getAll: load or seed failed: '
         '$error\n$stackTrace',
       );
       rethrow;
