@@ -80,6 +80,24 @@ const OpenAIReasoningSupport _museFamilySupport = OpenAIReasoningSupport(
   supportedEfforts: <String>[],
   effortParameterSupported: false,
 );
+const OpenAIReasoningSupport _museSparkSupport = OpenAIReasoningSupport(
+  supportedEfforts: <String>['low', 'medium', 'high', 'xhigh'],
+  offFallback: 'low',
+);
+const OpenAIReasoningSupport _museSpark13Support = OpenAIReasoningSupport(
+  supportedEfforts: <String>['low', 'medium', 'high', 'xhigh', 'max'],
+  offFallback: 'low',
+);
+const OpenAIReasoningSupport _glm53Support = OpenAIReasoningSupport(
+  supportedEfforts: <String>['low', 'high', 'max'],
+  offFallback: 'low',
+);
+const OpenAIReasoningSupport _gpt6AstraSupport = OpenAIReasoningSupport(
+  supportedEfforts: <String>['low', 'medium', 'high', 'xhigh', 'max'],
+  samplingRequiresNone: true,
+  samplingAllowsAuto: false,
+  offFallback: 'low',
+);
 const OpenAIReasoningSupport _deepSeekSupport = OpenAIReasoningSupport(
   supportedEfforts: <String>['low', 'medium', 'high', 'xhigh'],
 );
@@ -97,6 +115,17 @@ String resolveApiModelIdOverride(
 
 bool isOpenAIGpt5FamilyModel(String modelId) {
   return RegExp(r'gpt-5(?=$|[-.])', caseSensitive: false).hasMatch(modelId);
+}
+
+bool isOpenAIGpt6FamilyModel(String modelId) {
+  return RegExp(r'gpt-6(?=$|[-.])', caseSensitive: false).hasMatch(modelId);
+}
+
+bool isGlm53FamilyModel(String modelId) {
+  return _matchesModel(
+    modelId.trim().toLowerCase(),
+    r'(^|[/_:@])glm-5\.3(?:$|[-.])',
+  );
 }
 
 bool openAISupportsXhighReasoning(String modelId) {
@@ -218,12 +247,26 @@ OpenAIReasoningSupport? openAIReasoningSupport(String modelId) {
   if (_matchesModel(normalized, r'(^|[/_:@])grok-4\.(?:5|6)(?:$|[-.])')) {
     return _grok45Support;
   }
+  if (_matchesModel(normalized, r'(^|[/_:@])muse-spark-1\.3(?:$|[-.])')) {
+    return normalized.contains('contributor')
+        ? _museSparkSupport
+        : _museSpark13Support;
+  }
+  if (_matchesModel(normalized, r'(^|[/_:@])muse-spark-1(?:$|[-.])')) {
+    return _museSparkSupport;
+  }
   if (_matchesModel(
         normalized,
         r'(^|[/_:@])muse-spark(?:$|[-.]1\.[12](?:$|[-.]))',
       ) ||
       _matchesModel(normalized, r'(^|[/_:@])muse-glimmer-30b(?:$|[-.])')) {
     return _museFamilySupport;
+  }
+  if (isGlm53FamilyModel(normalized)) {
+    return _glm53Support;
+  }
+  if (isOpenAIGpt6FamilyModel(normalized)) {
+    return _gpt6AstraSupport;
   }
   if (!isOpenAIGpt5FamilyModel(normalized)) return null;
 
