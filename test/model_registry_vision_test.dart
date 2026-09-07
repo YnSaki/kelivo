@@ -67,6 +67,40 @@ void main() {
       expect(info.input, contains(Modality.image));
     });
 
+    test('qwen3.8-27b has vision', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(id: 'qwen3.8-27b', displayName: 'qwen3.8-27b'),
+      );
+      expect(info.input, contains(Modality.image));
+    });
+
+    test('qwen3.8-2.4t-a95b stays text-only', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(id: 'qwen3.8-2.4t-a95b', displayName: 'qwen3.8-2.4t-a95b'),
+      );
+      expect(info.input, isNot(contains(Modality.image)));
+    });
+
+    test('qwen3.7-max-2026-06-08 snapshot has vision', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(
+          id: 'qwen3.7-max-2026-06-08',
+          displayName: 'qwen3.7-max-2026-06-08',
+        ),
+      );
+      expect(info.input, contains(Modality.image));
+    });
+
+    test('earlier qwen3.7-max snapshot stays text-only', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(
+          id: 'qwen3.7-max-2026-05-17',
+          displayName: 'qwen3.7-max-2026-05-17',
+        ),
+      );
+      expect(info.input, isNot(contains(Modality.image)));
+    });
+
     test('qwen3-8b does NOT have vision', () {
       final info = ModelRegistry.infer(
         ModelInfo(id: 'Qwen/Qwen3-8B', displayName: 'Qwen/Qwen3-8B'),
@@ -81,6 +115,18 @@ void main() {
         ModelInfo(
           id: 'doubao-seed-2.0-pro',
           displayName: 'doubao-seed-2.0-pro',
+        ),
+      );
+      expect(info.input, contains(Modality.image));
+      expect(info.abilities, contains(ModelAbility.tool));
+      expect(info.abilities, contains(ModelAbility.reasoning));
+    });
+
+    test('doubao-seed-2.0-code has vision, tool, and reasoning', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(
+          id: 'doubao-seed-2.0-code',
+          displayName: 'doubao-seed-2.0-code',
         ),
       );
       expect(info.input, contains(Modality.image));
@@ -247,5 +293,34 @@ void main() {
         expect(info.abilities, contains(ModelAbility.reasoning));
       },
     );
+  });
+
+  group('ModelRegistry.infer — GPT-6 Astra, Muse 1.3 and GLM-5.3-Flash', () {
+    test('gpt-6-astra has vision, tool, and reasoning', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(id: 'gpt-6-astra', displayName: 'gpt-6-astra'),
+      );
+      expect(info.input, contains(Modality.image));
+      expect(info.abilities, contains(ModelAbility.tool));
+      expect(info.abilities, contains(ModelAbility.reasoning));
+    });
+
+    test('muse-spark-1.3 has vision, tool, and reasoning', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(id: 'muse-spark-1.3', displayName: 'muse-spark-1.3'),
+      );
+      expect(info.input, contains(Modality.image));
+      expect(info.abilities, contains(ModelAbility.tool));
+      expect(info.abilities, contains(ModelAbility.reasoning));
+    });
+
+    test('glm-5.3-flash is multimodal with tool and reasoning', () {
+      final info = ModelRegistry.infer(
+        ModelInfo(id: 'glm-5.3-flash', displayName: 'glm-5.3-flash'),
+      );
+      expect(info.input, contains(Modality.image));
+      expect(info.abilities, contains(ModelAbility.tool));
+      expect(info.abilities, contains(ModelAbility.reasoning));
+    });
   });
 }

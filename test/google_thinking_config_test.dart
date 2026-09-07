@@ -370,6 +370,29 @@ void main() {
       },
     );
 
+    test(
+      'Gemini 3.8 Flash inherits 3.7 thinking levels and default medium',
+      () async {
+        final body = await _capture(
+          modelId: 'gemini-3.8-flash',
+          thinkingBudget: null,
+        );
+        final offBody = await _capture(
+          modelId: 'gemini-3.8-flash',
+          thinkingBudget: 0,
+        );
+
+        expect(_thinkingConfig(body), {
+          'includeThoughts': true,
+          'thinkingLevel': 'medium',
+        });
+        expect(_thinkingConfig(offBody), {
+          'includeThoughts': false,
+          'thinkingLevel': 'low',
+        });
+      },
+    );
+
     test('Gemini 3.7 Flash-Lite floors at low when thinking is off', () async {
       final body = await _capture(
         modelId: 'gemini-3.7-flash-lite',

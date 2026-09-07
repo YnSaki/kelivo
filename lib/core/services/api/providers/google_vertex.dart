@@ -88,6 +88,7 @@ Future<String?> _maybeVertexAccessToken(ProviderConfig cfg) async {
 int _getMaxOutputTokensForClaudeModel(String modelId) {
   // Limits based on Google Vertex AI documentation
   switch (modelId) {
+    case 'claude-fable-5-1':
     case 'claude-fable-5':
     case 'claude-opus-5':
     case 'claude-opus-4-8':

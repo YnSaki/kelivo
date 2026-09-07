@@ -313,7 +313,7 @@ class QuickInstructionStore {
       }
       _cache = items;
       if (upgraded) await save(items);
-      return _seedBuiltInPlanIfNeeded(items);
+      return await _seedBuiltInPlanIfNeeded(items);
     } catch (error, stackTrace) {
       debugPrint(
         'QuickInstructionStore.getAll: invalid persisted payload: '
