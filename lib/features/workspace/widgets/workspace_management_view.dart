@@ -18,7 +18,11 @@ import '../../../theme/app_semantic_colors.dart';
 /// storage page workspaces category detail: root location card on top, then a
 /// master-detail layout (workspace list on the left, detail on the right).
 class WorkspaceManagementView extends StatefulWidget {
-  const WorkspaceManagementView({super.key});
+  const WorkspaceManagementView({super.key, this.onDataChanged});
+
+  /// Fired after mutations that affect storage usage (workspace deletion,
+  /// root relocation) so hosts can refresh their usage report.
+  final VoidCallback? onDataChanged;
 
   @override
   State<WorkspaceManagementView> createState() =>
@@ -66,7 +70,7 @@ class _WorkspaceManagementViewState extends State<WorkspaceManagementView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _WorkspacesLocationCard(),
+              _WorkspacesLocationCard(onDataChanged: widget.onDataChanged),
               const SizedBox(height: 12),
               Expanded(
                 child: Row(
@@ -80,8 +84,10 @@ class _WorkspaceManagementViewState extends State<WorkspaceManagementView> {
                           Expanded(
                             child: WorkspaceListPage(
                               embedded: true,
+                              selectedId: _selectedId,
                               onOpenWorkspace: (ws) =>
                                   setState(() => _selectedId = ws.id),
+                              onDataChanged: widget.onDataChanged,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -92,7 +98,14 @@ class _WorkspaceManagementViewState extends State<WorkspaceManagementView> {
                               size: 16,
                               minSize: 28,
                               semanticLabel: l10n.workspaceAdd,
-                              onTap: () => showAddWorkspaceDialog(context),
+                              onTap: () async {
+                                final ws = await showAddWorkspaceDialog(
+                                  context,
+                                );
+                                if (ws != null && mounted) {
+                                  setState(() => _selectedId = ws.id);
+                                }
+                              },
                             ),
                           ),
                         ],
@@ -117,7 +130,9 @@ class _WorkspaceManagementViewState extends State<WorkspaceManagementView> {
 /// Shows the current `@workspaces` host directory and opens the relocation
 /// dialog (desktop only; `workspaces_dir_v1` is honored on desktop targets).
 class _WorkspacesLocationCard extends StatelessWidget {
-  const _WorkspacesLocationCard();
+  const _WorkspacesLocationCard({required this.onDataChanged});
+
+  final VoidCallback? onDataChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -161,10 +176,11 @@ class _WorkspacesLocationCard extends StatelessWidget {
                 label: l10n.storageMountsWorkspacesLocationDialogTitle,
                 icon: Lucide.Pencil,
                 onTap: () async {
-                  await showDialog<void>(
+                  final ok = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => const _WorkspacesLocationDialog(),
                   );
+                  if (ok == true) onDataChanged?.call();
                 },
               ),
             ],
@@ -226,8 +242,6 @@ class _WorkspacesLocationDialogState extends State<_WorkspacesLocationDialog> {
     switch (code) {
       case WorkspaceProvider.errorPathInvalid:
         return l10n.storageMountsErrorPathInvalid;
-      case WorkspaceProvider.errorPathNotFound:
-        return l10n.storageMountsErrorPathNotFound;
       case WorkspaceProvider.errorSyncOverlap:
         return l10n.storageMountsErrorSyncOverlap;
       case WorkspaceProvider.errorInsideWorkspaces:
@@ -280,7 +294,7 @@ class _WorkspacesLocationDialogState extends State<_WorkspacesLocationDialog> {
             : l10n.storageMountsWorkspacesLocationChanged,
         type: NotificationType.success,
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     }
   }
 

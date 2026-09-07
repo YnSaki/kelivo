@@ -774,6 +774,7 @@ class _StorageSpacePageState extends State<StorageSpacePage> {
                                     key: const ValueKey(
                                       'storage-workspace-pane',
                                     ),
+                                    onDataChanged: _refreshReport,
                                   ),
                                 ),
                               ],

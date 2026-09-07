@@ -11,8 +11,9 @@ import '../../../theme/app_semantic_colors.dart';
 import 'workspace_detail_page.dart';
 
 /// Opens the workspace add dialog. Shared by the mobile list page and the
-/// desktop settings pane.
-Future<void> showAddWorkspaceDialog(BuildContext context) async {
+/// desktop settings pane. Returns the created workspace (null on cancel,
+/// empty name, or failure).
+Future<Workspace?> showAddWorkspaceDialog(BuildContext context) async {
   final l10n = AppLocalizations.of(context)!;
   final controller = TextEditingController();
   final provider = context.read<WorkspaceProvider>();
@@ -38,16 +39,16 @@ Future<void> showAddWorkspaceDialog(BuildContext context) async {
         ],
       ),
     );
-    if (ok == true && context.mounted) {
-      final name = controller.text.trim();
-      if (name.isEmpty) return;
-      try {
-        await provider.createWorkspace(displayName: name);
-      } catch (e) {
-        if (context.mounted) {
-          showAppSnackBar(context, message: e.toString());
-        }
+    if (ok != true || !context.mounted) return null;
+    final name = controller.text.trim();
+    if (name.isEmpty) return null;
+    try {
+      return await provider.createWorkspace(displayName: name);
+    } catch (e) {
+      if (context.mounted) {
+        showAppSnackBar(context, message: e.toString());
       }
+      return null;
     }
   } finally {
     WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
@@ -59,6 +60,8 @@ class WorkspaceListPage extends StatelessWidget {
     super.key,
     this.embedded = false,
     this.onOpenWorkspace,
+    this.selectedId,
+    this.onDataChanged,
   });
 
   final bool embedded;
@@ -66,6 +69,12 @@ class WorkspaceListPage extends StatelessWidget {
   /// When provided, tapping a card calls this instead of pushing
   /// [WorkspaceDetailPage] (used by the desktop master-detail pane).
   final ValueChanged<Workspace>? onOpenWorkspace;
+
+  /// Highlights the card for this workspace id (master-detail selection).
+  final String? selectedId;
+
+  /// Fired after a workspace deletion succeeded (storage usage refresh).
+  final VoidCallback? onDataChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +97,7 @@ class WorkspaceListPage extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _WorkspaceCard(
                   workspace: ws,
+                  selected: ws.id == selectedId,
                   onTap: onOpenWorkspace != null
                       ? () => onOpenWorkspace!(ws)
                       : () {
@@ -120,6 +130,9 @@ class WorkspaceListPage extends StatelessWidget {
                           );
                           if (ok != true || !context.mounted) return;
                           final err = await wp.deleteWorkspace(ws.id);
+                          if (err == null && context.mounted) {
+                            onDataChanged?.call();
+                          }
                           if (err != null && context.mounted) {
                             showAppSnackBar(
                               context,
@@ -158,11 +171,13 @@ class _WorkspaceCard extends StatelessWidget {
   const _WorkspaceCard({
     required this.workspace,
     required this.onTap,
+    this.selected = false,
     this.onDelete,
   });
 
   final Workspace workspace;
   final VoidCallback onTap;
+  final bool selected;
   final VoidCallback? onDelete;
 
   @override
@@ -176,9 +191,12 @@ class _WorkspaceCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
+            color: selected ? cs.primary.withValues(alpha: 0.06) : null,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.12),
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.55)
+                  : cs.outlineVariant.withValues(alpha: 0.12),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
