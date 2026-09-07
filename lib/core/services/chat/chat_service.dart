@@ -605,50 +605,94 @@ class ChatService extends ChangeNotifier {
       conversation.title = newTitle.trim();
     }
 
-    // Persist rows while the temp flag is still on: any in-flight streaming
-    // update keeps hitting the temp cache path, then gets re-captured below.
-    await _repo.putConversation(conversation);
-    final initialById = {for (final message in messages) message.id: message};
-    for (var i = 0; i < conversation.messageIds.length; i++) {
-      final id = conversation.messageIds[i];
-      final message = initialById[id];
-      if (message == null) continue;
-      await _repo.putMessage(message, messageOrder: i);
-    }
-
-    // Flip bookkeeping: from this point every write path (_saveConversation,
-    // addMessage, setToolEvents...) targets the repository for this id.
-    _temporaryConversationIds.remove(conversationId);
-    _draftConversations.remove(conversationId);
-    _conversationsCache[conversationId] = conversation;
-
-    // Re-capture: a streaming update may have landed in the cache while rows
-    // were being written; converge the repository to the latest cached state.
-    final latest = _messagesCache[conversationId] ?? const <ChatMessage>[];
-    final byId = {for (final message in latest) message.id: message};
-    var order = 0;
-    for (final id in conversation.messageIds) {
-      final message = byId[id];
-      if (message == null) continue;
-      await _repo.putMessage(message, messageOrder: order);
-      order++;
-    }
-    // Migrate temp-only fidelity data (same ids -> direct move).
-    for (final message in latest) {
-      final events = _temporaryToolEvents.remove(message.id);
-      if (events != null && events.isNotEmpty) {
-        await _repo.setToolEvents(message.id, events);
+    try {
+      // Persist rows while the temp flag is still on: any in-flight streaming
+      // update keeps hitting the temp cache path, then gets captured below.
+      await _repo.putConversation(conversation);
+      final initialById = {for (final message in messages) message.id: message};
+      for (var i = 0; i < conversation.messageIds.length; i++) {
+        final id = conversation.messageIds[i];
+        final message = initialById[id];
+        if (message == null) continue;
+        await _repo.putMessage(message, messageOrder: i);
       }
-      final signature = _temporaryGeminiThoughtSigs.remove(message.id);
-      if (signature != null && signature.trim().isNotEmpty) {
-        await _repo.setGeminiThoughtSignature(message.id, signature);
+
+      // Flip bookkeeping: from this point every write path (_saveConversation,
+      // addMessage, setToolEvents...) targets the repository for this id.
+      _temporaryConversationIds.remove(conversationId);
+      _draftConversations.remove(conversationId);
+      _conversationsCache[conversationId] = conversation;
+
+      // Converge atomically: snapshot the live cache synchronously (no await
+      // between reading the cache and enqueuing the batch), then write the
+      // freshest state in a single transaction. A streaming update is either
+      // enqueued before the batch (its content is inside the snapshot) or
+      // after it (it overwrites the batch) — never lost.
+      final latest = _messagesCache[conversationId] ?? const <ChatMessage>[];
+      final byId = {for (final message in latest) message.id: message};
+      final finalMessages = <({ChatMessage message, int messageOrder})>[];
+      var order = 0;
+      for (final id in conversation.messageIds) {
+        final message = byId[id];
+        if (message == null) continue;
+        finalMessages.add((message: message, messageOrder: order));
+        order++;
       }
-    }
-    // Streaming messages now have persisted rows but were never tracked (temp
-    // writes skipped _trackStreamingId); track them so the boot-time stale
-    // flag reset can still clean up after a crash.
-    for (final message in latest) {
-      if (message.isStreaming) _trackStreamingId(message.id);
+      final toolEventsByMessageId = <String, List<Map<String, dynamic>>>{};
+      for (final message in latest) {
+        final events = _temporaryToolEvents[message.id];
+        if (events != null && events.isNotEmpty) {
+          toolEventsByMessageId[message.id] = events;
+        }
+      }
+      final geminiSignaturesByMessageId = <String, String>{};
+      for (final message in latest) {
+        final signature = _temporaryGeminiThoughtSigs[message.id];
+        if (signature != null && signature.trim().isNotEmpty) {
+          geminiSignaturesByMessageId[message.id] = signature;
+        }
+      }
+      await _repo.putMigrationBatch(
+        conversations: const [],
+        messages: finalMessages,
+        toolEventsByMessageId: toolEventsByMessageId,
+        geminiSignaturesByMessageId: geminiSignaturesByMessageId,
+      );
+      // Fidelity data moved: drop the temp-only entries now that the batch
+      // committed them.
+      for (final message in latest) {
+        _temporaryToolEvents.remove(message.id);
+        _temporaryGeminiThoughtSigs.remove(message.id);
+      }
+      // Streaming messages now have persisted rows but were never tracked
+      // (temp writes skipped _trackStreamingId); track them so the boot-time
+      // stale flag reset can still clean up after a crash.
+      for (final message in latest) {
+        if (message.isStreaming) {
+          await _trackStreamingId(message.id);
+        }
+      }
+    } catch (e, st) {
+      // Roll back half-written rows (FK cascade removes messages, tool events
+      // and signatures) and restore the temporary bookkeeping: the
+      // conversation stays active and retryable in memory.
+      debugPrint(
+        'persistTemporaryConversation failed for $conversationId: $e\n$st',
+      );
+      _temporaryConversationIds.add(conversationId);
+      _draftConversations[conversationId] = conversation;
+      _conversationsCache.remove(conversationId);
+      try {
+        await _repo.deleteConversation(conversationId);
+      } catch (cleanupError) {
+        // The save failure is already logged above; surface the cleanup
+        // failure too instead of swallowing it.
+        debugPrint(
+          'persistTemporaryConversation cleanup failed for '
+          '$conversationId: $cleanupError',
+        );
+      }
+      return false;
     }
 
     notifyListeners();
@@ -986,23 +1030,24 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Record a message ID as actively streaming.
-  void _trackStreamingId(String messageId) {
+  Future<void> _trackStreamingId(String messageId) async {
     try {
-      final ids = _repo.getActiveStreamingIds().then((value) => value.toList());
-      ids.then((list) {
-        if (!list.contains(messageId)) {
-          list.add(messageId);
-          _repo.setActiveStreamingIds(list);
-        }
-      });
-    } catch (_) {}
+      final ids = await _repo.getActiveStreamingIds();
+      if (!ids.contains(messageId)) {
+        await _repo.setActiveStreamingIds([...ids, messageId]);
+      }
+    } catch (e) {
+      debugPrint('[ChatService] trackStreamingId failed for $messageId: $e');
+    }
   }
 
   /// Remove a message ID from the active streaming set.
-  void _untrackStreamingId(String messageId) {
+  Future<void> _untrackStreamingId(String messageId) async {
     try {
-      _repo.untrackActiveStreamingId(messageId);
-    } catch (_) {}
+      await _repo.untrackActiveStreamingId(messageId);
+    } catch (e) {
+      debugPrint('[ChatService] untrackStreamingId failed for $messageId: $e');
+    }
   }
 
   Future<void> _cleanupOrphanUploads() async {
@@ -1668,6 +1713,7 @@ class ChatService extends ChangeNotifier {
         isPreset: isPreset,
         speakerAssistantId: speakerAssistantId,
         quoteJson: quoteJson,
+        quickInstructionInvocationsJson: quickInstructionInvocationsJson,
       );
       _discardedTemporaryMessageIds.add(discarded.id);
       return discarded;
@@ -1730,7 +1776,7 @@ class ChatService extends ChangeNotifier {
 
     // Track streaming state for crash-recovery cleanup
     if (isStreaming && !temporary) {
-      _trackStreamingId(message.id);
+      await _trackStreamingId(message.id);
     }
 
     conversation.messageIds.add(message.id);
@@ -1848,7 +1894,7 @@ class ChatService extends ChangeNotifier {
     await _repo.updateMessage(updatedMessage);
     // Update streaming tracking for crash-recovery
     if (isStreaming == false) {
-      _untrackStreamingId(messageId);
+      await _untrackStreamingId(messageId);
     }
 
     // Update cache
@@ -1915,7 +1961,7 @@ class ChatService extends ChangeNotifier {
 
     // Update streaming tracking for crash-recovery
     if (isStreaming == false) {
-      _untrackStreamingId(messageId);
+      await _untrackStreamingId(messageId);
     }
 
     // Update cache

@@ -641,6 +641,60 @@ void main() {
         contains(conversation.id),
       );
     });
+
+    test(
+      'saving an in-stream conversation converges to the final content',
+      () async {
+        final service = createService();
+        await service.init();
+
+        final conversation = await service.createDraftConversation(
+          title: 'Temporary Chat',
+          temporary: true,
+        );
+        await service.addMessage(
+          conversationId: conversation.id,
+          role: 'user',
+          content: 'hello',
+        );
+        final streaming = await service.addMessage(
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: 'part one',
+          isStreaming: true,
+        );
+        await service.setToolEvents(streaming.id, [
+          {'id': 'tool-1', 'name': 'search'},
+        ]);
+
+        expect(
+          await service.persistTemporaryConversation(conversation.id),
+          isTrue,
+        );
+
+        // The stream finishes after the save: the final update must win.
+        await service.updateMessageSilent(
+          streaming.id,
+          content: 'final answer',
+          isStreaming: false,
+        );
+
+        // getMessages on a persisted conversation reads the repository, so
+        // this asserts the committed rows (same path as after a restart).
+        final messages = service.getMessages(conversation.id);
+        expect(messages.map((message) => message.content), [
+          'hello',
+          'final answer',
+        ]);
+        expect(messages.last.isStreaming, isFalse);
+        expect(service.getMessageCount(conversation.id), 2);
+        expect(service.getToolEvents(streaming.id), isNotEmpty);
+        expect(
+          service.getAllConversations().map((conversation) => conversation.id),
+          contains(conversation.id),
+        );
+      },
+    );
   });
 
   group('ChatService fork conversations', () {
