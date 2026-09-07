@@ -191,10 +191,11 @@ class _AddGroupChatButtonState extends State<_AddGroupChatButton> {
           name: name.trim().isEmpty ? l10n.groupChatDefaultName : name.trim(),
         );
         if (!context.mounted) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => GroupChatSettingsPage(groupChatId: group.id),
-          ),
+        // Open the settings as a dialog (this pane is desktop-only); a
+        // pushed route would cover the whole window incl. the title bar.
+        await showGroupChatSettingsDesktopDialog(
+          context,
+          groupChatId: group.id,
         );
       },
     );

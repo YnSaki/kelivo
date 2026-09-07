@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -27,6 +29,12 @@ class GroupChatSettingsCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double avatarSize;
 
+  bool get _isDesktop =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -39,6 +47,12 @@ class GroupChatSettingsCard extends StatelessWidget {
 
     return IosCardPress(
       onTap: () {
+        if (_isDesktop) {
+          // Desktop: settings opens as a dialog instead of a full-window
+          // route that would cover the desktop shell.
+          showGroupChatSettingsDesktopDialog(context, groupChatId: group.id);
+          return;
+        }
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => GroupChatSettingsPage(groupChatId: group.id),
