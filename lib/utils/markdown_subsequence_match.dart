@@ -103,3 +103,18 @@ bool _isStripped(String c) {
       cp == 0x00ad || // soft hyphen
       (cp >= 0x2060 && cp <= 0x2064); // invisible operators
 }
+
+/// Removes the invisible characters the markdown renderer inserts into
+/// rendered text — zero-width space soft breaks (long inline-code and
+/// table-cell tokens, empty table cells) and zero-width non-joiners
+/// (enumerated ATX headings) — so text copied out of the rendered widgets
+/// matches the underlying content (cuplivo issue #738).
+///
+/// Deliberately narrow: other invisible characters are not stripped
+/// because they can be part of legitimate content — e.g. U+200D joins
+/// emoji ZWJ sequences (👩‍💻, 🏳️‍🌈), and stripping it would split them.
+/// Lossy stripping of the full invisible range stays in [_normalizeQuery],
+/// where matching rendered content back to markdown source tolerates it.
+String stripRendererInsertedCharacters(String input) {
+  return input.replaceAll('\u200B', '').replaceAll('\u200C', '');
+}
