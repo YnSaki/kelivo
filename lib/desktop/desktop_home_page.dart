@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:Cuplivo/theme/app_font_weights.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
@@ -11,7 +10,6 @@ import 'desktop_translate_page.dart';
 import '../features/settings/pages/storage_space_page.dart';
 import '../l10n/app_localizations.dart';
 import '../core/services/storage/message_locate_bus.dart';
-import '../core/services/trash_restore_coordinator.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:async';
 import 'hotkeys/hotkey_event_bus.dart';
@@ -57,10 +55,6 @@ class _DesktopHomePageState extends State<DesktopHomePage> {
       });
     }
 
-    // Startup conflict check: show SnackBar if there are pending deletions.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkConflicts();
-    });
     // Listen to global hotkey actions affecting the main tabs/window
     _hotkeySub = HotkeyEventBus.instance.stream.listen((action) async {
       switch (action) {
@@ -301,31 +295,6 @@ class _DesktopHomePageState extends State<DesktopHomePage> {
           ),
         );
       },
-    );
-  }
-
-  Future<void> _checkConflicts() async {
-    if (!mounted) return;
-    final l10n = AppLocalizations.of(context);
-    if (l10n == null) return;
-    final coordinator = context.read<TrashRestoreCoordinator>();
-    final count = await coordinator.countConflicts();
-    if (!mounted || count == 0) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l10n.trashConflictSnackBar(count)),
-        duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: l10n.trashConflictSnackBarAction,
-          onPressed: () {
-            setState(() {
-              _tabIndex = 2;
-              _storageVisited = true;
-            });
-            ChatActionBus.instance.fire(ChatAction.exitGlobalSearch);
-          },
-        ),
-      ),
     );
   }
 
