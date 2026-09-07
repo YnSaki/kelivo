@@ -47,6 +47,9 @@ class ChatService extends ChangeNotifier {
   final Set<String> _temporaryConversationIds = <String>{};
   final Map<String, Future<void>> _proactiveCareOperationTails =
       <String, Future<void>>{};
+  // Evicting these ids could reopen persistence races with background work.
+  final Set<String> _discardedTemporaryConversationIds = <String>{};
+  final Set<String> _discardedTemporaryMessageIds = <String>{};
   final Map<String, List<Map<String, dynamic>>> _temporaryToolEvents =
       <String, List<Map<String, dynamic>>>{};
   final Map<String, String> _temporaryGeminiThoughtSigs = <String, String>{};
@@ -64,7 +67,9 @@ class ChatService extends ChangeNotifier {
   String? get currentConversationId => _currentConversationId;
 
   bool isTemporaryConversation(String? id) {
-    return id != null && _temporaryConversationIds.contains(id);
+    return id != null &&
+        (_temporaryConversationIds.contains(id) ||
+            _discardedTemporaryConversationIds.contains(id));
   }
 
   bool isDraftConversation(String? id) {
@@ -132,7 +137,7 @@ class ChatService extends ChangeNotifier {
     }
     _repo.reopenSyncConnection();
     await _loadConversationsCache();
-    _messagesCache.clear();
+    _clearPersistedMessageCache();
     notifyListeners();
   }
 
@@ -157,6 +162,15 @@ class ChatService extends ChangeNotifier {
       unawaited(_repo.close());
     }
     super.dispose();
+  }
+
+  /// Drop cached messages for persisted conversations only. Active temporary
+  /// conversations keep their in-memory messages across reload/restore.
+  void _clearPersistedMessageCache() {
+    _messagesCache.removeWhere(
+      (conversationId, _) =>
+          !_temporaryConversationIds.contains(conversationId),
+    );
   }
 
   Future<void> _loadConversationsCache() async {
@@ -568,6 +582,79 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  /// Convert the active temporary conversation [conversationId] into a
+  /// persisted conversation (issue #726).
+  ///
+  /// Persists the conversation row, every cached message in order, and
+  /// migrates the temp-only tool events / Gemini signatures to the repository
+  /// (message ids stay identical, so the migration is a direct move). Returns
+  /// false when [conversationId] is not an active temporary conversation or
+  /// holds no messages.
+  Future<bool> persistTemporaryConversation(
+    String conversationId, {
+    String? newTitle,
+  }) async {
+    if (!_initialized) await init();
+    if (!_temporaryConversationIds.contains(conversationId)) return false;
+    final conversation = _draftConversations[conversationId];
+    if (conversation == null) return false;
+    final messages = _messagesCache[conversationId] ?? const <ChatMessage>[];
+    if (messages.isEmpty) return false;
+
+    if (newTitle != null && newTitle.trim().isNotEmpty) {
+      conversation.title = newTitle.trim();
+    }
+
+    // Persist rows while the temp flag is still on: any in-flight streaming
+    // update keeps hitting the temp cache path, then gets re-captured below.
+    await _repo.putConversation(conversation);
+    final initialById = {for (final message in messages) message.id: message};
+    for (var i = 0; i < conversation.messageIds.length; i++) {
+      final id = conversation.messageIds[i];
+      final message = initialById[id];
+      if (message == null) continue;
+      await _repo.putMessage(message, messageOrder: i);
+    }
+
+    // Flip bookkeeping: from this point every write path (_saveConversation,
+    // addMessage, setToolEvents...) targets the repository for this id.
+    _temporaryConversationIds.remove(conversationId);
+    _draftConversations.remove(conversationId);
+    _conversationsCache[conversationId] = conversation;
+
+    // Re-capture: a streaming update may have landed in the cache while rows
+    // were being written; converge the repository to the latest cached state.
+    final latest = _messagesCache[conversationId] ?? const <ChatMessage>[];
+    final byId = {for (final message in latest) message.id: message};
+    var order = 0;
+    for (final id in conversation.messageIds) {
+      final message = byId[id];
+      if (message == null) continue;
+      await _repo.putMessage(message, messageOrder: order);
+      order++;
+    }
+    // Migrate temp-only fidelity data (same ids -> direct move).
+    for (final message in latest) {
+      final events = _temporaryToolEvents.remove(message.id);
+      if (events != null && events.isNotEmpty) {
+        await _repo.setToolEvents(message.id, events);
+      }
+      final signature = _temporaryGeminiThoughtSigs.remove(message.id);
+      if (signature != null && signature.trim().isNotEmpty) {
+        await _repo.setGeminiThoughtSignature(message.id, signature);
+      }
+    }
+    // Streaming messages now have persisted rows but were never tracked (temp
+    // writes skipped _trackStreamingId); track them so the boot-time stale
+    // flag reset can still clean up after a crash.
+    for (final message in latest) {
+      if (message.isStreaming) _trackStreamingId(message.id);
+    }
+
+    notifyListeners();
+    return true;
+  }
+
   // Create a draft conversation that is not persisted until first message arrives.
   Future<Conversation> createDraftConversation({
     String? title,
@@ -590,8 +677,15 @@ class ChatService extends ChangeNotifier {
     return conversation;
   }
 
+  void _rememberDiscardedTemporaryConversation(String id) {
+    _discardedTemporaryConversationIds.add(id);
+    final messages = _messagesCache[id] ?? const <ChatMessage>[];
+    _discardedTemporaryMessageIds.addAll(messages.map((message) => message.id));
+  }
+
   void _discardTemporaryConversation(String? id) {
     if (id == null || !_temporaryConversationIds.remove(id)) return;
+    _rememberDiscardedTemporaryConversation(id);
     final messages = _messagesCache[id] ?? const <ChatMessage>[];
     for (final message in messages) {
       _temporaryToolEvents.remove(message.id);
@@ -648,7 +742,9 @@ class ChatService extends ChangeNotifier {
     if (!_draftConversations.containsKey(id)) return false;
 
     _draftConversations.remove(id);
-    _temporaryConversationIds.remove(id);
+    if (_temporaryConversationIds.remove(id)) {
+      _rememberDiscardedTemporaryConversation(id);
+    }
     final messages = _messagesCache[id] ?? const <ChatMessage>[];
     for (final message in messages) {
       _temporaryToolEvents.remove(message.id);
@@ -1551,6 +1647,32 @@ class ChatService extends ChangeNotifier {
   }) async {
     if (!_initialized) await init();
 
+    // Late message for a discarded temporary conversation: sink it so the id
+    // becomes a discard tombstone, never touching the repository (a discarded
+    // temp conversation must not re-create a phantom conversation row).
+    if (_discardedTemporaryConversationIds.contains(conversationId)) {
+      final discarded = ChatMessage(
+        role: role,
+        content: content,
+        conversationId: conversationId,
+        modelId: modelId,
+        providerId: providerId,
+        totalTokens: totalTokens,
+        isStreaming: isStreaming,
+        reasoningText: reasoningText,
+        reasoningStartAt: reasoningStartAt,
+        reasoningFinishedAt: reasoningFinishedAt,
+        groupId: groupId,
+        subgroupId: subgroupId,
+        version: version,
+        isPreset: isPreset,
+        speakerAssistantId: speakerAssistantId,
+        quoteJson: quoteJson,
+      );
+      _discardedTemporaryMessageIds.add(discarded.id);
+      return discarded;
+    }
+
     var conversation = _conversationsCache[conversationId];
     var promotedDraft = false;
     final temporary = _temporaryConversationIds.contains(conversationId);
@@ -1821,6 +1943,10 @@ class ChatService extends ChangeNotifier {
     List<Map<String, dynamic>> events,
   ) async {
     if (!_initialized) await init();
+    // Late write for a discarded temporary message: its row never exists, and
+    // the tool-event PK is FK-bound to message_rows, so skip instead of
+    // letting the repo throw a foreign-key violation.
+    if (_discardedTemporaryMessageIds.contains(assistantMessageId)) return;
     if (_isTemporaryMessageId(assistantMessageId)) {
       _temporaryToolEvents[assistantMessageId] = List<Map<String, dynamic>>.of(
         events,
@@ -1841,6 +1967,8 @@ class ChatService extends ChangeNotifier {
     Map<String, dynamic>? metadata,
   }) async {
     if (!_initialized) await init();
+    // See setToolEvents: a discarded temporary message must not write rows.
+    if (_discardedTemporaryMessageIds.contains(assistantMessageId)) return;
     final list = List<Map<String, dynamic>>.of(
       getToolEvents(assistantMessageId),
     );
@@ -1900,6 +2028,7 @@ class ChatService extends ChangeNotifier {
     String signature,
   ) async {
     if (!_initialized) await init();
+    if (_discardedTemporaryMessageIds.contains(assistantMessageId)) return;
     if (_isTemporaryMessageId(assistantMessageId)) {
       _temporaryGeminiThoughtSigs[assistantMessageId] = signature;
       notifyListeners();
@@ -2509,6 +2638,9 @@ class ChatService extends ChangeNotifier {
       await ProactiveCareAlarmService.cancelFor(conversationId);
     }
     await _repo.clearAllData();
+    for (final id in _temporaryConversationIds) {
+      _rememberDiscardedTemporaryConversation(id);
+    }
     _messagesCache.clear();
     _conversationsCache.clear();
     _draftConversations.clear();

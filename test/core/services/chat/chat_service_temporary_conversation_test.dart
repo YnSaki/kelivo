@@ -350,6 +350,297 @@ void main() {
         expect(edited!.timestamp.isBefore(before), isFalse);
       },
     );
+
+    test(
+      'late message cannot revive a discarded temporary conversation',
+      () async {
+        final service = createService();
+        await service.init();
+
+        final temporary = await service.createDraftConversation(
+          title: 'Temporary Chat',
+          temporary: true,
+        );
+        await service.createDraftConversation(title: 'Next Chat');
+
+        final lateMessage = await service.addMessage(
+          conversationId: temporary.id,
+          role: 'assistant',
+          content: 'late secret',
+        );
+        await service.setGeminiThoughtSignature(
+          lateMessage.id,
+          'late signature',
+        );
+
+        expect(service.isTemporaryConversation(temporary.id), isTrue);
+        expect(service.getConversation(temporary.id), isNull);
+        expect(service.getMessages(temporary.id), isEmpty);
+        expect(service.getGeminiThoughtSignature(lateMessage.id), isNull);
+        expect(
+          service.getAllConversations().map((conversation) => conversation.id),
+          isNot(contains(temporary.id)),
+        );
+      },
+    );
+
+    test('late Gemini signature is ignored after temporary discard', () async {
+      final service = createService();
+      await service.init();
+
+      final temporary = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      final assistantMessage = await service.addMessage(
+        conversationId: temporary.id,
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+      );
+      await service.createDraftConversation(title: 'Next Chat');
+
+      await service.setGeminiThoughtSignature(
+        assistantMessage.id,
+        'late signature',
+      );
+
+      expect(service.getGeminiThoughtSignature(assistantMessage.id), isNull);
+    });
+
+    test('late tool event is ignored after temporary discard', () async {
+      final service = createService();
+      await service.init();
+
+      final temporary = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      final assistantMessage = await service.addMessage(
+        conversationId: temporary.id,
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+      );
+      await service.createDraftConversation(title: 'Next Chat');
+
+      await service.setToolEvents(assistantMessage.id, [
+        {'id': 'tool-1', 'name': 'search'},
+      ]);
+      await service.upsertToolEvent(
+        assistantMessage.id,
+        id: 'tool-2',
+        name: 'memory_read',
+        arguments: const <String, dynamic>{},
+      );
+
+      expect(service.getToolEvents(assistantMessage.id), isEmpty);
+    });
+
+    test(
+      'late update leaves no artifacts for a discarded temporary conversation',
+      () async {
+        final service = createService();
+        await service.init();
+
+        final temporary = await service.createDraftConversation(
+          title: 'Temporary Chat',
+          temporary: true,
+        );
+        final assistantMessage = await service.addMessage(
+          conversationId: temporary.id,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+        );
+        await service.createDraftConversation(title: 'Next Chat');
+
+        await service.updateMessageSilent(
+          assistantMessage.id,
+          content: 'late secret',
+        );
+
+        expect(service.getConversation(temporary.id), isNull);
+        expect(service.getMessages(temporary.id), isEmpty);
+      },
+    );
+
+    test(
+      'clearing data keeps discarded temporary conversations protected',
+      () async {
+        final service = createService();
+        await service.init();
+
+        final temporary = await service.createDraftConversation(
+          title: 'Temporary Chat',
+          temporary: true,
+        );
+        await service.createDraftConversation(title: 'Next Chat');
+
+        await service.clearAllData();
+
+        expect(service.isTemporaryConversation(temporary.id), isTrue);
+        await service.addMessage(
+          conversationId: temporary.id,
+          role: 'assistant',
+          content: 'late secret',
+        );
+        expect(service.getConversation(temporary.id), isNull);
+        expect(service.getAllConversations(), isEmpty);
+      },
+    );
+
+    test('cache reload preserves an active temporary conversation', () async {
+      final service = createService();
+      await service.init();
+
+      final temporary = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      final assistantMessage = await service.addMessage(
+        conversationId: temporary.id,
+        role: 'assistant',
+        content: 'still streaming',
+        isStreaming: true,
+      );
+
+      await service.reloadCachesFromDb();
+
+      expect(service.isTemporaryConversation(temporary.id), isTrue);
+      expect(
+        service.getMessages(temporary.id).map((message) => message.content),
+        ['still streaming'],
+      );
+      await service.setGeminiThoughtSignature(
+        assistantMessage.id,
+        'live signature',
+      );
+      expect(
+        service.getGeminiThoughtSignature(assistantMessage.id),
+        'live signature',
+      );
+    });
+
+    test('persistTemporaryConversation converts the conversation', () async {
+      final service = createService();
+      await service.init();
+
+      final conversation = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      await service.addMessage(
+        conversationId: conversation.id,
+        role: 'user',
+        content: 'hello',
+      );
+      final assistantMessage = await service.addMessage(
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: 'hi',
+      );
+      await service.setToolEvents(assistantMessage.id, [
+        {'id': 'tool-1', 'name': 'search'},
+      ]);
+      await service.setGeminiThoughtSignature(assistantMessage.id, 'sig-1');
+
+      final saved = await service.persistTemporaryConversation(conversation.id);
+
+      expect(saved, isTrue);
+      expect(service.isTemporaryConversation(conversation.id), isFalse);
+      expect(
+        service.getAllConversations().map((conversation) => conversation.id),
+        contains(conversation.id),
+      );
+      expect(service.getMessageCount(conversation.id), 2);
+      expect(service.getMessages(conversation.id).map((m) => m.content), [
+        'hello',
+        'hi',
+      ]);
+      // Fidelity data moved to the repository, retrievable by the same ids.
+      expect(service.getToolEvents(assistantMessage.id), isNotEmpty);
+      expect(service.getGeminiThoughtSignature(assistantMessage.id), 'sig-1');
+    });
+
+    test('persistTemporaryConversation applies the new title', () async {
+      final service = createService();
+      await service.init();
+
+      final conversation = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      await service.addMessage(
+        conversationId: conversation.id,
+        role: 'user',
+        content: 'hello',
+      );
+
+      final saved = await service.persistTemporaryConversation(
+        conversation.id,
+        newTitle: 'New Chat',
+      );
+
+      expect(saved, isTrue);
+      expect(service.getConversation(conversation.id)?.title, 'New Chat');
+    });
+
+    test('persistTemporaryConversation refuses empty and non-temporary '
+        'conversations', () async {
+      final service = createService();
+      await service.init();
+
+      final empty = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      final ordinary = await service.createDraftConversation(title: 'Ordinary');
+      await service.addMessage(
+        conversationId: ordinary.id,
+        role: 'user',
+        content: 'hello',
+      );
+
+      expect(await service.persistTemporaryConversation(empty.id), isFalse);
+      expect(await service.persistTemporaryConversation(ordinary.id), isFalse);
+      expect(service.isTemporaryConversation(empty.id), isTrue);
+    });
+
+    test('saved conversation keeps persisting like an ordinary one', () async {
+      final service = createService();
+      await service.init();
+
+      final conversation = await service.createDraftConversation(
+        title: 'Temporary Chat',
+        temporary: true,
+      );
+      final userMessage = await service.addMessage(
+        conversationId: conversation.id,
+        role: 'user',
+        content: 'hello',
+      );
+      await service.persistTemporaryConversation(conversation.id);
+
+      await service.addMessage(
+        conversationId: conversation.id,
+        role: 'user',
+        content: 'after save',
+      );
+      expect(service.getMessageCount(conversation.id), 2);
+
+      final edited = await service.appendMessageVersion(
+        messageId: userMessage.id,
+        content: 'hello, edited',
+      );
+      expect(edited, isNotNull);
+      expect(edited!.version, 1);
+      expect(service.getMessageCount(conversation.id), 3);
+      expect(
+        service.getAllConversations().map((conversation) => conversation.id),
+        contains(conversation.id),
+      );
+    });
   });
 
   group('ChatService fork conversations', () {

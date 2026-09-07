@@ -12,6 +12,7 @@ class Lucide {
       lucide.LucideIcons.messageCirclePlus;
   static const IconData MessageCircleDashed =
       lucide.LucideIcons.messageCircleDashed;
+  static const IconData Save = lucide.LucideIcons.save;
   static const IconData HatGlasses = lucide.LucideIcons.hatGlasses;
   static const IconData Box = lucide.LucideIcons.box;
   static const IconData Globe = lucide.LucideIcons.earth;

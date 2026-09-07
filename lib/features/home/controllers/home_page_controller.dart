@@ -1088,6 +1088,14 @@ class HomePageController extends ChangeNotifier {
     await _viewModel.toggleTemporaryConversation();
   }
 
+  /// Whether the current temporary conversation holds content worth saving.
+  bool get canSaveTemporaryConversation =>
+      isTemporaryConversation && messages.isNotEmpty;
+
+  Future<bool> saveTemporaryConversation() async {
+    return _viewModel.saveTemporaryConversation();
+  }
+
   void cancelQueuedMessage() {
     final restored = _viewModel.cancelCurrentQueuedInput();
     if (restored == null) return;

@@ -43,6 +43,8 @@ class HomeMobileScaffold extends StatelessWidget {
     required this.onOpenMiniMap,
     required this.onCreateNewConversation,
     required this.onToggleTemporaryConversation,
+    required this.onSaveTemporaryConversation,
+    required this.canSaveTemporaryConversation,
     required this.onSelectModel,
     required this.canToggleTemporaryConversation,
     required this.temporaryConversationEnabled,
@@ -70,6 +72,8 @@ class HomeMobileScaffold extends StatelessWidget {
   final VoidCallback onOpenMiniMap;
   final Future<void> Function() onCreateNewConversation;
   final Future<void> Function() onToggleTemporaryConversation;
+  final Future<void> Function() onSaveTemporaryConversation;
+  final bool canSaveTemporaryConversation;
   final VoidCallback onSelectModel;
   final bool canToggleTemporaryConversation;
   final bool temporaryConversationEnabled;
@@ -268,6 +272,16 @@ class HomeMobileScaffold extends StatelessWidget {
           semanticLabel: AppLocalizations.of(context)!.miniMapTooltip,
           icon: Lucide.Map,
         ),
+        if (canSaveTemporaryConversation)
+          IosIconButton(
+            size: 22,
+            minSize: 44,
+            onTap: onSaveTemporaryConversation,
+            semanticLabel: AppLocalizations.of(
+              context,
+            )!.temporaryChatSaveTooltip,
+            icon: Lucide.Save,
+          ),
         IosIconButton(
           size: 22,
           minSize: 44,
