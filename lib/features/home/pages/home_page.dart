@@ -22,6 +22,7 @@ import '../../../theme/design_tokens.dart';
 import '../../../theme/app_semantic_colors.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/assistant_provider.dart';
+import '../../../core/providers/group_chat_provider.dart';
 import '../../../core/providers/tts_provider.dart';
 import '../../../core/providers/user_provider.dart';
 import '../../../core/providers/quick_instruction_provider.dart';
@@ -98,6 +99,8 @@ import '../controllers/home_page_controller.dart';
 import '../controllers/home_view_model.dart';
 import '../controllers/conversation_viewport_port.dart';
 import '../controllers/scroll_controller.dart' as scroll_ctrl;
+import '../../group_chat/pages/group_chat_settings_page.dart';
+import '../../group_chat/widgets/group_chat_view.dart';
 import '../webview/web_chat_protocol.dart';
 import '../webview/web_chat_platform.dart';
 import '../webview/web_chat_snapshot.dart';
@@ -1042,6 +1045,12 @@ class _HomePageState extends State<HomePage>
         selectable.isNotEmpty &&
         selectable.every((m) => _controller.selectedItems.contains(m.id));
 
+    // Desktop group-chat slot: when a group chat is opened from the sidebar,
+    // the content column swaps to GroupChatView instead of pushing a
+    // full-window route over the desktop shell.
+    final groupChatId = _controller.activeGroupChatId;
+    final groupChatMode = _controller.isGroupChatMode && groupChatId != null;
+
     return HomeDesktopScaffold(
       scaffoldKey: _scaffoldKey,
       assistantPickerCloseTick: _assistantPickerCloseTick,
@@ -1100,20 +1109,67 @@ class _HomePageState extends State<HomePage>
       onRightSidebarWidthChanged: _controller.updateRightSidebarWidth,
       onRightSidebarWidthChangeEnd: _controller.saveRightSidebarWidth,
       buildAssistantBackground: _buildAssistantBackground,
-      appBarOverride: _controller.selecting
-          ? ChatSelectionAppBar(
-              selectedCount: _controller.selectedCount,
-              allSelected: allSelected,
-              onClose: _controller.cancelSelection,
-              onOpenMiniMap: () {
-                unawaited(_openSelectionMiniMap());
-              },
-              miniMapKey: _selectionMiniMapKey,
-              onToggleSelectAll: _controller.toggleSelectAll,
-              onInvertSelection: _controller.invertSelection,
+      appBarOverride: groupChatMode
+          ? _GroupChatDesktopAppBar(
+              groupChatId: groupChatId,
+              onOpenSettings: () => showGroupChatSettingsDesktopDialog(
+                context,
+                groupChatId: groupChatId,
+              ),
             )
-          : null,
-      body: _wrapWithDropTarget(_buildTabletBody(context, cs)),
+          : (_controller.selecting
+                ? ChatSelectionAppBar(
+                    selectedCount: _controller.selectedCount,
+                    allSelected: allSelected,
+                    onClose: _controller.cancelSelection,
+                    onOpenMiniMap: () {
+                      unawaited(_openSelectionMiniMap());
+                    },
+                    miniMapKey: _selectionMiniMapKey,
+                    onToggleSelectAll: _controller.toggleSelectAll,
+                    onInvertSelection: _controller.invertSelection,
+                  )
+                : null),
+      body: _buildTabletBodyWithGroupChat(context, cs, groupChatId),
+    );
+  }
+
+  /// Content column of the desktop/tablet chat layout with the group-chat
+  /// slot merged in. Every group opened in the session stays mounted (shell
+  /// keep-alive philosophy) with its own keyed [GroupChatView]: rounds and
+  /// queued sends survive switching between groups or back to single chat.
+  /// The [IndexedStack] swaps which one is visible; a group's view is only
+  /// disposed when the group is deleted (see
+  /// HomePageController._onGroupChatsChanged). The single-chat body keeps
+  /// its [IndexedStack] parenting even with zero opened groups so the last
+  /// deletion does not remount it.
+  Widget _buildTabletBodyWithGroupChat(
+    BuildContext context,
+    ColorScheme cs,
+    String? groupChatId,
+  ) {
+    // The inner Scaffold uses extendBodyBehindAppBar; offset the group
+    // content below the group header, mirroring _chatTopOverlayInset.
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final openedIds = _controller.openedGroupChatIds;
+    var index = 0;
+    if (_controller.isGroupChatMode && groupChatId != null) {
+      index = openedIds.indexOf(groupChatId) + 1;
+    }
+    return IndexedStack(
+      index: index,
+      children: [
+        _wrapWithDropTarget(_buildTabletBody(context, cs)),
+        for (final id in openedIds)
+          Padding(
+            padding: EdgeInsets.only(top: topPadding),
+            child: GroupChatView(
+              key: ValueKey('desktop_group_chat_slot_$id'),
+              groupChatId: id,
+              inputFocusNode: _controller.groupInputFocusFor(id),
+            ),
+          ),
+      ],
     );
   }
 
@@ -3535,4 +3591,57 @@ class _HomePageState extends State<HomePage>
     }
     return result;
   }
+}
+
+/// Header of the desktop group-chat slot, shown in place of the
+/// conversation app bar while a group view is visible (mirrors the
+/// [ChatSelectionAppBar] override pattern). Settings opens the desktop
+/// dialog. Back navigation goes through the sidebar (single-chat actions
+/// hide the slot while the group keeps running).
+class _GroupChatDesktopAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
+  const _GroupChatDesktopAppBar({
+    required this.groupChatId,
+    required this.onOpenSettings,
+  });
+
+  final String groupChatId;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final group = context.watch<GroupChatProvider>().getById(groupChatId);
+    return AppBar(
+      centerTitle: true,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      title: Text(
+        group?.name ?? '',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: AppFontWeights.semibold,
+          color: cs.onSurface,
+        ),
+      ),
+      actions: [
+        IosIconButton(
+          icon: Lucide.Settings,
+          size: 22,
+          minSize: 44,
+          semanticLabel: l10n.groupChatSettingsTitle,
+          onTap: onOpenSettings,
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }

@@ -28,6 +28,7 @@ import '../../../core/services/haptics.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/proactive_care_alarm_service.dart';
 import '../../../core/services/logging/flutter_logger.dart';
+import '../../../core/providers/group_chat_provider.dart';
 import '../../../core/services/storage/message_locate_bus.dart';
 import '../../../core/services/workspace/linux_sandbox_service.dart';
 import '../../../core/services/workspace/workspace_execution_context.dart';
@@ -39,6 +40,7 @@ import '../../chat/models/tool_ui_part.dart';
 import '../../chat/widgets/message_edit_sheet.dart';
 import '../../chat/widgets/message_export_sheet.dart';
 import '../../../desktop/message_edit_dialog.dart';
+import '../../../desktop/group_chat_navigation_bus.dart';
 import '../../../desktop/hotkeys/chat_action_bus.dart';
 import '../../../desktop/hotkeys/sidebar_tab_bus.dart';
 import 'chat_controller.dart';
@@ -165,6 +167,7 @@ class HomePageController extends ChangeNotifier {
   bool _wasCurrentHeadlessActive = false;
   StreamSubscription<ChatAction>? _chatActionSub;
   StreamSubscription<MessageLocateTarget>? _locateSub;
+  StreamSubscription<GroupChatNavigationTarget>? _groupChatNavSub;
   ReceivePort? _proactiveCarePort;
   final Completer<void> _proactiveCareReady = Completer<void>();
 
@@ -217,6 +220,17 @@ class HomePageController extends ChangeNotifier {
   bool _isGlobalSearchMode = false;
   String _globalSearchQuery = '';
 
+  // Desktop group-chat slot (Chat tab content swap, see GroupChatNavigationBus).
+  // Every group opened in the current session stays alive: single-chat
+  // navigation only hides the slot while all groups keep streaming in the
+  // background, and only deleting a group disposes its view (whose dispose
+  // requests a round stop). _groupChatId is the currently shown group.
+  final List<String> _openedGroupIds = <String>[];
+  String? _groupChatId;
+  bool _groupChatVisible = false;
+  final Map<String, FocusNode> _groupInputFocuses = <String, FocusNode>{};
+  GroupChatProvider? _groupChatProvider;
+
   // Message-level spotlight target after selecting a global search result
   String? _spotlightMessageId;
   int _spotlightToken = 0;
@@ -267,6 +281,20 @@ class HomePageController extends ChangeNotifier {
   String? get spotlightMessageId => _spotlightMessageId;
   int get spotlightToken => _spotlightToken;
   UserMessageEditState? get userMessageEditState => _userMessageEditState;
+
+  // Desktop group-chat slot
+  List<String> get openedGroupChatIds => List.unmodifiable(_openedGroupIds);
+  String? get activeGroupChatId => _groupChatId;
+  bool get isGroupChatMode => _groupChatVisible && _groupChatId != null;
+
+  /// Composer focus node of [groupId]'s group view. Lazily created and owned
+  /// by this controller so hotkeys can target the (possibly hidden) group
+  /// view. Disposed when the group is removed from the slot (deleted).
+  FocusNode groupInputFocusFor(String groupId) =>
+      _groupInputFocuses.putIfAbsent(
+        groupId,
+        () => FocusNode(debugLabel: 'groupChatInputFocus_$groupId'),
+      );
   bool get isUserMessageEditActive => _userMessageEditState != null;
 
   static double get sidebarMinWidth => _sidebarMinWidth;
@@ -674,12 +702,15 @@ class HomePageController extends ChangeNotifier {
         _inputFocus.requestFocus();
       });
     }
+    _setupGroupChatSlot();
     _chatActionSub = ChatActionBus.instance.stream.listen((action) {
       final ctx = _context;
       if (!ctx.mounted) return;
       final settingsProvider = ctx.read<SettingsProvider>();
       switch (action) {
         case ChatAction.newTopic:
+          // Single-chat specific; the group-chat slot has its own composer.
+          if (isGroupChatMode) break;
           unawaited(createNewConversationAnimated());
           break;
         case ChatAction.toggleLeftPanelTopics:
@@ -705,12 +736,20 @@ class HomePageController extends ChangeNotifier {
           break;
         case ChatAction.focusInput:
           if (isDesktopPlatform) {
+            final groupMode = isGroupChatMode;
+            final groupId = groupMode ? _groupChatId : null;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _inputFocus.requestFocus();
+              if (groupId != null) {
+                groupInputFocusFor(groupId).requestFocus();
+              } else {
+                _inputFocus.requestFocus();
+              }
             });
           }
           break;
         case ChatAction.switchModel:
+          // Single-chat specific; the group-chat slot has no model selector.
+          if (isGroupChatMode) break;
           unawaited(
             showModelSelectSheet(ctx, conversation: currentConversation),
           );
@@ -726,6 +765,8 @@ class HomePageController extends ChangeNotifier {
   }
 
   void enterGlobalSearchMode({bool preserveQuery = true}) {
+    // Global search operates on single-chat content; leave the group slot.
+    exitGroupChatMode();
     _isGlobalSearchMode = true;
     if (!preserveQuery) _globalSearchQuery = '';
     notifyListeners();
@@ -734,6 +775,81 @@ class HomePageController extends ChangeNotifier {
   void exitGlobalSearchMode({bool clearQuery = true}) {
     _isGlobalSearchMode = false;
     if (clearQuery) _globalSearchQuery = '';
+    notifyListeners();
+  }
+
+  // ============================================================================
+  // Desktop group-chat slot
+  // ============================================================================
+
+  /// Hides the group-chat slot and returns to the single-chat view. Every
+  /// opened group stays mounted offstage, so all their rounds keep running
+  /// in the background (matches the shell's keep-alive philosophy).
+  void exitGroupChatMode() {
+    if (!_groupChatVisible) return;
+    _groupChatVisible = false;
+    notifyListeners();
+  }
+
+  void _setupGroupChatSlot() {
+    if (!isDesktopPlatform) return;
+    _groupChatProvider = _context.read<GroupChatProvider>();
+    _groupChatProvider!.addListener(_onGroupChatsChanged);
+    _groupChatNavSub = GroupChatNavigationBus.instance.stream.listen((target) {
+      if (_disposed) return;
+      if (target.exit) {
+        exitGroupChatMode();
+        return;
+      }
+      _openGroupChatSlot(target.groupChatId!);
+    });
+  }
+
+  void _openGroupChatSlot(String groupChatId) {
+    // Opening an already-open group just switches back to its live view
+    // (round/queue state untouched).
+    if (!_openedGroupIds.contains(groupChatId)) {
+      _openedGroupIds.add(groupChatId);
+    }
+    if (_groupChatId != groupChatId && _selecting) {
+      // Entering group mode cancels the single-chat selection; the
+      // selection app bar belongs to the single-chat content now hidden.
+      cancelSelection();
+    }
+    _groupChatId = groupChatId;
+    _groupChatVisible = true;
+    notifyListeners();
+  }
+
+  /// Drops deleted groups from the slot (disposing their views and rounds);
+  /// the currently shown group falls back to the most recently opened one.
+  void _onGroupChatsChanged() {
+    if (_disposed) return;
+    if (_openedGroupIds.isEmpty) return;
+    final gp = _groupChatProvider;
+    if (gp == null || !gp.loaded) return;
+    final removed = _openedGroupIds
+        .where((id) => gp.getById(id) == null)
+        .toList(growable: false);
+    if (removed.isEmpty) return;
+    for (final id in removed) {
+      _openedGroupIds.remove(id);
+      // Dispose the composer focus node only after the group's widget
+      // subtree has unmounted (this listener runs synchronously inside
+      // GroupChatProvider.notifyListeners, one frame ahead of the rebuild
+      // that unmounts the view).
+      final node = _groupInputFocuses.remove(id);
+      if (node == null) continue;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        node.dispose();
+      });
+    }
+    if (_groupChatId == null || !_openedGroupIds.contains(_groupChatId)) {
+      _groupChatId = _openedGroupIds.isEmpty ? null : _openedGroupIds.last;
+    }
+    if (_groupChatId == null) {
+      _groupChatVisible = false;
+    }
     notifyListeners();
   }
 
@@ -1362,7 +1478,18 @@ class HomePageController extends ChangeNotifier {
   // ============================================================================
 
   Future<void> switchConversationAnimated(String id) async {
-    if (currentConversation?.id == id) return;
+    // Any single-chat navigation leaves the desktop group-chat slot (the
+    // selected group stays mounted offstage, its round keeps running).
+    final leavingGroupMode = isGroupChatMode;
+    exitGroupChatMode();
+    if (currentConversation?.id == id) {
+      if (leavingGroupMode && isDesktopPlatform) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _inputFocus.requestFocus();
+        });
+      }
+      return;
+    }
     multiAIEngine.exit();
     try {
       await _viewModel.flushCurrentConversationProgress();
@@ -1420,6 +1547,8 @@ class HomePageController extends ChangeNotifier {
   Future<bool> _createNewConversationAnimated({
     ChatInputData? initialDraft,
   }) async {
+    // Any single-chat navigation leaves the desktop group-chat slot.
+    exitGroupChatMode();
     // Guardrail: block rapid creation if conversation has only preset messages
     if (_shouldBlockNewConversation) {
       final l10n = AppLocalizations.of(_context)!;
@@ -3168,6 +3297,16 @@ class HomePageController extends ChangeNotifier {
     try {
       _locateSub?.cancel();
     } catch (_) {}
+    try {
+      _groupChatNavSub?.cancel();
+    } catch (_) {}
+    try {
+      _groupChatProvider?.removeListener(_onGroupChatsChanged);
+    } catch (_) {}
+    for (final node in _groupInputFocuses.values) {
+      node.dispose();
+    }
+    _groupInputFocuses.clear();
     _chatController.dispose();
     _streamController.dispose();
     super.dispose();

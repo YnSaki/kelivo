@@ -17,17 +17,57 @@ import '../../../shared/widgets/ios_tactile.dart';
 import '../../../shared/widgets/snackbar.dart';
 import '../../../theme/app_font_weights.dart';
 import '../../../utils/sandbox_path_resolver.dart';
+import '../../../desktop/group_chat_dialog_shell.dart';
 import '../widgets/group_avatar.dart';
 import 'group_chat_advanced_settings_page.dart';
 import 'group_chat_director_logs_page.dart';
 import 'group_chat_invite_assistants_sheet.dart';
 
 class GroupChatSettingsPage extends StatefulWidget {
-  const GroupChatSettingsPage({super.key, required this.groupChatId});
+  const GroupChatSettingsPage({
+    super.key,
+    required this.groupChatId,
+    this.embedded = false,
+  });
   final String groupChatId;
+
+  /// When true the page renders its body only (no Scaffold/AppBar) so it can
+  /// be hosted inside the desktop settings dialog (see
+  /// [showGroupChatSettingsDesktopDialog]). Mobile keeps the full-screen
+  /// route form.
+  final bool embedded;
 
   @override
   State<GroupChatSettingsPage> createState() => _GroupChatSettingsPageState();
+}
+
+/// Desktop dialog host for the group settings body. Mobile keeps pushing
+/// [GroupChatSettingsPage] as a full-screen route.
+Future<void> showGroupChatSettingsDesktopDialog(
+  BuildContext context, {
+  required String groupChatId,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+  final l10n = AppLocalizations.of(context)!;
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (_) => Dialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
+        child: GroupChatDialogShell(
+          title: l10n.groupChatSettingsTitle,
+          child: GroupChatSettingsPage(
+            groupChatId: groupChatId,
+            embedded: true,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
@@ -53,6 +93,16 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
     final gp = context.watch<GroupChatProvider>();
     final group = gp.getById(widget.groupChatId);
     if (group == null) {
+      if (widget.embedded) {
+        // The group vanished while the dialog was open (e.g. deleted via
+        // restore/backup somewhere else). Close the dialog instead of
+        // leaving a dead not-found body, mirroring the assistant desktop
+        // dialog.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).maybePop();
+        });
+        return Center(child: Text(l10n.groupChatNotFound));
+      }
       return Scaffold(
         appBar: AppBar(title: Text(l10n.groupChatSettingsTitle)),
         body: Center(child: Text(l10n.groupChatNotFound)),
@@ -63,6 +113,115 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
     final byId = {for (final a in assistants) a.id: a};
     final user = context.watch<UserProvider>();
 
+    final body = ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+      children: [
+        // Basic info
+        Text(
+          l10n.groupChatBasicInfo,
+          style: TextStyle(
+            fontWeight: AppFontWeights.emphasis,
+            color: cs.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _avatar(group),
+            const SizedBox(width: 12),
+            Expanded(
+              child: IosFormTextField(
+                label: l10n.groupChatNameHint,
+                controller: _nameCtrl,
+                hintText: l10n.groupChatNameHint,
+                onChanged: (v) async {
+                  await gp.updateGroup(group.copyWith(name: v.trim()));
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        // Members
+        Text(
+          l10n.groupChatMembers,
+          style: TextStyle(
+            fontWeight: AppFontWeights.emphasis,
+            color: cs.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _MemberGrid(
+          group: group,
+          members: members,
+          assistantsById: byId,
+          userName: user.name,
+          userAvatar: user.avatarType == 'file' ? user.avatarValue : null,
+          onInvite: () => _invite(context, group),
+          onRemoveAssistant: (id) => gp.removeAssistant(group.id, id),
+        ),
+        const SizedBox(height: 24),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Lucide.Settings2, color: cs.primary),
+          title: Text(l10n.groupChatAdvancedSettings),
+          trailing: const Icon(Lucide.ChevronRight, size: 18),
+          onTap: () {
+            if (widget.embedded) {
+              showGroupChatAdvancedSettingsDialog(
+                context,
+                groupChatId: group.id,
+              );
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    GroupChatAdvancedSettingsPage(groupChatId: group.id),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Lucide.FileText, color: cs.primary),
+          title: Text(l10n.groupChatDirectorLogs),
+          trailing: const Icon(Lucide.ChevronRight, size: 18),
+          onTap: () {
+            if (widget.embedded) {
+              showGroupChatDirectorLogsDialog(context, groupChatId: group.id);
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    GroupChatDirectorLogsPage(groupChatId: group.id),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        FilledButton.tonal(
+          style: FilledButton.styleFrom(
+            foregroundColor: cs.onSurface,
+            backgroundColor: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+          ),
+          onPressed: () => _confirmDuplicate(context, group),
+          child: Text(l10n.groupChatDuplicate),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.tonal(
+          style: FilledButton.styleFrom(
+            foregroundColor: cs.error,
+            backgroundColor: cs.error.withValues(alpha: 0.12),
+          ),
+          onPressed: () => _confirmDelete(context, group),
+          child: Text(l10n.groupChatDelete),
+        ),
+      ],
+    );
+
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         leading: IosIconButton(
@@ -73,104 +232,7 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
         ),
         title: Text(l10n.groupChatSettingsTitle),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-        children: [
-          // Basic info
-          Text(
-            l10n.groupChatBasicInfo,
-            style: TextStyle(
-              fontWeight: AppFontWeights.emphasis,
-              color: cs.onSurface.withValues(alpha: 0.8),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _avatar(group),
-              const SizedBox(width: 12),
-              Expanded(
-                child: IosFormTextField(
-                  label: l10n.groupChatNameHint,
-                  controller: _nameCtrl,
-                  hintText: l10n.groupChatNameHint,
-                  onChanged: (v) async {
-                    await gp.updateGroup(group.copyWith(name: v.trim()));
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Members
-          Text(
-            l10n.groupChatMembers,
-            style: TextStyle(
-              fontWeight: AppFontWeights.emphasis,
-              color: cs.onSurface.withValues(alpha: 0.8),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _MemberGrid(
-            group: group,
-            members: members,
-            assistantsById: byId,
-            userName: user.name,
-            userAvatar: user.avatarType == 'file' ? user.avatarValue : null,
-            onInvite: () => _invite(context, group),
-            onRemoveAssistant: (id) => gp.removeAssistant(group.id, id),
-          ),
-          const SizedBox(height: 24),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Lucide.Settings2, color: cs.primary),
-            title: Text(l10n.groupChatAdvancedSettings),
-            trailing: const Icon(Lucide.ChevronRight, size: 18),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      GroupChatAdvancedSettingsPage(groupChatId: group.id),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Lucide.FileText, color: cs.primary),
-            title: Text(l10n.groupChatDirectorLogs),
-            trailing: const Icon(Lucide.ChevronRight, size: 18),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      GroupChatDirectorLogsPage(groupChatId: group.id),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              foregroundColor: cs.onSurface,
-              backgroundColor: cs.surfaceContainerHighest.withValues(
-                alpha: 0.6,
-              ),
-            ),
-            onPressed: () => _confirmDuplicate(context, group),
-            child: Text(l10n.groupChatDuplicate),
-          ),
-          const SizedBox(height: 8),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              foregroundColor: cs.error,
-              backgroundColor: cs.error.withValues(alpha: 0.12),
-            ),
-            onPressed: () => _confirmDelete(context, group),
-            child: Text(l10n.groupChatDelete),
-          ),
-        ],
-      ),
+      body: body,
     );
   }
 
@@ -250,6 +312,8 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
     await context.read<GroupChatProvider>().duplicateGroup(group);
     if (!context.mounted) return;
     showAppSnackBar(context, message: l10n.groupChatDuplicateDone);
+    // Closes the settings route (mobile) or the settings dialog (embedded
+    // desktop), matching the delete flow's exit semantics.
     Navigator.of(context).pop();
   }
 
@@ -275,6 +339,13 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
     if (ok != true || !context.mounted) return;
     await context.read<GroupChatProvider>().deleteGroup(group.id);
     if (!context.mounted) return;
+    if (widget.embedded) {
+      // Desktop dialog: close it. If the deleted group was active in the
+      // desktop group-chat slot, the slot controller drops the view via its
+      // GroupChatProvider listener.
+      Navigator.of(context).pop();
+      return;
+    }
     Navigator.of(context).popUntil((r) => r.isFirst || r.settings.name == null);
     // Pop settings + maybe chat
     if (context.mounted && Navigator.of(context).canPop()) {

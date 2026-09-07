@@ -51,6 +51,7 @@ import '../../../core/providers/tag_provider.dart';
 import '../../assistant/widgets/assistant_select_sheet.dart';
 import '../../../desktop/hotkeys/sidebar_tab_bus.dart';
 import '../../../desktop/desktop_settings_navigation_bus.dart';
+import '../../../desktop/group_chat_navigation_bus.dart';
 import 'dart:async';
 import '../../../features/search/services/global_session_search_service.dart';
 import 'assistant_avatar.dart';
@@ -3708,6 +3709,12 @@ class _SideDrawerState extends State<SideDrawer> with TickerProviderStateMixin {
   // apply search filter on assistant and group-chat names.
   void _openGroupChat(String groupChatId) {
     _closeAssistantPicker();
+    if (_isDesktop) {
+      // Desktop: embed the group chat into the Chat tab content slot instead
+      // of pushing a full-window route over the desktop shell.
+      GroupChatNavigationBus.instance.openGroupChat(groupChatId);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GroupChatPage(groupChatId: groupChatId),
@@ -3717,6 +3724,12 @@ class _SideDrawerState extends State<SideDrawer> with TickerProviderStateMixin {
 
   void _openGroupChatSettings(String groupChatId) {
     _closeAssistantPicker();
+    if (_isDesktop) {
+      // Desktop: settings opens as a dialog (see
+      // showGroupChatSettingsDesktopDialog) instead of a full-window route.
+      showGroupChatSettingsDesktopDialog(context, groupChatId: groupChatId);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GroupChatSettingsPage(groupChatId: groupChatId),

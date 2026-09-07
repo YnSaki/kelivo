@@ -14,16 +14,55 @@ import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../theme/app_font_weights.dart';
+import '../../../desktop/group_chat_dialog_shell.dart';
 import '../services/director_log_builder.dart';
 
 class GroupChatDirectorLogsPage extends StatefulWidget {
-  const GroupChatDirectorLogsPage({super.key, required this.groupChatId});
+  const GroupChatDirectorLogsPage({
+    super.key,
+    required this.groupChatId,
+    this.embedded = false,
+  });
 
   final String groupChatId;
+
+  /// When true the page renders its body only (no Scaffold/AppBar) so it can
+  /// be hosted inside the desktop dialog (see
+  /// [showGroupChatDirectorLogsDialog]).
+  final bool embedded;
 
   @override
   State<GroupChatDirectorLogsPage> createState() =>
       _GroupChatDirectorLogsPageState();
+}
+
+/// Desktop dialog host for the director logs body. Stacks on top of the
+/// group settings dialog when opened from there (embedded mode).
+Future<void> showGroupChatDirectorLogsDialog(
+  BuildContext context, {
+  required String groupChatId,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+  final l10n = AppLocalizations.of(context)!;
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (_) => Dialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 640),
+        child: GroupChatDialogShell(
+          title: l10n.groupChatDirectorLogs,
+          child: GroupChatDirectorLogsPage(
+            groupChatId: groupChatId,
+            embedded: true,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _GroupChatDirectorLogsPageState extends State<GroupChatDirectorLogsPage> {
@@ -78,6 +117,16 @@ class _GroupChatDirectorLogsPageState extends State<GroupChatDirectorLogsPage> {
     final group = groupProvider.getById(widget.groupChatId);
 
     if (group == null) {
+      if (widget.embedded) {
+        // The group vanished while the dialog was open (e.g. deleted via
+        // restore/backup somewhere else). Close the dialog instead of
+        // leaving a dead not-found body, mirroring the assistant desktop
+        // dialog.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).maybePop();
+        });
+        return Center(child: Text(l10n.groupChatNotFound));
+      }
       return Scaffold(
         appBar: AppBar(title: Text(l10n.groupChatDirectorLogs)),
         body: Center(child: Text(l10n.groupChatNotFound)),
@@ -111,6 +160,35 @@ class _GroupChatDirectorLogsPageState extends State<GroupChatDirectorLogsPage> {
         ? l10n.groupChatNoAssistants
         : l10n.groupChatDirectorLogsEmpty;
 
+    final body = entries.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                emptyMessage,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6)),
+              ),
+            ),
+          )
+        : ListView.separated(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
+            itemCount: entries.length + 1,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return _LogInfoBanner(
+                  text: l10n.groupChatDirectorLogsEphemeral,
+                );
+              }
+              return _DirectorLogCard(
+                entry: entries[index - 1],
+                assistantsById: assistantsById,
+              );
+            },
+          );
+
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         leading: IosIconButton(
@@ -121,33 +199,7 @@ class _GroupChatDirectorLogsPageState extends State<GroupChatDirectorLogsPage> {
         ),
         title: Text(l10n.groupChatDirectorLogs),
       ),
-      body: entries.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  emptyMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6)),
-                ),
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
-              itemCount: entries.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _LogInfoBanner(
-                    text: l10n.groupChatDirectorLogsEphemeral,
-                  );
-                }
-                return _DirectorLogCard(
-                  entry: entries[index - 1],
-                  assistantsById: assistantsById,
-                );
-              },
-            ),
+      body: body,
     );
   }
 

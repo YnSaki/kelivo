@@ -11,15 +11,54 @@ import '../../../shared/widgets/ios_form_text_field.dart';
 import '../../../shared/widgets/ios_settings_section.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../theme/app_font_weights.dart';
+import '../../../desktop/group_chat_dialog_shell.dart';
 import '../../model/widgets/model_select_sheet.dart';
 
 class GroupChatAdvancedSettingsPage extends StatefulWidget {
-  const GroupChatAdvancedSettingsPage({super.key, required this.groupChatId});
+  const GroupChatAdvancedSettingsPage({
+    super.key,
+    required this.groupChatId,
+    this.embedded = false,
+  });
   final String groupChatId;
+
+  /// When true the page renders its body only (no Scaffold/AppBar) so it can
+  /// be hosted inside the desktop dialog (see
+  /// [showGroupChatAdvancedSettingsDialog]).
+  final bool embedded;
 
   @override
   State<GroupChatAdvancedSettingsPage> createState() =>
       _GroupChatAdvancedSettingsPageState();
+}
+
+/// Desktop dialog host for the advanced settings body. Stacks on top of the
+/// group settings dialog when opened from there (embedded mode).
+Future<void> showGroupChatAdvancedSettingsDialog(
+  BuildContext context, {
+  required String groupChatId,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+  final l10n = AppLocalizations.of(context)!;
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (_) => Dialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
+        child: GroupChatDialogShell(
+          title: l10n.groupChatAdvancedSettings,
+          child: GroupChatAdvancedSettingsPage(
+            groupChatId: groupChatId,
+            embedded: true,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _GroupChatAdvancedSettingsPageState
@@ -59,6 +98,16 @@ class _GroupChatAdvancedSettingsPageState
     final settings = context.watch<SettingsProvider>();
     final group = gp.getById(widget.groupChatId);
     if (group == null) {
+      if (widget.embedded) {
+        // The group vanished while the dialog was open (e.g. deleted via
+        // restore/backup somewhere else). Close the dialog instead of
+        // leaving a dead not-found body, mirroring the assistant desktop
+        // dialog.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).maybePop();
+        });
+        return Center(child: Text(l10n.groupChatNotFound));
+      }
       return Scaffold(
         appBar: AppBar(title: Text(l10n.groupChatAdvancedSettings)),
         body: Center(child: Text(l10n.groupChatNotFound)),
@@ -70,6 +119,150 @@ class _GroupChatAdvancedSettingsPageState
         ? l10n.groupChatDirectorModelFollowGlobal
         : '${group.directorModelProvider}/${group.directorModelId}';
 
+    final body = ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+      children: [
+        _sectionHeader(context, l10n.groupChatAdvancedDirectorSection),
+        const SizedBox(height: 10),
+        IosSettingsSection(
+          children: [
+            IosSettingsNavRow(
+              icon: Lucide.Bot,
+              label: l10n.groupChatDirectorModel,
+              detailText: modelLabel,
+              onTap: () async {
+                final selected = await showModelSelector(context);
+                if (selected == null || !context.mounted) return;
+                if (selected.providerKey.isEmpty || selected.modelId.isEmpty) {
+                  await gp.updateGroup(
+                    group.copyWith(clearDirectorModel: true),
+                  );
+                } else {
+                  await gp.updateGroup(
+                    group.copyWith(
+                      directorModelProvider: selected.providerKey,
+                      directorModelId: selected.modelId,
+                    ),
+                  );
+                }
+              },
+            ),
+            IosSettingsDivider(),
+            IosSettingsNavRow(
+              icon: Lucide.RotateCcw,
+              label: l10n.groupChatDirectorModelClear,
+              onTap: () async {
+                await gp.updateGroup(group.copyWith(clearDirectorModel: true));
+              },
+            ),
+            IosSettingsDivider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: IosFormTextField(
+                label: l10n.groupChatDirectorSystemPrompt,
+                controller: _promptCtrl,
+                maxLines: 8,
+                minLines: 5,
+                onChanged: (v) async {
+                  await gp.updateGroup(group.copyWith(directorSystemPrompt: v));
+                },
+              ),
+            ),
+            IosSettingsDivider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: _variablesBlock(context, l10n, cs, group, gp),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _sectionHeader(context, l10n.groupChatAdvancedAssistantSection),
+        const SizedBox(height: 10),
+        IosSettingsSection(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: IosFormTextField(
+                label: l10n.groupChatMaxAssistantMessages,
+                controller: _maxCtrl,
+                keyboardType: TextInputType.number,
+                onChanged: (v) async {
+                  final n = int.tryParse(v) ?? 3;
+                  await gp.updateGroup(
+                    group.copyWith(
+                      maxAssistantMessagesPerRound: n.clamp(1, 20),
+                    ),
+                  );
+                },
+              ),
+            ),
+            IosSettingsDivider(),
+            IosSettingsNavRow(
+              icon: Lucide.MessageSquare,
+              label: l10n.groupChatInjectionMode,
+              detailText: _modeLabel(l10n, group.assistantDetailInjectionMode),
+              onTap: () => _pickInjectionMode(context, group, gp),
+            ),
+            if (group.assistantDetailInjectionMode.needsN) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                child: IosFormTextField(
+                  label: l10n.groupChatInjectionN,
+                  controller: _nCtrl,
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) async {
+                    final n = int.tryParse(v) ?? 5;
+                    await gp.updateGroup(
+                      group.copyWith(
+                        assistantDetailInjectionN: n.clamp(1, 100),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            IosSettingsDivider(),
+            IosSettingsSwitchRow(
+              icon: Lucide.User,
+              label: l10n.groupChatInjectGroupMembersTitle,
+              value: group.injectGroupMembersIntoAssistantSystemPrompt,
+              onChanged: (v) async {
+                await gp.updateGroup(
+                  group.copyWith(
+                    injectGroupMembersIntoAssistantSystemPrompt: v,
+                  ),
+                );
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  l10n.groupChatInjectGroupMembersDesc,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${l10n.groupChatDirectorModelFollowGlobal}: '
+          '${settings.currentModelProvider}/${settings.currentModelId}',
+          style: TextStyle(
+            fontSize: 12,
+            color: cs.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         leading: IosIconButton(
@@ -80,156 +273,7 @@ class _GroupChatAdvancedSettingsPageState
         ),
         title: Text(l10n.groupChatAdvancedSettings),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-        children: [
-          _sectionHeader(context, l10n.groupChatAdvancedDirectorSection),
-          const SizedBox(height: 10),
-          IosSettingsSection(
-            children: [
-              IosSettingsNavRow(
-                icon: Lucide.Bot,
-                label: l10n.groupChatDirectorModel,
-                detailText: modelLabel,
-                onTap: () async {
-                  final selected = await showModelSelector(context);
-                  if (selected == null || !context.mounted) return;
-                  if (selected.providerKey.isEmpty ||
-                      selected.modelId.isEmpty) {
-                    await gp.updateGroup(
-                      group.copyWith(clearDirectorModel: true),
-                    );
-                  } else {
-                    await gp.updateGroup(
-                      group.copyWith(
-                        directorModelProvider: selected.providerKey,
-                        directorModelId: selected.modelId,
-                      ),
-                    );
-                  }
-                },
-              ),
-              IosSettingsDivider(),
-              IosSettingsNavRow(
-                icon: Lucide.RotateCcw,
-                label: l10n.groupChatDirectorModelClear,
-                onTap: () async {
-                  await gp.updateGroup(
-                    group.copyWith(clearDirectorModel: true),
-                  );
-                },
-              ),
-              IosSettingsDivider(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                child: IosFormTextField(
-                  label: l10n.groupChatDirectorSystemPrompt,
-                  controller: _promptCtrl,
-                  maxLines: 8,
-                  minLines: 5,
-                  onChanged: (v) async {
-                    await gp.updateGroup(
-                      group.copyWith(directorSystemPrompt: v),
-                    );
-                  },
-                ),
-              ),
-              IosSettingsDivider(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                child: _variablesBlock(context, l10n, cs, group, gp),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _sectionHeader(context, l10n.groupChatAdvancedAssistantSection),
-          const SizedBox(height: 10),
-          IosSettingsSection(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: IosFormTextField(
-                  label: l10n.groupChatMaxAssistantMessages,
-                  controller: _maxCtrl,
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) async {
-                    final n = int.tryParse(v) ?? 3;
-                    await gp.updateGroup(
-                      group.copyWith(
-                        maxAssistantMessagesPerRound: n.clamp(1, 20),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              IosSettingsDivider(),
-              IosSettingsNavRow(
-                icon: Lucide.MessageSquare,
-                label: l10n.groupChatInjectionMode,
-                detailText: _modeLabel(
-                  l10n,
-                  group.assistantDetailInjectionMode,
-                ),
-                onTap: () => _pickInjectionMode(context, group, gp),
-              ),
-              if (group.assistantDetailInjectionMode.needsN) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                  child: IosFormTextField(
-                    label: l10n.groupChatInjectionN,
-                    controller: _nCtrl,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) async {
-                      final n = int.tryParse(v) ?? 5;
-                      await gp.updateGroup(
-                        group.copyWith(
-                          assistantDetailInjectionN: n.clamp(1, 100),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-              IosSettingsDivider(),
-              IosSettingsSwitchRow(
-                icon: Lucide.User,
-                label: l10n.groupChatInjectGroupMembersTitle,
-                value: group.injectGroupMembersIntoAssistantSystemPrompt,
-                onChanged: (v) async {
-                  await gp.updateGroup(
-                    group.copyWith(
-                      injectGroupMembersIntoAssistantSystemPrompt: v,
-                    ),
-                  );
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 2, 12, 10),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    l10n.groupChatInjectGroupMembersDesc,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.6),
-                      height: 1.3,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${l10n.groupChatDirectorModelFollowGlobal}: '
-            '${settings.currentModelProvider}/${settings.currentModelId}',
-            style: TextStyle(
-              fontSize: 12,
-              color: cs.onSurface.withValues(alpha: 0.55),
-            ),
-          ),
-        ],
-      ),
+      body: body,
     );
   }
 
