@@ -659,6 +659,43 @@ void main() {
     },
   );
 
+  test('listFontEntries returns font files with sizes and is empty without a '
+      'fonts directory', () async {
+    // No fonts dir yet.
+    expect(await StorageUsageService.listFontEntries(), isEmpty);
+
+    final fontsDir = Directory(p.join(appDataDir.path, 'fonts'));
+    await fontsDir.create(recursive: true);
+    await _writeSizedFile(fontsDir, 'a.ttf', 100);
+    await _writeSizedFile(fontsDir, 'b.otf', 50);
+
+    final entries = await StorageUsageService.listFontEntries();
+
+    expect(entries.map((e) => e.name), containsAll(['a.ttf', 'b.otf']));
+    expect(entries.length, 2);
+    expect(entries.map((e) => e.bytes).toSet(), containsAll(<int>[100, 50]));
+  });
+
+  test('deleteFontFiles validates paths against the fonts root', () async {
+    final fontsDir = Directory(p.join(appDataDir.path, 'fonts'));
+    await fontsDir.create(recursive: true);
+    await _writeSizedFile(fontsDir, 'a.ttf', 10);
+    await _writeSizedFile(fontsDir, 'b.otf', 20);
+    await _writeSizedFile(appDataDir, 'notes.txt', 30);
+
+    final aPath = p.join(fontsDir.path, 'a.ttf');
+    final notesPath = p.join(appDataDir.path, 'notes.txt');
+
+    // Paths outside the fonts root must be refused.
+    expect(await StorageUsageService.deleteFontFiles([notesPath]), 0);
+    expect(File(notesPath).existsSync(), isTrue);
+
+    // In-root deletions return the count of actually deleted files.
+    expect(await StorageUsageService.deleteFontFiles([aPath, notesPath]), 1);
+    expect(File(aPath).existsSync(), isFalse);
+    expect(File(notesPath).existsSync(), isTrue);
+  });
+
   test('listCacheEntries lists the system cache directory', () async {
     final sysCache = Directory(p.join(tempDir.path, 'cache'));
     await sysCache.create(recursive: true);

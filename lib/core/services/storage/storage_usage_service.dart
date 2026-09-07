@@ -928,6 +928,77 @@ abstract final class StorageUsageService {
     return deleted;
   }
 
+  /// Lists every font file under the managed `fonts/` directory so the
+  /// storage page can show exactly which user-imported fonts can be deleted.
+  /// Sorted by modified time descending (newest first). Unreadable
+  /// subdirectories are logged and skipped, a failure to list the root itself
+  /// is logged and partial results returned — never thrown.
+  static Future<List<StorageFileEntry>> listFontEntries() async {
+    final dir = await AppDirectories.getFontsDirectory();
+    if (!await dir.exists()) return const [];
+    final out = <StorageFileEntry>[];
+    try {
+      await _listFilesTolerantly(
+        dir,
+        onFile: (file) async {
+          int bytes = 0;
+          DateTime modifiedAt = DateTime.fromMillisecondsSinceEpoch(0);
+          try {
+            final stat = await file.stat();
+            bytes = stat.size;
+            modifiedAt = stat.modified;
+          } catch (_) {
+            try {
+              bytes = await file.length();
+            } catch (_) {}
+          }
+          out.add(
+            StorageFileEntry(
+              path: file.path,
+              name: p.basename(file.path),
+              bytes: bytes,
+              modifiedAt: modifiedAt,
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint(
+        'StorageUsageService: failed to list fonts dir ${dir.path}: $e',
+      );
+    }
+    out.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+    return out;
+  }
+
+  /// Deletes the given font files, validating every path against the same
+  /// `fonts/` root [listFontEntries] reports. Paths outside the root are
+  /// skipped. Returns the number of files actually deleted.
+  static Future<int> deleteFontFiles(Iterable<String> paths) async {
+    final dir = await AppDirectories.getFontsDirectory();
+    final roots = <String>[p.normalize(Directory(dir.path).absolute.path)];
+    int deleted = 0;
+    for (final raw in paths) {
+      try {
+        final abs = p.normalize(File(raw).absolute.path);
+        final allowed = roots.any(
+          (root) => p.isWithin(root, abs) || abs == root,
+        );
+        if (!allowed) continue;
+        final f = File(abs);
+        if (await f.exists()) {
+          await f.delete();
+          deleted += 1;
+        }
+      } catch (e) {
+        debugPrint(
+          'StorageUsageService.deleteFontFiles: failed to delete $raw: $e',
+        );
+      }
+    }
+    return deleted;
+  }
+
   /// Lists every file [clearCache]/[clearOtherCache]/[clearSystemCache]/
   /// [clearTmpCache] would delete for the given cache [subcategoryId], so the
   /// storage page can show exactly which files are judged as cache before

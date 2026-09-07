@@ -9,6 +9,7 @@ import '../../../core/database/chat_database_repository.dart';
 import '../../../core/models/file_reference.dart';
 import '../../../core/models/workspace.dart';
 import '../../../core/providers/workspace_provider.dart';
+import '../../../core/providers/settings_provider.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/haptics.dart';
 import '../../../theme/app_semantic_colors.dart';
@@ -1614,6 +1615,42 @@ class _CategoryDetail extends StatelessWidget {
       );
     }
 
+    if (category.key == StorageUsageCategoryKey.fonts) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontSize: 16, fontWeight: AppFontWeights.emphasis),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: cs.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.storageSpaceFontsManageHint,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: cs.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _FontManager(
+              key: const ValueKey('fonts_manager'),
+              refreshReport: refreshReport,
+              fmtBytes: fmtBytes,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2384,6 +2421,290 @@ class _UploadManagerState extends State<_UploadManager> {
   }
 }
 
+/// User-imported font files under the `fonts/` directory: users can see
+/// which fonts exist and delete the ones that are not in use. Mirrors the
+/// upload list interactions (sort, select, delete) but for fonts. Fonts that
+/// are currently applied as the active app/code font are marked "In use" and
+/// cannot be selected — deletion would silently break the persisted font
+/// path (mirrors [_deleteManagedFontFileIfUnused]'s guard).
+class _FontManager extends StatefulWidget {
+  const _FontManager({
+    super.key,
+    required this.refreshReport,
+    required this.fmtBytes,
+  });
+
+  final Future<void> Function() refreshReport;
+  final String Function(int) fmtBytes;
+
+  @override
+  State<_FontManager> createState() => _FontManagerState();
+}
+
+class _FontManagerState extends State<_FontManager> {
+  bool _loading = false;
+  List<StorageFileEntry> _entries = const <StorageFileEntry>[];
+  final Set<String> _selected = <String>{};
+  bool _bySize = false;
+  bool _descending = true;
+
+  bool get _selectMode => _selected.isNotEmpty;
+
+  /// Paths that are persisted as the active local app/code font file — these
+  /// are protected from deletion.
+  Set<String> _inUsePaths(SettingsProvider settings) {
+    return {
+      for (final path in [
+        settings.appFontLocalPath,
+        settings.codeFontLocalPath,
+      ])
+        if (path != null && path.isNotEmpty) canonicalizePath(path),
+    };
+  }
+
+  bool _isInUse(StorageFileEntry e, Set<String> inUse) =>
+      inUse.contains(canonicalizePath(e.path));
+
+  List<StorageFileEntry> get _displayEntries {
+    final list = _entries.toList();
+    final cmp = _bySize
+        ? ((a, b) => a.bytes.compareTo(b.bytes))
+        : ((a, b) => a.modifiedAt.compareTo(b.modifiedAt));
+    list.sort((a, b) {
+      final r = cmp(a, b);
+      if (r != 0) return _descending ? -r : r;
+      return a.name.compareTo(b.name); // tie-break
+    });
+    return list;
+  }
+
+  /// Desktop keeps the storage tab alive in an `IndexedStack`, so the list
+  /// would silently go stale after a font is imported in another tab. Track
+  /// visibility via the framework's [`Visibility.of`] (it registers a
+  /// dependency, so `didChangeDependencies` fires on tab switches) and reload
+  /// when the fonts detail becomes visible again. On mobile the fonts detail
+  /// lives in a pushed route without any `Visibility` ancestor, so this
+  /// always stays visible and no extra reload happens.
+  bool _wasVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = Visibility.of(context);
+    if (visible && !_wasVisible) {
+      _load();
+      widget.refreshReport();
+    }
+    _wasVisible = visible;
+  }
+
+  Future<void> _load() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final list = await StorageUsageService.listFontEntries();
+      if (!mounted) return;
+      setState(() {
+        _entries = list;
+        final paths = _entries.map((e) => e.path).toSet();
+        _selected.removeWhere((p) => !paths.contains(p));
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _toggleSelect(String path, Set<String> inUse) {
+    if (inUse.contains(canonicalizePath(path))) return;
+    setState(() {
+      if (_selected.contains(path)) {
+        _selected.remove(path);
+      } else {
+        _selected.add(path);
+      }
+    });
+  }
+
+  void _selectAll(Set<String> inUse) {
+    setState(() {
+      _selected
+        ..clear()
+        ..addAll(
+          _displayEntries
+              .where((e) => !inUse.contains(canonicalizePath(e.path)))
+              .map((e) => e.path),
+        );
+    });
+  }
+
+  void _clearSelection() {
+    setState(() => _selected.clear());
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selected.isEmpty) return;
+    final l10n = AppLocalizations.of(context)!;
+    // Defense in depth: re-check in-use at delete time — the active app/code
+    // font may have changed (or been re-applied) while the dialog was open.
+    final inUse = _inUsePaths(context.read<SettingsProvider>());
+    final targets = _selected
+        .where((p) => !inUse.contains(canonicalizePath(p)))
+        .toList(growable: false);
+    if (targets.isEmpty) return;
+    final count = targets.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(l10n.storageSpaceDeleteConfirmTitle),
+          content: Text(l10n.storageSpaceDeleteSimpleConfirm(count)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.homePageCancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.homePageDelete),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    final deleted = await StorageUsageService.deleteFontFiles(targets);
+    if (!mounted) return;
+
+    _clearSelection();
+    showAppSnackBar(
+      context,
+      message: l10n.storageSpaceDeletedFontsDone(deleted),
+      type: NotificationType.success,
+    );
+    await _load();
+    await widget.refreshReport();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final settings = context.watch<SettingsProvider>();
+    final inUse = _inUsePaths(settings);
+    final display = _displayEntries;
+
+    if (_loading && _entries.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_entries.isEmpty) {
+      return Center(
+        child: Text(
+          l10n.storageSpaceNoFonts,
+          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.7)),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _SortControl(
+              bySize: _bySize,
+              descending: _descending,
+              onSortSize: () => setState(() {
+                if (_bySize) {
+                  _descending = !_descending;
+                } else {
+                  _bySize = true;
+                  _descending = true;
+                }
+              }),
+              onSortTime: () => setState(() {
+                if (!_bySize) {
+                  _descending = !_descending;
+                } else {
+                  _bySize = false;
+                  _descending = true;
+                }
+              }),
+            ),
+            IosTileButton(
+              label: _selectMode
+                  ? l10n.storageSpaceClearSelection
+                  : l10n.storageSpaceSelectAll,
+              icon: _selectMode ? Lucide.XCircle : Lucide.CheckSquare,
+              backgroundColor: cs.primary,
+              onTap: _selectMode ? _clearSelection : () => _selectAll(inUse),
+            ),
+            IosTileButton(
+              label: l10n.homePageDelete,
+              icon: Lucide.Trash2,
+              backgroundColor: cs.error,
+              enabled: _selected.isNotEmpty,
+              onTap: _deleteSelected,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    _selectMode
+                        ? l10n.storageSpaceSelectedCount(_selected.length)
+                        : l10n.storageSpaceFilesCount(display.length),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: cs.onSurface.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final e = display[index];
+                  final selected = _selected.contains(e.path);
+                  final rowInUse = _isInUse(e, inUse);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _FileRow(
+                      entry: e,
+                      selected: selected,
+                      enabled: !rowInUse,
+                      badgeText: rowInUse ? l10n.storageSpaceFontsInUse : null,
+                      icon: Lucide.Type,
+                      fmtBytes: widget.fmtBytes,
+                      onTap: () => _toggleSelect(e.path, inUse),
+                      onLongPress: () => _toggleSelect(e.path, inUse),
+                      onToggle: () => _toggleSelect(e.path, inUse),
+                    ),
+                  );
+                }, childCount: display.length),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Per-subcategory cache file list (issue #320): users can see exactly which
 /// files are judged as cache and delete selected ones before/without clearing
 /// the whole subcategory. Mirrors the upload list interactions (sort, select,
@@ -2913,6 +3234,8 @@ class _FileRow extends StatelessWidget {
     required this.fmtBytes,
     this.refCount,
     this.isAiGenerated = false,
+    this.enabled = true,
+    this.badgeText,
     this.icon,
     this.relativePath,
     required this.onTap,
@@ -2926,6 +3249,8 @@ class _FileRow extends StatelessWidget {
   final String Function(int) fmtBytes;
   final int? refCount;
   final bool isAiGenerated;
+  final bool enabled;
+  final String? badgeText;
   final IconData? icon;
   final String? relativePath;
   final VoidCallback onTap;
@@ -2946,8 +3271,8 @@ class _FileRow extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: IosCardPress(
-        onTap: onTap,
-        onLongPress: onLongPress,
+        onTap: enabled ? onTap : null,
+        onLongPress: enabled ? onLongPress : null,
         haptics: false,
         pressedScale: 1.0,
         borderRadius: BorderRadius.circular(12),
@@ -2962,7 +3287,7 @@ class _FileRow extends StatelessWidget {
               borderWidth: 1.6,
               activeColor: cs.primary,
               borderColor: cs.primary.withValues(alpha: 0.55),
-              onChanged: (_) => onToggle(),
+              onChanged: enabled ? (_) => onToggle() : null,
               enableHaptics: false,
             ),
             const SizedBox(width: 10),
@@ -3009,11 +3334,15 @@ class _FileRow extends StatelessWidget {
                 ],
               ),
             ),
-            // refCount / AI-generated label (on-demand)
-            if (refCount != null || isAiGenerated) ...[
+            // refCount / AI-generated / custom badge (on-demand)
+            if (refCount != null || isAiGenerated || badgeText != null) ...[
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: refCount != null && refCount! > 0 && !isAiGenerated
+                onTap:
+                    badgeText == null &&
+                        refCount != null &&
+                        refCount! > 0 &&
+                        !isAiGenerated
                     ? onRefCountTap
                     : null,
                 child: Container(
@@ -3024,23 +3353,24 @@ class _FileRow extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isAiGenerated
                         ? const Color(0xFF8B5CF6).withValues(alpha: 0.12)
-                        : refCount! > 0
+                        : badgeText != null || refCount! > 0
                         ? cs.primary.withValues(alpha: 0.12)
                         : cs.onSurface.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    isAiGenerated
-                        ? l10n.storageSpaceAiGenerated
-                        : refCount! > 0
-                        ? l10n.storageSpaceRefCount(refCount!)
-                        : l10n.storageSpaceRefNone,
+                    badgeText ??
+                        (isAiGenerated
+                            ? l10n.storageSpaceAiGenerated
+                            : refCount! > 0
+                            ? l10n.storageSpaceRefCount(refCount!)
+                            : l10n.storageSpaceRefNone),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: AppFontWeights.semibold,
                       color: isAiGenerated
                           ? const Color(0xFF8B5CF6)
-                          : refCount! > 0
+                          : badgeText != null || refCount! > 0
                           ? cs.primary
                           : cs.onSurface.withValues(alpha: 0.50),
                     ),
