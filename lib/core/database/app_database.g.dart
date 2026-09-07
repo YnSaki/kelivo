@@ -181,6 +181,31 @@ class $ConversationRowsTable extends ConversationRows
         requiredDuringInsert: false,
         defaultValue: const Constant('[]'),
       );
+  static const VerificationMeta _proactiveCareEnabledOverrideMeta =
+      const VerificationMeta('proactiveCareEnabledOverride');
+  @override
+  late final GeneratedColumn<bool> proactiveCareEnabledOverride =
+      GeneratedColumn<bool>(
+        'proactive_care_enabled_override',
+        aliasedName,
+        true,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("proactive_care_enabled_override" IN (0, 1))',
+        ),
+      );
+  static const VerificationMeta _proactiveCareNextMessageAtMeta =
+      const VerificationMeta('proactiveCareNextMessageAt');
+  @override
+  late final GeneratedColumn<DateTime> proactiveCareNextMessageAt =
+      GeneratedColumn<DateTime>(
+        'proactive_care_next_message_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -198,6 +223,8 @@ class $ConversationRowsTable extends ConversationRows
     conversationKind,
     workspaceDirectoryOverridesJson,
     persistentQuickInstructionIdsJson,
+    proactiveCareEnabledOverride,
+    proactiveCareNextMessageAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -333,6 +360,24 @@ class $ConversationRowsTable extends ConversationRows
         ),
       );
     }
+    if (data.containsKey('proactive_care_enabled_override')) {
+      context.handle(
+        _proactiveCareEnabledOverrideMeta,
+        proactiveCareEnabledOverride.isAcceptableOrUnknown(
+          data['proactive_care_enabled_override']!,
+          _proactiveCareEnabledOverrideMeta,
+        ),
+      );
+    }
+    if (data.containsKey('proactive_care_next_message_at')) {
+      context.handle(
+        _proactiveCareNextMessageAtMeta,
+        proactiveCareNextMessageAt.isAcceptableOrUnknown(
+          data['proactive_care_next_message_at']!,
+          _proactiveCareNextMessageAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -402,6 +447,14 @@ class $ConversationRowsTable extends ConversationRows
         DriftSqlType.string,
         data['${effectivePrefix}persistent_quick_instruction_ids_json'],
       )!,
+      proactiveCareEnabledOverride: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}proactive_care_enabled_override'],
+      ),
+      proactiveCareNextMessageAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}proactive_care_next_message_at'],
+      ),
     );
   }
 
@@ -429,6 +482,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
   final String conversationKind;
   final String workspaceDirectoryOverridesJson;
   final String persistentQuickInstructionIdsJson;
+  final bool? proactiveCareEnabledOverride;
+  final DateTime? proactiveCareNextMessageAt;
   const ConversationRow({
     required this.id,
     required this.title,
@@ -445,6 +500,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     required this.conversationKind,
     required this.workspaceDirectoryOverridesJson,
     required this.persistentQuickInstructionIdsJson,
+    this.proactiveCareEnabledOverride,
+    this.proactiveCareNextMessageAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -476,6 +533,16 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     map['persistent_quick_instruction_ids_json'] = Variable<String>(
       persistentQuickInstructionIdsJson,
     );
+    if (!nullToAbsent || proactiveCareEnabledOverride != null) {
+      map['proactive_care_enabled_override'] = Variable<bool>(
+        proactiveCareEnabledOverride,
+      );
+    }
+    if (!nullToAbsent || proactiveCareNextMessageAt != null) {
+      map['proactive_care_next_message_at'] = Variable<DateTime>(
+        proactiveCareNextMessageAt,
+      );
+    }
     return map;
   }
 
@@ -504,6 +571,14 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       persistentQuickInstructionIdsJson: Value(
         persistentQuickInstructionIdsJson,
       ),
+      proactiveCareEnabledOverride:
+          proactiveCareEnabledOverride == null && nullToAbsent
+          ? const Value.absent()
+          : Value(proactiveCareEnabledOverride),
+      proactiveCareNextMessageAt:
+          proactiveCareNextMessageAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(proactiveCareNextMessageAt),
     );
   }
 
@@ -540,6 +615,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       persistentQuickInstructionIdsJson: serializer.fromJson<String>(
         json['persistentQuickInstructionIdsJson'],
       ),
+      proactiveCareEnabledOverride: serializer.fromJson<bool?>(
+        json['proactiveCareEnabledOverride'],
+      ),
+      proactiveCareNextMessageAt: serializer.fromJson<DateTime?>(
+        json['proactiveCareNextMessageAt'],
+      ),
     );
   }
   @override
@@ -567,6 +648,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       'persistentQuickInstructionIdsJson': serializer.toJson<String>(
         persistentQuickInstructionIdsJson,
       ),
+      'proactiveCareEnabledOverride': serializer.toJson<bool?>(
+        proactiveCareEnabledOverride,
+      ),
+      'proactiveCareNextMessageAt': serializer.toJson<DateTime?>(
+        proactiveCareNextMessageAt,
+      ),
     };
   }
 
@@ -586,6 +673,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     String? conversationKind,
     String? workspaceDirectoryOverridesJson,
     String? persistentQuickInstructionIdsJson,
+    Value<bool?> proactiveCareEnabledOverride = const Value.absent(),
+    Value<DateTime?> proactiveCareNextMessageAt = const Value.absent(),
   }) => ConversationRow(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -608,6 +697,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     persistentQuickInstructionIdsJson:
         persistentQuickInstructionIdsJson ??
         this.persistentQuickInstructionIdsJson,
+    proactiveCareEnabledOverride: proactiveCareEnabledOverride.present
+        ? proactiveCareEnabledOverride.value
+        : this.proactiveCareEnabledOverride,
+    proactiveCareNextMessageAt: proactiveCareNextMessageAt.present
+        ? proactiveCareNextMessageAt.value
+        : this.proactiveCareNextMessageAt,
   );
   ConversationRow copyWithCompanion(ConversationRowsCompanion data) {
     return ConversationRow(
@@ -646,6 +741,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           data.persistentQuickInstructionIdsJson.present
           ? data.persistentQuickInstructionIdsJson.value
           : this.persistentQuickInstructionIdsJson,
+      proactiveCareEnabledOverride: data.proactiveCareEnabledOverride.present
+          ? data.proactiveCareEnabledOverride.value
+          : this.proactiveCareEnabledOverride,
+      proactiveCareNextMessageAt: data.proactiveCareNextMessageAt.present
+          ? data.proactiveCareNextMessageAt.value
+          : this.proactiveCareNextMessageAt,
     );
   }
 
@@ -669,8 +770,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
             'workspaceDirectoryOverridesJson: $workspaceDirectoryOverridesJson, ',
           )
           ..write(
-            'persistentQuickInstructionIdsJson: $persistentQuickInstructionIdsJson',
+            'persistentQuickInstructionIdsJson: $persistentQuickInstructionIdsJson, ',
           )
+          ..write(
+            'proactiveCareEnabledOverride: $proactiveCareEnabledOverride, ',
+          )
+          ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt')
           ..write(')'))
         .toString();
   }
@@ -692,6 +797,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     conversationKind,
     workspaceDirectoryOverridesJson,
     persistentQuickInstructionIdsJson,
+    proactiveCareEnabledOverride,
+    proactiveCareNextMessageAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -713,7 +820,10 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           other.workspaceDirectoryOverridesJson ==
               this.workspaceDirectoryOverridesJson &&
           other.persistentQuickInstructionIdsJson ==
-              this.persistentQuickInstructionIdsJson);
+              this.persistentQuickInstructionIdsJson &&
+          other.proactiveCareEnabledOverride ==
+              this.proactiveCareEnabledOverride &&
+          other.proactiveCareNextMessageAt == this.proactiveCareNextMessageAt);
 }
 
 class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
@@ -732,6 +842,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
   final Value<String> conversationKind;
   final Value<String> workspaceDirectoryOverridesJson;
   final Value<String> persistentQuickInstructionIdsJson;
+  final Value<bool?> proactiveCareEnabledOverride;
+  final Value<DateTime?> proactiveCareNextMessageAt;
   final Value<int> rowid;
   const ConversationRowsCompanion({
     this.id = const Value.absent(),
@@ -749,6 +861,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     this.conversationKind = const Value.absent(),
     this.workspaceDirectoryOverridesJson = const Value.absent(),
     this.persistentQuickInstructionIdsJson = const Value.absent(),
+    this.proactiveCareEnabledOverride = const Value.absent(),
+    this.proactiveCareNextMessageAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ConversationRowsCompanion.insert({
@@ -767,6 +881,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     this.conversationKind = const Value.absent(),
     this.workspaceDirectoryOverridesJson = const Value.absent(),
     this.persistentQuickInstructionIdsJson = const Value.absent(),
+    this.proactiveCareEnabledOverride = const Value.absent(),
+    this.proactiveCareNextMessageAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -788,6 +904,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     Expression<String>? conversationKind,
     Expression<String>? workspaceDirectoryOverridesJson,
     Expression<String>? persistentQuickInstructionIdsJson,
+    Expression<bool>? proactiveCareEnabledOverride,
+    Expression<DateTime>? proactiveCareNextMessageAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -813,6 +931,10 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
       if (persistentQuickInstructionIdsJson != null)
         'persistent_quick_instruction_ids_json':
             persistentQuickInstructionIdsJson,
+      if (proactiveCareEnabledOverride != null)
+        'proactive_care_enabled_override': proactiveCareEnabledOverride,
+      if (proactiveCareNextMessageAt != null)
+        'proactive_care_next_message_at': proactiveCareNextMessageAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -833,6 +955,8 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
     Value<String>? conversationKind,
     Value<String>? workspaceDirectoryOverridesJson,
     Value<String>? persistentQuickInstructionIdsJson,
+    Value<bool?>? proactiveCareEnabledOverride,
+    Value<DateTime?>? proactiveCareNextMessageAt,
     Value<int>? rowid,
   }) {
     return ConversationRowsCompanion(
@@ -857,6 +981,10 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
       persistentQuickInstructionIdsJson:
           persistentQuickInstructionIdsJson ??
           this.persistentQuickInstructionIdsJson,
+      proactiveCareEnabledOverride:
+          proactiveCareEnabledOverride ?? this.proactiveCareEnabledOverride,
+      proactiveCareNextMessageAt:
+          proactiveCareNextMessageAt ?? this.proactiveCareNextMessageAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -921,6 +1049,16 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
         persistentQuickInstructionIdsJson.value,
       );
     }
+    if (proactiveCareEnabledOverride.present) {
+      map['proactive_care_enabled_override'] = Variable<bool>(
+        proactiveCareEnabledOverride.value,
+      );
+    }
+    if (proactiveCareNextMessageAt.present) {
+      map['proactive_care_next_message_at'] = Variable<DateTime>(
+        proactiveCareNextMessageAt.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -949,6 +1087,10 @@ class ConversationRowsCompanion extends UpdateCompanion<ConversationRow> {
           ..write(
             'persistentQuickInstructionIdsJson: $persistentQuickInstructionIdsJson, ',
           )
+          ..write(
+            'proactiveCareEnabledOverride: $proactiveCareEnabledOverride, ',
+          )
+          ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3083,6 +3225,17 @@ class $AssistantRowsTable extends AssistantRows
         requiredDuringInsert: false,
         defaultValue: const Constant(''),
       );
+  static const VerificationMeta _proactiveCareDecisionHistoryMessageLimitMeta =
+      const VerificationMeta('proactiveCareDecisionHistoryMessageLimit');
+  @override
+  late final GeneratedColumn<int> proactiveCareDecisionHistoryMessageLimit =
+      GeneratedColumn<int>(
+        'proactive_care_decision_history_message_limit',
+        aliasedName,
+        true,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _enableMemoryMeta = const VerificationMeta(
     'enableMemory',
   );
@@ -3316,6 +3469,7 @@ class $AssistantRowsTable extends AssistantRows
     proactiveCareNextMessageAt,
     proactiveCarePrompt,
     proactiveCareDecisionPrompt,
+    proactiveCareDecisionHistoryMessageLimit,
     enableMemory,
     memoryMode,
     enableRecentChatsReference,
@@ -3625,6 +3779,15 @@ class $AssistantRowsTable extends AssistantRows
         ),
       );
     }
+    if (data.containsKey('proactive_care_decision_history_message_limit')) {
+      context.handle(
+        _proactiveCareDecisionHistoryMessageLimitMeta,
+        proactiveCareDecisionHistoryMessageLimit.isAcceptableOrUnknown(
+          data['proactive_care_decision_history_message_limit']!,
+          _proactiveCareDecisionHistoryMessageLimitMeta,
+        ),
+      );
+    }
     if (data.containsKey('enable_memory')) {
       context.handle(
         _enableMemoryMeta,
@@ -3892,6 +4055,10 @@ class $AssistantRowsTable extends AssistantRows
         DriftSqlType.string,
         data['${effectivePrefix}proactive_care_decision_prompt'],
       )!,
+      proactiveCareDecisionHistoryMessageLimit: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}proactive_care_decision_history_message_limit'],
+      ),
       enableMemory: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}enable_memory'],
@@ -3999,6 +4166,7 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
   final DateTime? proactiveCareNextMessageAt;
   final String proactiveCarePrompt;
   final String proactiveCareDecisionPrompt;
+  final int? proactiveCareDecisionHistoryMessageLimit;
   final bool enableMemory;
   final String memoryMode;
   final bool enableRecentChatsReference;
@@ -4049,6 +4217,7 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
     this.proactiveCareNextMessageAt,
     required this.proactiveCarePrompt,
     required this.proactiveCareDecisionPrompt,
+    this.proactiveCareDecisionHistoryMessageLimit,
     required this.enableMemory,
     required this.memoryMode,
     required this.enableRecentChatsReference,
@@ -4128,6 +4297,11 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
     map['proactive_care_decision_prompt'] = Variable<String>(
       proactiveCareDecisionPrompt,
     );
+    if (!nullToAbsent || proactiveCareDecisionHistoryMessageLimit != null) {
+      map['proactive_care_decision_history_message_limit'] = Variable<int>(
+        proactiveCareDecisionHistoryMessageLimit,
+      );
+    }
     map['enable_memory'] = Variable<bool>(enableMemory);
     map['memory_mode'] = Variable<String>(memoryMode);
     map['enable_recent_chats_reference'] = Variable<bool>(
@@ -4209,6 +4383,10 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
           : Value(proactiveCareNextMessageAt),
       proactiveCarePrompt: Value(proactiveCarePrompt),
       proactiveCareDecisionPrompt: Value(proactiveCareDecisionPrompt),
+      proactiveCareDecisionHistoryMessageLimit:
+          proactiveCareDecisionHistoryMessageLimit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(proactiveCareDecisionHistoryMessageLimit),
       enableMemory: Value(enableMemory),
       memoryMode: Value(memoryMode),
       enableRecentChatsReference: Value(enableRecentChatsReference),
@@ -4287,6 +4465,9 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
       proactiveCareDecisionPrompt: serializer.fromJson<String>(
         json['proactiveCareDecisionPrompt'],
       ),
+      proactiveCareDecisionHistoryMessageLimit: serializer.fromJson<int?>(
+        json['proactiveCareDecisionHistoryMessageLimit'],
+      ),
       enableMemory: serializer.fromJson<bool>(json['enableMemory']),
       memoryMode: serializer.fromJson<String>(json['memoryMode']),
       enableRecentChatsReference: serializer.fromJson<bool>(
@@ -4358,6 +4539,9 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
       'proactiveCareDecisionPrompt': serializer.toJson<String>(
         proactiveCareDecisionPrompt,
       ),
+      'proactiveCareDecisionHistoryMessageLimit': serializer.toJson<int?>(
+        proactiveCareDecisionHistoryMessageLimit,
+      ),
       'enableMemory': serializer.toJson<bool>(enableMemory),
       'memoryMode': serializer.toJson<String>(memoryMode),
       'enableRecentChatsReference': serializer.toJson<bool>(
@@ -4415,6 +4599,7 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
     Value<DateTime?> proactiveCareNextMessageAt = const Value.absent(),
     String? proactiveCarePrompt,
     String? proactiveCareDecisionPrompt,
+    Value<int?> proactiveCareDecisionHistoryMessageLimit = const Value.absent(),
     bool? enableMemory,
     String? memoryMode,
     bool? enableRecentChatsReference,
@@ -4473,6 +4658,10 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
     proactiveCarePrompt: proactiveCarePrompt ?? this.proactiveCarePrompt,
     proactiveCareDecisionPrompt:
         proactiveCareDecisionPrompt ?? this.proactiveCareDecisionPrompt,
+    proactiveCareDecisionHistoryMessageLimit:
+        proactiveCareDecisionHistoryMessageLimit.present
+        ? proactiveCareDecisionHistoryMessageLimit.value
+        : this.proactiveCareDecisionHistoryMessageLimit,
     enableMemory: enableMemory ?? this.enableMemory,
     memoryMode: memoryMode ?? this.memoryMode,
     enableRecentChatsReference:
@@ -4586,6 +4775,10 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
       proactiveCareDecisionPrompt: data.proactiveCareDecisionPrompt.present
           ? data.proactiveCareDecisionPrompt.value
           : this.proactiveCareDecisionPrompt,
+      proactiveCareDecisionHistoryMessageLimit:
+          data.proactiveCareDecisionHistoryMessageLimit.present
+          ? data.proactiveCareDecisionHistoryMessageLimit.value
+          : this.proactiveCareDecisionHistoryMessageLimit,
       enableMemory: data.enableMemory.present
           ? data.enableMemory.value
           : this.enableMemory,
@@ -4662,6 +4855,9 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
           ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt, ')
           ..write('proactiveCarePrompt: $proactiveCarePrompt, ')
           ..write('proactiveCareDecisionPrompt: $proactiveCareDecisionPrompt, ')
+          ..write(
+            'proactiveCareDecisionHistoryMessageLimit: $proactiveCareDecisionHistoryMessageLimit, ',
+          )
           ..write('enableMemory: $enableMemory, ')
           ..write('memoryMode: $memoryMode, ')
           ..write('enableRecentChatsReference: $enableRecentChatsReference, ')
@@ -4719,6 +4915,7 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
     proactiveCareNextMessageAt,
     proactiveCarePrompt,
     proactiveCareDecisionPrompt,
+    proactiveCareDecisionHistoryMessageLimit,
     enableMemory,
     memoryMode,
     enableRecentChatsReference,
@@ -4775,6 +4972,8 @@ class AssistantRow extends DataClass implements Insertable<AssistantRow> {
           other.proactiveCarePrompt == this.proactiveCarePrompt &&
           other.proactiveCareDecisionPrompt ==
               this.proactiveCareDecisionPrompt &&
+          other.proactiveCareDecisionHistoryMessageLimit ==
+              this.proactiveCareDecisionHistoryMessageLimit &&
           other.enableMemory == this.enableMemory &&
           other.memoryMode == this.memoryMode &&
           other.enableRecentChatsReference == this.enableRecentChatsReference &&
@@ -4828,6 +5027,7 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
   final Value<DateTime?> proactiveCareNextMessageAt;
   final Value<String> proactiveCarePrompt;
   final Value<String> proactiveCareDecisionPrompt;
+  final Value<int?> proactiveCareDecisionHistoryMessageLimit;
   final Value<bool> enableMemory;
   final Value<String> memoryMode;
   final Value<bool> enableRecentChatsReference;
@@ -4879,6 +5079,7 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
     this.proactiveCareNextMessageAt = const Value.absent(),
     this.proactiveCarePrompt = const Value.absent(),
     this.proactiveCareDecisionPrompt = const Value.absent(),
+    this.proactiveCareDecisionHistoryMessageLimit = const Value.absent(),
     this.enableMemory = const Value.absent(),
     this.memoryMode = const Value.absent(),
     this.enableRecentChatsReference = const Value.absent(),
@@ -4931,6 +5132,7 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
     this.proactiveCareNextMessageAt = const Value.absent(),
     this.proactiveCarePrompt = const Value.absent(),
     this.proactiveCareDecisionPrompt = const Value.absent(),
+    this.proactiveCareDecisionHistoryMessageLimit = const Value.absent(),
     this.enableMemory = const Value.absent(),
     this.memoryMode = const Value.absent(),
     this.enableRecentChatsReference = const Value.absent(),
@@ -4987,6 +5189,7 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
     Expression<DateTime>? proactiveCareNextMessageAt,
     Expression<String>? proactiveCarePrompt,
     Expression<String>? proactiveCareDecisionPrompt,
+    Expression<int>? proactiveCareDecisionHistoryMessageLimit,
     Expression<bool>? enableMemory,
     Expression<String>? memoryMode,
     Expression<bool>? enableRecentChatsReference,
@@ -5048,6 +5251,9 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
         'proactive_care_prompt': proactiveCarePrompt,
       if (proactiveCareDecisionPrompt != null)
         'proactive_care_decision_prompt': proactiveCareDecisionPrompt,
+      if (proactiveCareDecisionHistoryMessageLimit != null)
+        'proactive_care_decision_history_message_limit':
+            proactiveCareDecisionHistoryMessageLimit,
       if (enableMemory != null) 'enable_memory': enableMemory,
       if (memoryMode != null) 'memory_mode': memoryMode,
       if (enableRecentChatsReference != null)
@@ -5106,6 +5312,7 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
     Value<DateTime?>? proactiveCareNextMessageAt,
     Value<String>? proactiveCarePrompt,
     Value<String>? proactiveCareDecisionPrompt,
+    Value<int?>? proactiveCareDecisionHistoryMessageLimit,
     Value<bool>? enableMemory,
     Value<String>? memoryMode,
     Value<bool>? enableRecentChatsReference,
@@ -5162,6 +5369,9 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
       proactiveCarePrompt: proactiveCarePrompt ?? this.proactiveCarePrompt,
       proactiveCareDecisionPrompt:
           proactiveCareDecisionPrompt ?? this.proactiveCareDecisionPrompt,
+      proactiveCareDecisionHistoryMessageLimit:
+          proactiveCareDecisionHistoryMessageLimit ??
+          this.proactiveCareDecisionHistoryMessageLimit,
       enableMemory: enableMemory ?? this.enableMemory,
       memoryMode: memoryMode ?? this.memoryMode,
       enableRecentChatsReference:
@@ -5296,6 +5506,11 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
         proactiveCareDecisionPrompt.value,
       );
     }
+    if (proactiveCareDecisionHistoryMessageLimit.present) {
+      map['proactive_care_decision_history_message_limit'] = Variable<int>(
+        proactiveCareDecisionHistoryMessageLimit.value,
+      );
+    }
     if (enableMemory.present) {
       map['enable_memory'] = Variable<bool>(enableMemory.value);
     }
@@ -5392,6 +5607,9 @@ class AssistantRowsCompanion extends UpdateCompanion<AssistantRow> {
           ..write('proactiveCareNextMessageAt: $proactiveCareNextMessageAt, ')
           ..write('proactiveCarePrompt: $proactiveCarePrompt, ')
           ..write('proactiveCareDecisionPrompt: $proactiveCareDecisionPrompt, ')
+          ..write(
+            'proactiveCareDecisionHistoryMessageLimit: $proactiveCareDecisionHistoryMessageLimit, ',
+          )
           ..write('enableMemory: $enableMemory, ')
           ..write('memoryMode: $memoryMode, ')
           ..write('enableRecentChatsReference: $enableRecentChatsReference, ')
@@ -9142,6 +9360,8 @@ typedef $$ConversationRowsTableCreateCompanionBuilder =
       Value<String> conversationKind,
       Value<String> workspaceDirectoryOverridesJson,
       Value<String> persistentQuickInstructionIdsJson,
+      Value<bool?> proactiveCareEnabledOverride,
+      Value<DateTime?> proactiveCareNextMessageAt,
       Value<int> rowid,
     });
 typedef $$ConversationRowsTableUpdateCompanionBuilder =
@@ -9161,6 +9381,8 @@ typedef $$ConversationRowsTableUpdateCompanionBuilder =
       Value<String> conversationKind,
       Value<String> workspaceDirectoryOverridesJson,
       Value<String> persistentQuickInstructionIdsJson,
+      Value<bool?> proactiveCareEnabledOverride,
+      Value<DateTime?> proactiveCareNextMessageAt,
       Value<int> rowid,
     });
 
@@ -9322,6 +9544,16 @@ class $$ConversationRowsTableFilterComposer
         column: $table.persistentQuickInstructionIdsJson,
         builder: (column) => ColumnFilters(column),
       );
+
+  ColumnFilters<bool> get proactiveCareEnabledOverride => $composableBuilder(
+    column: $table.proactiveCareEnabledOverride,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get proactiveCareNextMessageAt => $composableBuilder(
+    column: $table.proactiveCareNextMessageAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   Expression<bool> messageRowsRefs(
     Expression<bool> Function($$MessageRowsTableFilterComposer f) f,
@@ -9486,6 +9718,17 @@ class $$ConversationRowsTableOrderingComposer
         column: $table.persistentQuickInstructionIdsJson,
         builder: (column) => ColumnOrderings(column),
       );
+
+  ColumnOrderings<bool> get proactiveCareEnabledOverride => $composableBuilder(
+    column: $table.proactiveCareEnabledOverride,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get proactiveCareNextMessageAt =>
+      $composableBuilder(
+        column: $table.proactiveCareNextMessageAt,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $$ConversationRowsTableAnnotationComposer
@@ -9559,6 +9802,17 @@ class $$ConversationRowsTableAnnotationComposer
   GeneratedColumn<String> get persistentQuickInstructionIdsJson =>
       $composableBuilder(
         column: $table.persistentQuickInstructionIdsJson,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<bool> get proactiveCareEnabledOverride => $composableBuilder(
+    column: $table.proactiveCareEnabledOverride,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get proactiveCareNextMessageAt =>
+      $composableBuilder(
+        column: $table.proactiveCareNextMessageAt,
         builder: (column) => column,
       );
 
@@ -9691,6 +9945,10 @@ class $$ConversationRowsTableTableManager
                     const Value.absent(),
                 Value<String> persistentQuickInstructionIdsJson =
                     const Value.absent(),
+                Value<bool?> proactiveCareEnabledOverride =
+                    const Value.absent(),
+                Value<DateTime?> proactiveCareNextMessageAt =
+                    const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationRowsCompanion(
                 id: id,
@@ -9710,6 +9968,8 @@ class $$ConversationRowsTableTableManager
                     workspaceDirectoryOverridesJson,
                 persistentQuickInstructionIdsJson:
                     persistentQuickInstructionIdsJson,
+                proactiveCareEnabledOverride: proactiveCareEnabledOverride,
+                proactiveCareNextMessageAt: proactiveCareNextMessageAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9731,6 +9991,10 @@ class $$ConversationRowsTableTableManager
                     const Value.absent(),
                 Value<String> persistentQuickInstructionIdsJson =
                     const Value.absent(),
+                Value<bool?> proactiveCareEnabledOverride =
+                    const Value.absent(),
+                Value<DateTime?> proactiveCareNextMessageAt =
+                    const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationRowsCompanion.insert(
                 id: id,
@@ -9750,12 +10014,14 @@ class $$ConversationRowsTableTableManager
                     workspaceDirectoryOverridesJson,
                 persistentQuickInstructionIdsJson:
                     persistentQuickInstructionIdsJson,
+                proactiveCareEnabledOverride: proactiveCareEnabledOverride,
+                proactiveCareNextMessageAt: proactiveCareNextMessageAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$ConversationRowsTable, ConversationRow>(table),
+                  e.readTable(table),
                   $$ConversationRowsTableReferences(db, table, e),
                 ),
               )
@@ -10777,7 +11043,7 @@ class $$MessageRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$MessageRowsTable, MessageRow>(table),
+                  e.readTable(table),
                   $$MessageRowsTableReferences(db, table, e),
                 ),
               )
@@ -10934,6 +11200,7 @@ typedef $$AssistantRowsTableCreateCompanionBuilder =
       Value<DateTime?> proactiveCareNextMessageAt,
       Value<String> proactiveCarePrompt,
       Value<String> proactiveCareDecisionPrompt,
+      Value<int?> proactiveCareDecisionHistoryMessageLimit,
       Value<bool> enableMemory,
       Value<String> memoryMode,
       Value<bool> enableRecentChatsReference,
@@ -10987,6 +11254,7 @@ typedef $$AssistantRowsTableUpdateCompanionBuilder =
       Value<DateTime?> proactiveCareNextMessageAt,
       Value<String> proactiveCarePrompt,
       Value<String> proactiveCareDecisionPrompt,
+      Value<int?> proactiveCareDecisionHistoryMessageLimit,
       Value<bool> enableMemory,
       Value<String> memoryMode,
       Value<bool> enableRecentChatsReference,
@@ -11180,6 +11448,12 @@ class $$AssistantRowsTableFilterComposer
     column: $table.proactiveCareDecisionPrompt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<int> get proactiveCareDecisionHistoryMessageLimit =>
+      $composableBuilder(
+        column: $table.proactiveCareDecisionHistoryMessageLimit,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<bool> get enableMemory => $composableBuilder(
     column: $table.enableMemory,
@@ -11438,6 +11712,12 @@ class $$AssistantRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get proactiveCareDecisionHistoryMessageLimit =>
+      $composableBuilder(
+        column: $table.proactiveCareDecisionHistoryMessageLimit,
+        builder: (column) => ColumnOrderings(column),
+      );
+
   ColumnOrderings<bool> get enableMemory => $composableBuilder(
     column: $table.enableMemory,
     builder: (column) => ColumnOrderings(column),
@@ -11685,6 +11965,12 @@ class $$AssistantRowsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get proactiveCareDecisionHistoryMessageLimit =>
+      $composableBuilder(
+        column: $table.proactiveCareDecisionHistoryMessageLimit,
+        builder: (column) => column,
+      );
+
   GeneratedColumn<bool> get enableMemory => $composableBuilder(
     column: $table.enableMemory,
     builder: (column) => column,
@@ -11819,6 +12105,8 @@ class $$AssistantRowsTableTableManager
                 Value<String> proactiveCarePrompt = const Value.absent(),
                 Value<String> proactiveCareDecisionPrompt =
                     const Value.absent(),
+                Value<int?> proactiveCareDecisionHistoryMessageLimit =
+                    const Value.absent(),
                 Value<bool> enableMemory = const Value.absent(),
                 Value<String> memoryMode = const Value.absent(),
                 Value<bool> enableRecentChatsReference = const Value.absent(),
@@ -11872,6 +12160,8 @@ class $$AssistantRowsTableTableManager
                 proactiveCareNextMessageAt: proactiveCareNextMessageAt,
                 proactiveCarePrompt: proactiveCarePrompt,
                 proactiveCareDecisionPrompt: proactiveCareDecisionPrompt,
+                proactiveCareDecisionHistoryMessageLimit:
+                    proactiveCareDecisionHistoryMessageLimit,
                 enableMemory: enableMemory,
                 memoryMode: memoryMode,
                 enableRecentChatsReference: enableRecentChatsReference,
@@ -11928,6 +12218,8 @@ class $$AssistantRowsTableTableManager
                 Value<String> proactiveCarePrompt = const Value.absent(),
                 Value<String> proactiveCareDecisionPrompt =
                     const Value.absent(),
+                Value<int?> proactiveCareDecisionHistoryMessageLimit =
+                    const Value.absent(),
                 Value<bool> enableMemory = const Value.absent(),
                 Value<String> memoryMode = const Value.absent(),
                 Value<bool> enableRecentChatsReference = const Value.absent(),
@@ -11981,6 +12273,8 @@ class $$AssistantRowsTableTableManager
                 proactiveCareNextMessageAt: proactiveCareNextMessageAt,
                 proactiveCarePrompt: proactiveCarePrompt,
                 proactiveCareDecisionPrompt: proactiveCareDecisionPrompt,
+                proactiveCareDecisionHistoryMessageLimit:
+                    proactiveCareDecisionHistoryMessageLimit,
                 enableMemory: enableMemory,
                 memoryMode: memoryMode,
                 enableRecentChatsReference: enableRecentChatsReference,
@@ -12000,16 +12294,7 @@ class $$AssistantRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$AssistantRowsTable, AssistantRow>(table),
-                  BaseReferences<
-                    _$AppDatabase,
-                    $AssistantRowsTable,
-                    AssistantRow
-                  >(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -12273,10 +12558,7 @@ class $$ConversationMcpServerRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<
-                    $ConversationMcpServerRowsTable,
-                    ConversationMcpServerRow
-                  >(table),
+                  e.readTable(table),
                   $$ConversationMcpServerRowsTableReferences(db, table, e),
                 ),
               )
@@ -12544,7 +12826,7 @@ class $$ToolEventRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$ToolEventRowsTable, ToolEventRow>(table),
+                  e.readTable(table),
                   $$ToolEventRowsTableReferences(db, table, e),
                 ),
               )
@@ -12829,10 +13111,7 @@ class $$GeminiThoughtSignatureRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<
-                    $GeminiThoughtSignatureRowsTable,
-                    GeminiThoughtSignatureRow
-                  >(table),
+                  e.readTable(table),
                   $$GeminiThoughtSignatureRowsTableReferences(db, table, e),
                 ),
               )
@@ -13052,16 +13331,7 @@ class $$CacheRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$CacheRowsTable, CacheRow>(table),
-                  BaseReferences<_$AppDatabase, $CacheRowsTable, CacheRow>(
-                    db,
-                    table,
-                    e,
-                  ),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -13213,18 +13483,7 @@ class $$ChatStorageMetaRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$ChatStorageMetaRowsTable, ChatStorageMetaRow>(
-                    table,
-                  ),
-                  BaseReferences<
-                    _$AppDatabase,
-                    $ChatStorageMetaRowsTable,
-                    ChatStorageMetaRow
-                  >(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -13458,16 +13717,7 @@ class $$DeletedRecordRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$DeletedRecordRowsTable, DeletedRecordRow>(table),
-                  BaseReferences<
-                    _$AppDatabase,
-                    $DeletedRecordRowsTable,
-                    DeletedRecordRow
-                  >(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -13661,18 +13911,7 @@ class $$DeletionMarkerRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$DeletionMarkerRowsTable, DeletionMarkerRow>(
-                    table,
-                  ),
-                  BaseReferences<
-                    _$AppDatabase,
-                    $DeletionMarkerRowsTable,
-                    DeletionMarkerRow
-                  >(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -14259,7 +14498,7 @@ class $$GroupChatRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$GroupChatRowsTable, GroupChatRow>(table),
+                  e.readTable(table),
                   $$GroupChatRowsTableReferences(db, table, e),
                 ),
               )
@@ -14608,9 +14847,7 @@ class $$GroupChatMemberRowsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$GroupChatMemberRowsTable, GroupChatMemberRow>(
-                    table,
-                  ),
+                  e.readTable(table),
                   $$GroupChatMemberRowsTableReferences(db, table, e),
                 ),
               )
@@ -14816,16 +15053,7 @@ class $$PreferenceRowsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$PreferenceRowsTable, PreferenceRow>(table),
-                  BaseReferences<
-                    _$AppDatabase,
-                    $PreferenceRowsTable,
-                    PreferenceRow
-                  >(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
           prefetchHooksCallback: null,
         ),

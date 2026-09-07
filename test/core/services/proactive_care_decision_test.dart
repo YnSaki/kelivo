@@ -116,6 +116,7 @@ void main() {
       modelId: 'test-model',
       assistant: Assistant(id: 'a1', name: 'Alpha'),
       userNickname: 'tester',
+      currentNextCareTime: null,
       history:
           history ??
           const <Map<String, dynamic>>[

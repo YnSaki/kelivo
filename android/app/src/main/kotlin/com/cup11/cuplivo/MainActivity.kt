@@ -78,6 +78,7 @@ class MainActivity : FlutterActivity() {
         backgroundProtectionHandler = BackgroundProtectionHandler(this).also {
             it.configure(flutterEngine.dartExecutor.binaryMessenger)
         }
+        ProactiveCareSettingsHandler(this).configure(flutterEngine.dartExecutor.binaryMessenger)
         processTextChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, processTextChannelName)
         processTextChannel?.setMethodCallHandler { call, result ->
             when (call.method) {

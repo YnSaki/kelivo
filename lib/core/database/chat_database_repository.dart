@@ -12,6 +12,7 @@ import '../models/group_chat.dart';
 import '../models/group_chat_member.dart';
 import '../models/assistant_detail_injection.dart';
 import '../models/preset_message.dart';
+import '../services/proactive_care_conversation_policy.dart';
 import 'app_database.dart';
 
 class ChatDatabaseRepository {
@@ -84,6 +85,11 @@ class ChatDatabaseRepository {
     } catch (_) {
       // Non-fatal: reopen still picks up committed schema changes.
     }
+    reopenSyncConnection();
+  }
+
+  Future<void> transferLegacyProactiveCareSchedules() async {
+    await _db.transferLegacyProactiveCareSchedules();
     reopenSyncConnection();
   }
 
@@ -279,6 +285,118 @@ class ChatDatabaseRepository {
     if (row == null) return null;
     return _conversationFromRow(row);
   }
+
+  /// Atomically consumes the exact proactive-care schedule represented by an
+  /// alarm. A null result means the schedule changed or was already claimed.
+  Future<Conversation?> claimConversationProactiveCareSchedule({
+    required String conversationId,
+    required DateTime expectedAt,
+  }) => _db.transaction(() async {
+    final current =
+        await (_db.select(_db.conversationRows)..where(
+              (row) =>
+                  row.id.equals(conversationId) &
+                  row.proactiveCareNextMessageAt.equals(expectedAt),
+            ))
+            .getSingleOrNull();
+    if (current == null) return null;
+
+    final conversation = await _conversationFromRow(current);
+    final assistantId = conversation.assistantId;
+    if (assistantId == null) return null;
+    final assistantRow = await (_db.select(
+      _db.assistantRows,
+    )..where((row) => row.id.equals(assistantId))).getSingleOrNull();
+    if (assistantRow == null ||
+        !ProactiveCareConversationPolicy.isEligible(
+          conversation,
+          _assistantFromRow(assistantRow),
+        )) {
+      return null;
+    }
+
+    final claimedAt = DateTime.now();
+    final changed =
+        await (_db.update(_db.conversationRows)..where(
+              (row) =>
+                  row.id.equals(conversationId) &
+                  row.proactiveCareNextMessageAt.equals(expectedAt),
+            ))
+            .write(
+              ConversationRowsCompanion(
+                proactiveCareNextMessageAt: const Value(null),
+                updatedAt: Value(claimedAt),
+              ),
+            );
+    if (changed != 1) return null;
+
+    final claimed = await (_db.select(
+      _db.conversationRows,
+    )..where((row) => row.id.equals(conversationId))).getSingle();
+    return _conversationFromRow(claimed);
+  });
+
+  /// Appends a foreground proactive-care reply only while its conversation is
+  /// still owned by [assistantId] and effectively enabled. A null result means
+  /// that eligibility was lost; in that case this transaction makes no writes.
+  /// When present, [geminiThoughtSignature] is stored atomically beside the
+  /// new message instead of being embedded in its visible content.
+  Future<ChatMessage?> appendProactiveCareReplyIfEligible({
+    required String conversationId,
+    required String assistantId,
+    required String content,
+    String? modelId,
+    String? providerId,
+    String? geminiThoughtSignature,
+  }) => _db.transaction(() async {
+    final conversationRow = await (_db.select(
+      _db.conversationRows,
+    )..where((row) => row.id.equals(conversationId))).getSingleOrNull();
+    if (conversationRow == null) return null;
+
+    final assistantRow = await (_db.select(
+      _db.assistantRows,
+    )..where((row) => row.id.equals(assistantId))).getSingleOrNull();
+    if (assistantRow == null) return null;
+
+    final conversation = await _conversationFromRow(
+      conversationRow,
+      includeMessageIds: false,
+    );
+    final assistant = _assistantFromRow(assistantRow);
+    if (!ProactiveCareConversationPolicy.isEligible(conversation, assistant)) {
+      return null;
+    }
+
+    final now = DateTime.now();
+    final message = ChatMessage(
+      role: 'assistant',
+      content: content,
+      conversationId: conversationId,
+      timestamp: now,
+      modelId: modelId,
+      providerId: providerId,
+    );
+    await _db
+        .into(_db.messageRows)
+        .insert(
+          _messageCompanion(message, await _nextMessageOrder(conversationId)),
+        );
+    if (geminiThoughtSignature?.isNotEmpty == true) {
+      await _db
+          .into(_db.geminiThoughtSignatureRows)
+          .insert(
+            GeminiThoughtSignatureRowsCompanion.insert(
+              messageId: message.id,
+              signature: geminiThoughtSignature!,
+            ),
+          );
+    }
+    await (_db.update(_db.conversationRows)
+          ..where((row) => row.id.equals(conversationId)))
+        .write(ConversationRowsCompanion(updatedAt: Value(now)));
+    return message;
+  });
 
   Conversation? getConversationSync(
     String id, {
@@ -1147,6 +1265,8 @@ class ChatDatabaseRepository {
           ?.toIso8601String(),
       'proactiveCarePrompt': row.proactiveCarePrompt,
       'proactiveCareDecisionPrompt': row.proactiveCareDecisionPrompt,
+      'proactiveCareDecisionHistoryMessageLimit':
+          row.proactiveCareDecisionHistoryMessageLimit,
       'discoverable': row.discoverable,
       'handoffId': row.handoffId,
       'handoffDescription': row.handoffDescription,
@@ -1205,6 +1325,9 @@ class ChatDatabaseRepository {
       proactiveCareNextMessageAt: Value(a.proactiveCareNextMessageAt),
       proactiveCarePrompt: Value(a.proactiveCarePrompt),
       proactiveCareDecisionPrompt: Value(a.proactiveCareDecisionPrompt),
+      proactiveCareDecisionHistoryMessageLimit: Value(
+        a.proactiveCareDecisionHistoryMessageLimit,
+      ),
       enableTimeInjection: Value(a.enableTimeInjection),
       discoverable: Value(a.discoverable),
       handoffId: Value(a.handoffId),
@@ -1252,6 +1375,8 @@ class ChatDatabaseRepository {
       persistentQuickInstructionIds: _decodeStringList(
         row.persistentQuickInstructionIdsJson,
       ),
+      proactiveCareEnabledOverride: row.proactiveCareEnabledOverride,
+      proactiveCareNextMessageAt: row.proactiveCareNextMessageAt,
     );
   }
 
@@ -1305,6 +1430,14 @@ class ChatDatabaseRepository {
         _readOptionalString(row, 'persistent_quick_instruction_ids_json') ??
             '[]',
       ),
+      proactiveCareEnabledOverride: _readOptionalBool(
+        row,
+        'proactive_care_enabled_override',
+      ),
+      proactiveCareNextMessageAt: _readOptionalDateTime(
+        row,
+        'proactive_care_next_message_at',
+      ),
     );
   }
 
@@ -1332,6 +1465,15 @@ class ChatDatabaseRepository {
     }
   }
 
+  DateTime? _readOptionalDateTime(sqlite.Row row, String column) {
+    try {
+      final value = row[column];
+      return value == null ? null : _dateTimeFromSqlite(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
   ConversationRowsCompanion _conversationCompanion(Conversation conversation) {
     return ConversationRowsCompanion.insert(
       id: conversation.id,
@@ -1354,6 +1496,12 @@ class ChatDatabaseRepository {
       ),
       persistentQuickInstructionIdsJson: Value(
         jsonEncode(conversation.persistentQuickInstructionIds),
+      ),
+      proactiveCareEnabledOverride: Value(
+        conversation.proactiveCareEnabledOverride,
+      ),
+      proactiveCareNextMessageAt: Value(
+        conversation.proactiveCareNextMessageAt,
       ),
     );
   }

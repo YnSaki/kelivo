@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../providers/settings_provider.dart';
 import 'chat_api_service.dart';
+import 'providers/gemini_thought_signature.dart';
 
 /// Stream sender signature used by [PlainTextCollector].
 typedef PlainTextStreamSender =
@@ -42,6 +43,10 @@ class PlainTextCollector {
 
   /// Runs the stream and returns the accumulated text.
   ///
+  /// Gemini thought-signature comments are removed from the returned text and
+  /// reported as normalized artifact payloads through
+  /// [onGeminiThoughtSignature] when that callback is set.
+  ///
   /// [onAccumulated] fires per non-empty chunk with the full accumulated
   /// buffer (live-update hook for streaming UI). When [updateInterval] is
   /// provided, callbacks are coalesced to that cadence and flushed once after
@@ -61,6 +66,7 @@ class PlainTextCollector {
     String? conversationId,
     Duration? updateInterval,
     void Function(String accumulated)? onAccumulated,
+    void Function(String signature)? onGeminiThoughtSignature,
   }) async {
     final buffer = StringBuffer();
     Timer? pendingUpdate;
@@ -127,7 +133,15 @@ class PlainTextCollector {
         ocrActive: ocrActive,
       )) {
         if (chunk.content.isEmpty) continue;
-        buffer.write(chunk.content);
+        final extracted = extractGeminiThoughtMeta(chunk.content);
+        final signature = encodeGeminiThoughtSignature(
+          textKey: extracted.textKey,
+          textValue: extracted.textValue,
+          imageSigs: extracted.images,
+        );
+        if (signature.isNotEmpty) onGeminiThoughtSignature?.call(signature);
+        if (extracted.cleanedText.isEmpty) continue;
+        buffer.write(extracted.cleanedText);
         scheduleAccumulated();
       }
       streamCompleted = true;

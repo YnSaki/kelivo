@@ -143,6 +143,7 @@ class ChatInputBar extends StatefulWidget {
     this.onLongPressQuickPhrase,
     this.showDocumentProcessingButton = false,
     this.onDocumentProcessing,
+    this.onConversationProactiveCare,
     this.conversationId,
     this.sendButtonTooltip,
     this.backgroundImageActive = false,
@@ -206,6 +207,7 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onLongPressQuickPhrase;
   final bool showDocumentProcessingButton;
   final VoidCallback? onDocumentProcessing;
+  final VoidCallback? onConversationProactiveCare;
   final String? conversationId;
   final String? sendButtonTooltip;
   final bool backgroundImageActive;
@@ -2615,6 +2617,23 @@ class _ChatInputBarState extends State<ChatInputBar>
               icon: Lucide.FileText,
               label: l10n.documentProcessingTitle,
               onTap: lockTap(widget.onDocumentProcessing),
+            ),
+          );
+        }
+
+        if (widget.onConversationProactiveCare != null) {
+          addAction(
+            inputBarButtonProactiveCare,
+            normalButtonW,
+            builder: () => _CompactIconButton(
+              tooltip: l10n.conversationProactiveCareTitle,
+              icon: Lucide.HeartPulse,
+              onTap: lockTap(widget.onConversationProactiveCare),
+            ),
+            menu: DesktopContextMenuItem(
+              icon: Lucide.HeartPulse,
+              label: l10n.conversationProactiveCareTitle,
+              onTap: lockTap(widget.onConversationProactiveCare),
             ),
           );
         }
