@@ -142,12 +142,20 @@ class ChatInputSection extends StatelessWidget {
 
     final isDesktop = _isDesktopPlatform(context);
     final hasWorldBooks = context.watch<WorldBookProvider>().books.isNotEmpty;
+    final savedOrder = isTablet
+        ? settings.chatInputButtonOrder
+        : settings.chatInputButtonOrderPhone;
+    final savedMoreIds = isTablet
+        ? settings.chatInputMoreButtonIds
+        : settings.chatInputMoreButtonIdsPhone;
     final buttonLayout = resolveInputBarButtonLayout(
-      savedOrder: settings.chatInputButtonOrder,
-      savedMoreIds: settings.chatInputMoreButtonIds,
+      savedOrder: savedOrder,
+      savedMoreIds: savedMoreIds,
       tabletLayout: isTablet,
     );
-    final customized = settings.chatInputButtonsCustomized;
+    final customized = isTablet
+        ? settings.chatInputButtonsCustomized
+        : settings.chatInputButtonsCustomizedPhone;
     // Tablet-only icons may leak onto the narrow row once the user explicitly
     // customized AND marked the item directly shown (sentinel-unset keeps the
     // legacy per-platform split — see resolveInputBarButtonLayout).

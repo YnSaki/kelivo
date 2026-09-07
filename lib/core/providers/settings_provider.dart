@@ -275,9 +275,16 @@ class SettingsProvider extends ChangeNotifier {
       'mobile_assistant_edit_tab_order_v1';
   static const String _mobileAssistantEditTabHiddenKey =
       'mobile_assistant_edit_tab_hidden_v1';
-  // Input bar buttons customization (order + More bucket)
+  // Input bar buttons customization (order + More bucket). Legacy keys are the
+  // tablet/desktop-layout bucket; the phone-layout bucket uses the _phone keys
+  // (cross-form-factor LAN sync would otherwise overwrite the other form
+  // factor's layout — see docs/adr/0054).
   static const String _chatInputButtonsOrderKey = 'chat_input_buttons_v1';
   static const String _chatInputMoreButtonsKey = 'chat_input_more_buttons_v1';
+  static const String _chatInputPhoneButtonsOrderKey =
+      'chat_input_buttons_phone_v1';
+  static const String _chatInputPhoneMoreButtonsKey =
+      'chat_input_more_buttons_phone_v1';
   static const String _mobileAssistantDetailOutlineEnabledKey =
       'mobile_assistant_detail_outline_enabled_v1';
   // Network request logging (debug)
@@ -1554,6 +1561,12 @@ class SettingsProvider extends ChangeNotifier {
     );
     _chatInputMoreButtonIds = List.unmodifiable(
       prefs.getStringList(_chatInputMoreButtonsKey) ?? const <String>[],
+    );
+    _chatInputButtonOrderPhone = List.unmodifiable(
+      prefs.getStringList(_chatInputPhoneButtonsOrderKey) ?? const <String>[],
+    );
+    _chatInputMoreButtonIdsPhone = List.unmodifiable(
+      prefs.getStringList(_chatInputPhoneMoreButtonsKey) ?? const <String>[],
     );
     _mobileAssistantDetailOutlineEnabled =
         prefs.getBool(_mobileAssistantDetailOutlineEnabledKey) ?? false;
@@ -3159,6 +3172,14 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setStringList(_mobileAssistantEditTabHiddenKey, sorted);
   }
 
+  // ===== Input bar buttons customization =====
+  // Two storage buckets keyed by layout form factor: the legacy
+  // `chat_input_buttons_v1` / `chat_input_more_buttons_v1` keys remain the
+  // tablet/desktop-layout bucket (zero migration), the `_phone` keys are the
+  // phone-layout bucket. Same-form-factor LAN sync / backup still crosses
+  // devices; cross-form-factor layouts never overwrite each other (issue
+  // #570, ADR-0054).
+
   List<String> _chatInputButtonOrder = const <String>[];
   List<String> get chatInputButtonOrder => _chatInputButtonOrder;
   Future<void> setChatInputButtonOrder(List<String> order) async {
@@ -3195,6 +3216,43 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = _preferences;
     await prefs.remove(_chatInputButtonsOrderKey);
     await prefs.remove(_chatInputMoreButtonsKey);
+  }
+
+  List<String> _chatInputButtonOrderPhone = const <String>[];
+  List<String> get chatInputButtonOrderPhone => _chatInputButtonOrderPhone;
+  Future<void> setChatInputButtonOrderPhone(List<String> order) async {
+    final next = List<String>.unmodifiable(LinkedHashSet<String>.from(order));
+    if (listEquals(_chatInputButtonOrderPhone, next)) return;
+    _chatInputButtonOrderPhone = next;
+    notifyListeners();
+    final prefs = _preferences;
+    await prefs.setStringList(_chatInputPhoneButtonsOrderKey, next);
+  }
+
+  List<String> _chatInputMoreButtonIdsPhone = const <String>[];
+  List<String> get chatInputMoreButtonIdsPhone => _chatInputMoreButtonIdsPhone;
+  Future<void> setChatInputMoreButtonIdsPhone(List<String> ids) async {
+    final sorted = LinkedHashSet<String>.from(ids).toList()..sort();
+    final next = List<String>.unmodifiable(sorted);
+    if (listEquals(_chatInputMoreButtonIdsPhone, next)) return;
+    _chatInputMoreButtonIdsPhone = next;
+    notifyListeners();
+    final prefs = _preferences;
+    await prefs.setStringList(_chatInputPhoneMoreButtonsKey, next);
+  }
+
+  bool get chatInputButtonsCustomizedPhone =>
+      _chatInputButtonOrderPhone.isNotEmpty ||
+      _chatInputMoreButtonIdsPhone.isNotEmpty;
+
+  Future<void> resetChatInputButtonsPhone() async {
+    if (!chatInputButtonsCustomizedPhone) return;
+    _chatInputButtonOrderPhone = const <String>[];
+    _chatInputMoreButtonIdsPhone = const <String>[];
+    notifyListeners();
+    final prefs = _preferences;
+    await prefs.remove(_chatInputPhoneButtonsOrderKey);
+    await prefs.remove(_chatInputPhoneMoreButtonsKey);
   }
 
   bool _mobileAssistantDetailOutlineEnabled = false;
@@ -5629,6 +5687,8 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._hiddenMobileAssistantEditTabs = _hiddenMobileAssistantEditTabs;
     copy._chatInputButtonOrder = _chatInputButtonOrder;
     copy._chatInputMoreButtonIds = _chatInputMoreButtonIds;
+    copy._chatInputButtonOrderPhone = _chatInputButtonOrderPhone;
+    copy._chatInputMoreButtonIdsPhone = _chatInputMoreButtonIdsPhone;
     copy._mobileAssistantDetailOutlineEnabled =
         _mobileAssistantDetailOutlineEnabled;
     return copy;

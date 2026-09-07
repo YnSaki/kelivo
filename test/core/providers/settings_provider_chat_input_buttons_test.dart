@@ -100,4 +100,59 @@ void main() {
     await settings.setChatInputMoreButtonIds(['camera']);
     expect(settings.chatInputButtonsCustomized, isTrue);
   });
+
+  group('phone-layout bucket (ADR-0054)', () {
+    test(
+      'persists to phone keys and never touches the tablet bucket',
+      () async {
+        businessPrefs = BusinessPreferences.memoryForTests(
+          const <String, Object>{},
+        );
+        final settings = SettingsProvider(preferences: businessPrefs);
+        await settings.loaded;
+
+        await settings.setChatInputButtonOrderPhone(['camera', 'model']);
+        await settings.setChatInputMoreButtonIdsPhone(['camera']);
+
+        final prefs = businessPrefs;
+        expect(prefs.getStringList('chat_input_buttons_phone_v1'), [
+          'camera',
+          'model',
+        ]);
+        expect(prefs.getStringList('chat_input_more_buttons_phone_v1'), [
+          'camera',
+        ]);
+        expect(prefs.getStringList('chat_input_buttons_v1'), isNull);
+        expect(prefs.getStringList('chat_input_more_buttons_v1'), isNull);
+        expect(settings.chatInputButtonsCustomizedPhone, isTrue);
+        expect(settings.chatInputButtonsCustomized, isFalse);
+
+        final reloaded = SettingsProvider(preferences: businessPrefs);
+        await reloaded.loaded;
+        expect(reloaded.chatInputButtonOrderPhone, ['camera', 'model']);
+        expect(reloaded.chatInputMoreButtonIdsPhone, ['camera']);
+      },
+    );
+
+    test('reset clears only the phone keys', () async {
+      businessPrefs = BusinessPreferences.memoryForTests(
+        const <String, Object>{},
+      );
+      final settings = SettingsProvider(preferences: businessPrefs);
+      await settings.loaded;
+
+      await settings.setChatInputButtonOrder(['model', 'camera']);
+      await settings.setChatInputButtonOrderPhone(['camera', 'model']);
+      await settings.setChatInputMoreButtonIdsPhone(['camera']);
+      await settings.resetChatInputButtonsPhone();
+
+      expect(settings.chatInputButtonsCustomizedPhone, isFalse);
+      expect(settings.chatInputButtonsCustomized, isTrue);
+      expect(settings.chatInputButtonOrder, ['model', 'camera']);
+      final prefs = businessPrefs;
+      expect(prefs.getStringList('chat_input_buttons_phone_v1'), isNull);
+      expect(prefs.getStringList('chat_input_more_buttons_phone_v1'), isNull);
+      expect(prefs.getStringList('chat_input_buttons_v1'), isNotNull);
+    });
+  });
 }
