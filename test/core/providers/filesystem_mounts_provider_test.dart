@@ -1,9 +1,27 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:Cuplivo/core/database/business_preferences.dart';
 import 'package:Cuplivo/core/providers/filesystem_mounts_provider.dart';
 import 'package:Cuplivo/core/services/mcp/kelivo_filesystem/kelivo_filesystem_server.dart';
+
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  _FakePathProviderPlatform(this.supportPath, this.documentsPath);
+
+  final String supportPath;
+  final String documentsPath;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => supportPath;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => documentsPath;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -140,6 +158,73 @@ void main() {
         existing: const [],
       );
       expect(err, isNull);
+    });
+  });
+
+  group('legacy persisted mounts at load', () {
+    late Directory tmp;
+    late String support;
+    late BusinessPreferences businessPrefs;
+
+    setUp(() async {
+      tmp = Directory.systemTemp.createTempSync('kelivo_mounts_load_test_');
+      support = '${tmp.path}/support';
+      Directory(support).createSync();
+      PathProviderPlatform.instance = _FakePathProviderPlatform(support, '');
+      SharedPreferences.setMockInitialValues({});
+      businessPrefs = BusinessPreferences.memoryForTests();
+      // Mount loading is a desktop behavior.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    });
+
+    tearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      try {
+        tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+
+    Future<FilesystemMountsProvider> makeProvider() async {
+      final provider = FilesystemMountsProvider(preferences: businessPrefs);
+      await provider.init();
+      return provider;
+    }
+
+    test(
+      'mount overlapping the sync scope is skipped but kept in prefs',
+      () async {
+        businessPrefs = BusinessPreferences.memoryForTests({
+          FilesystemMountsProvider.prefsKey: jsonEncode([
+            FilesystemMount(
+              alias: 'photos',
+              path: '$support/workspaces/photos',
+              readOnly: true,
+            ).toJson(),
+          ]),
+        });
+        final provider = await makeProvider();
+        expect(provider.externalMounts, isEmpty);
+        expect(
+          businessPrefs.getString(FilesystemMountsProvider.prefsKey),
+          isNotNull,
+          reason: 'the config is preserved — only the mount is skipped',
+        );
+      },
+    );
+
+    test('non-overlapping legacy mount still loads', () async {
+      businessPrefs = BusinessPreferences.memoryForTests({
+        FilesystemMountsProvider.prefsKey: jsonEncode([
+          FilesystemMount(
+            alias: 'photos',
+            path: '${tmp.path}/data/photos',
+            readOnly: true,
+          ).toJson(),
+        ]),
+      });
+      final provider = await makeProvider();
+      expect(provider.externalMounts, hasLength(1));
+      expect(provider.externalMounts.first.alias, 'photos');
     });
   });
 }

@@ -18,6 +18,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/ios_expandable_section.dart';
 import '../../../shared/widgets/ios_settings_section.dart';
 import '../../../shared/widgets/ios_switch.dart';
+import '../../../shared/widgets/ios_tactile.dart';
 import '../../../shared/widgets/snackbar.dart';
 import '../../../theme/app_font_weights.dart';
 import '../../../theme/app_semantic_colors.dart';
@@ -29,9 +30,17 @@ import 'workspace_terminal_page.dart';
 import 'workspace_saf_mounts_page.dart';
 
 class WorkspaceDetailPage extends StatefulWidget {
-  const WorkspaceDetailPage({super.key, required this.workspaceId});
+  const WorkspaceDetailPage({
+    super.key,
+    required this.workspaceId,
+    this.embedded = false,
+  });
 
   final String workspaceId;
+
+  /// When true, renders without Scaffold/AppBar for embedding into the
+  /// desktop settings pane (compact header row instead of the AppBar).
+  final bool embedded;
 
   @override
   State<WorkspaceDetailPage> createState() => _WorkspaceDetailPageState();
@@ -167,9 +176,46 @@ class _WorkspaceDetailPageState extends State<WorkspaceDetailPage>
     final safMounts = context.watch<SafMountSyncService>();
     final ws = wp.getById(widget.workspaceId);
     if (ws == null) {
+      final notFound = Center(child: Text(l10n.workspaceNotFound));
+      if (widget.embedded) return notFound;
       return Scaffold(
         appBar: AppBar(title: Text(l10n.settingsPageWorkspace)),
-        body: Center(child: Text(l10n.workspaceNotFound)),
+        body: notFound,
+      );
+    }
+
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    ws.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: AppFontWeights.semibold,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                IosIconButton(
+                  icon: Lucide.Pencil,
+                  size: 18,
+                  minSize: 32,
+                  semanticLabel: l10n.workspaceRename,
+                  onTap: () => _rename(context, ws),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildBody(context, ws, safMounts)),
+        ],
       );
     }
 
@@ -196,153 +242,163 @@ class _WorkspaceDetailPageState extends State<WorkspaceDetailPage>
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        children: [
-          IosSettingsSection(
-            children: [
+      body: _buildBody(context, ws, safMounts),
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context,
+    Workspace ws,
+    SafMountSyncService safMounts,
+  ) {
+    final l10n = AppLocalizations.of(context)!;
+    final wp = context.watch<WorkspaceProvider>();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        IosSettingsSection(
+          children: [
+            IosSettingsNavRow(
+              icon: Lucide.FolderOpen,
+              label: l10n.workspaceFilesEntry,
+              detailText: '@${ws.alias}',
+              onTap: () {
+                final path = wp.hostPathFor(ws);
+                if (path == null) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => MountFilesPage(
+                      mount: FilesystemMount(
+                        alias: ws.alias,
+                        path: path,
+                        readOnly: ws.readOnly,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (Platform.isAndroid) ...[
+              const IosSettingsDivider(),
               IosSettingsNavRow(
-                icon: Lucide.FolderOpen,
-                label: l10n.workspaceFilesEntry,
-                detailText: '@${ws.alias}',
+                icon: Lucide.HardDrive,
+                label: l10n.workspaceSafMountsEntry,
+                detailText: l10n.safMountCount(
+                  safMounts.entriesFor(ws.id).length,
+                ),
                 onTap: () {
-                  final path = wp.hostPathFor(ws);
-                  if (path == null) return;
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => MountFilesPage(
-                        mount: FilesystemMount(
-                          alias: ws.alias,
-                          path: path,
-                          readOnly: ws.readOnly,
-                        ),
-                      ),
+                      builder: (_) =>
+                          WorkspaceSafMountsPage(workspaceId: ws.id),
                     ),
                   );
                 },
               ),
-              if (Platform.isAndroid) ...[
-                const IosSettingsDivider(),
-                IosSettingsNavRow(
-                  icon: Lucide.HardDrive,
-                  label: l10n.workspaceSafMountsEntry,
-                  detailText: l10n.safMountCount(
-                    safMounts.entriesFor(ws.id).length,
-                  ),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            WorkspaceSafMountsPage(workspaceId: ws.id),
-                      ),
-                    );
-                  },
-                ),
-              ],
             ],
-          ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        IosExpandableSection(
+          icon: Lucide.Wrench,
+          title: l10n.workspaceFilesystemTools,
+          expanded: _toolsExpanded,
+          onToggle: () => setState(() => _toolsExpanded = !_toolsExpanded),
+          showDivider: true,
+          children: [
+            for (final tool in WorkspaceToolNames.filesystemTools)
+              _toolRow(context, ws, tool),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          children: [
+            _toolRow(
+              context,
+              ws,
+              WorkspaceToolNames.shell,
+              forceTitle: l10n.workspaceToolShellTitle,
+              forceSubtitle: (!Platform.isAndroid && !Platform.isIOS)
+                  ? l10n.workspaceShellMobileOnly
+                  : !_hasRuntime
+                  ? l10n.workspaceSandboxRuntimeMissing
+                  : (_depInstalled[WorkspaceDependencyIds.base] != true)
+                  ? l10n.workspaceSandboxBaseRequired
+                  : l10n.workspaceToolShellUserDesc,
+              enabledOverride: (Platform.isAndroid || Platform.isIOS)
+                  ? null
+                  : false,
+              onChangedOverride: (Platform.isAndroid || Platform.isIOS)
+                  ? null
+                  : (_) {
+                      showAppSnackBar(
+                        context,
+                        message: l10n.workspaceShellMobileOnly,
+                      );
+                    },
+            ),
+          ],
+        ),
+        if (Platform.isAndroid || Platform.isIOS) ...[
           const SizedBox(height: 12),
           IosExpandableSection(
-            icon: Lucide.Wrench,
-            title: l10n.workspaceFilesystemTools,
-            expanded: _toolsExpanded,
-            onToggle: () => setState(() => _toolsExpanded = !_toolsExpanded),
+            icon: Lucide.Boxes,
+            title: l10n.workspaceInstallDeps,
+            expanded: _depsExpanded,
+            onToggle: _toggleDependencies,
             showDivider: true,
             children: [
-              for (final tool in WorkspaceToolNames.filesystemTools)
-                _toolRow(context, ws, tool),
+              if (_depProbeFailed) _dependencyProbeError(context),
+              for (final depId in WorkspaceDependencyIds.ordered)
+                _depRow(context, ws, depId),
             ],
           ),
+          if (Platform.isAndroid) ...[
+            const SizedBox(height: 12),
+            WorkspaceTerminalPersistenceSection(
+              workspace: ws,
+              expanded: _terminalPersistenceExpanded,
+              busy: _terminalPersistenceBusy,
+              onToggle: () => setState(
+                () => _terminalPersistenceExpanded =
+                    !_terminalPersistenceExpanded,
+              ),
+              onKeepChanged: (enabled) => unawaited(
+                _updateTerminalSetting(
+                  l10n,
+                  (coordinator) =>
+                      coordinator.setKeepTerminalAfterExit(ws.id, enabled),
+                ),
+              ),
+              onDurableChanged: (enabled) => unawaited(
+                _updateTerminalSetting(
+                  l10n,
+                  (coordinator) => coordinator.setDurable(ws.id, enabled),
+                ),
+              ),
+              onAutoStartChanged: (enabled) => unawaited(
+                _updateTerminalSetting(
+                  l10n,
+                  (coordinator) => coordinator.setAutoStart(ws.id, enabled),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _sectionCard(
             children: [
-              _toolRow(
+              _navRow(
                 context,
-                ws,
-                WorkspaceToolNames.shell,
-                forceTitle: l10n.workspaceToolShellTitle,
-                forceSubtitle: (!Platform.isAndroid && !Platform.isIOS)
-                    ? l10n.workspaceShellMobileOnly
-                    : !_hasRuntime
-                    ? l10n.workspaceSandboxRuntimeMissing
-                    : (_depInstalled[WorkspaceDependencyIds.base] != true)
-                    ? l10n.workspaceSandboxBaseRequired
-                    : l10n.workspaceToolShellUserDesc,
-                enabledOverride: (Platform.isAndroid || Platform.isIOS)
-                    ? null
-                    : false,
-                onChangedOverride: (Platform.isAndroid || Platform.isIOS)
-                    ? null
-                    : (_) {
-                        showAppSnackBar(
-                          context,
-                          message: l10n.workspaceShellMobileOnly,
-                        );
-                      },
+                icon: Lucide.HardDrive,
+                title: l10n.workspaceSandboxDirEntryTitle,
+                subtitle: _sandboxDirSubtitle(context),
+                enabled: _depInstalled[WorkspaceDependencyIds.base] == true,
+                onTap: () => _openSandboxDir(ws),
               ),
             ],
           ),
-          if (Platform.isAndroid || Platform.isIOS) ...[
-            const SizedBox(height: 12),
-            IosExpandableSection(
-              icon: Lucide.Boxes,
-              title: l10n.workspaceInstallDeps,
-              expanded: _depsExpanded,
-              onToggle: _toggleDependencies,
-              showDivider: true,
-              children: [
-                if (_depProbeFailed) _dependencyProbeError(context),
-                for (final depId in WorkspaceDependencyIds.ordered)
-                  _depRow(context, ws, depId),
-              ],
-            ),
-            if (Platform.isAndroid) ...[
-              const SizedBox(height: 12),
-              WorkspaceTerminalPersistenceSection(
-                workspace: ws,
-                expanded: _terminalPersistenceExpanded,
-                busy: _terminalPersistenceBusy,
-                onToggle: () => setState(
-                  () => _terminalPersistenceExpanded =
-                      !_terminalPersistenceExpanded,
-                ),
-                onKeepChanged: (enabled) => unawaited(
-                  _updateTerminalSetting(
-                    l10n,
-                    (coordinator) =>
-                        coordinator.setKeepTerminalAfterExit(ws.id, enabled),
-                  ),
-                ),
-                onDurableChanged: (enabled) => unawaited(
-                  _updateTerminalSetting(
-                    l10n,
-                    (coordinator) => coordinator.setDurable(ws.id, enabled),
-                  ),
-                ),
-                onAutoStartChanged: (enabled) => unawaited(
-                  _updateTerminalSetting(
-                    l10n,
-                    (coordinator) => coordinator.setAutoStart(ws.id, enabled),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            _sectionCard(
-              children: [
-                _navRow(
-                  context,
-                  icon: Lucide.HardDrive,
-                  title: l10n.workspaceSandboxDirEntryTitle,
-                  subtitle: _sandboxDirSubtitle(context),
-                  enabled: _depInstalled[WorkspaceDependencyIds.base] == true,
-                  onTap: () => _openSandboxDir(ws),
-                ),
-              ],
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 

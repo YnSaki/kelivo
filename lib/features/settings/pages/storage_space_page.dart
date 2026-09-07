@@ -7,17 +7,15 @@ import 'package:provider/provider.dart';
 
 import '../../../core/database/chat_database_repository.dart';
 import '../../../core/models/file_reference.dart';
-import '../../../core/models/workspace.dart';
 import '../../../core/providers/workspace_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/haptics.dart';
 import '../../../theme/app_semantic_colors.dart';
-import '../../workspace/pages/workspace_detail_page.dart';
-import '../../workspace/pages/workspace_list_page.dart';
 import '../../../core/services/storage/message_locate_bus.dart';
 import '../../../core/services/storage/storage_usage_service.dart';
-import '../../../core/services/workspace/workspace_terminal_native_bridge.dart';
+import '../../../core/services/workspace/workspace_terminal_native_bridge.dart'
+    show WorkspaceTerminalStopException;
 import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/database_compact_button.dart';
@@ -34,6 +32,7 @@ import '../../../utils/app_directories.dart';
 import '../../../utils/path_canon.dart';
 import '../../chat/pages/image_viewer_page.dart';
 import '../../home/services/input_draft_persistence.dart';
+import '../../workspace/widgets/workspace_management_view.dart';
 import 'log_viewer_page.dart';
 import 'trash_detail_page.dart';
 import '../../../theme/app_font_weights.dart';
@@ -558,14 +557,6 @@ class _StorageSpacePageState extends State<StorageSpacePage> {
     }
   }
 
-  Future<void> _openWorkspaceHub() async {
-    final navigator = Navigator.of(context);
-    await navigator.push(
-      MaterialPageRoute(builder: (_) => const WorkspaceListPage()),
-    );
-    await _refreshReport();
-  }
-
   Future<void> _openCategoryDetail(StorageUsageCategoryKey key) async {
     final report = _report;
     if (report == null) return;
@@ -736,24 +727,13 @@ class _StorageSpacePageState extends State<StorageSpacePage> {
                   children: [
                     SizedBox(
                       width: 280,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _MountsPanel(
-                            onOpenWorkspace: () => _openWorkspaceHub(),
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: _CategoryMenu(
-                              categories: _visibleCategories(report),
-                              selected: _selected,
-                              iconFor: _iconFor,
-                              titleFor: (k) => _titleFor(k, l10n),
-                              fmtBytes: formatBytes,
-                              onSelect: (k) => setState(() => _selected = k),
-                            ),
-                          ),
-                        ],
+                      child: _CategoryMenu(
+                        categories: _visibleCategories(report),
+                        selected: _selected,
+                        iconFor: _iconFor,
+                        titleFor: (k) => _titleFor(k, l10n),
+                        fmtBytes: formatBytes,
+                        onSelect: (k) => setState(() => _selected = k),
                       ),
                     ),
                     VerticalDivider(
@@ -767,6 +747,37 @@ class _StorageSpacePageState extends State<StorageSpacePage> {
                           ? TrashDetailPage(
                               embedded: true,
                               onDataChanged: _refreshReport,
+                            )
+                          : selectedCat.key ==
+                                StorageUsageCategoryKey.workspaces
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _titleFor(selectedCat.key, l10n),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: AppFontWeights.emphasis,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${formatBytes(selectedCat.stats.bytes)} · ${l10n.storageSpaceFilesCount(selectedCat.stats.fileCount)}',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: cs.onSurface.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Expanded(
+                                  child: WorkspaceManagementView(
+                                    key: const ValueKey(
+                                      'storage-workspace-pane',
+                                    ),
+                                    onDataChanged: _refreshReport,
+                                  ),
+                                ),
+                              ],
                             )
                           : _CategoryDetail(
                               category: selectedCat,
@@ -3587,223 +3598,4 @@ Widget _iosNavRow(
       ],
     ),
   );
-}
-
-/// Desktop-only panel: `@workspaces` entry + external mount config.
-/// External mounts are never synced and never appear on mobile.
-class _MountsPanel extends StatelessWidget {
-  const _MountsPanel({required this.onOpenWorkspace});
-
-  final VoidCallback onOpenWorkspace;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context)!;
-    final provider = context.watch<WorkspaceProvider>();
-    final items = provider.workspaces;
-
-    return _iosSectionCard(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Lucide.FolderOpen,
-                  size: 16,
-                  color: cs.onSurface.withValues(alpha: 0.8),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  l10n.settingsPageWorkspace,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: AppFontWeights.semibold,
-                    color: cs.onSurface.withValues(alpha: 0.9),
-                  ),
-                ),
-                const Spacer(),
-                IosIconButton(
-                  icon: Lucide.Plus,
-                  size: 16,
-                  minSize: 28,
-                  semanticLabel: l10n.workspaceAdd,
-                  onTap: onOpenWorkspace,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            for (var i = 0; i < items.length; i++) ...[
-              if (i > 0) const SizedBox(height: 6),
-              _MountRow(
-                alias: '@${items[i].alias}',
-                path: provider.hostPathFor(items[i]) ?? '',
-                readOnly: items[i].readOnly,
-                builtin: items[i].alias == Workspace.defaultAlias,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          WorkspaceDetailPage(workspaceId: items[i].id),
-                    ),
-                  );
-                },
-                onEdit: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          WorkspaceDetailPage(workspaceId: items[i].id),
-                    ),
-                  );
-                },
-                onDelete: items[i].alias == Workspace.defaultAlias
-                    ? null
-                    : () async {
-                        final l10n = AppLocalizations.of(context)!;
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: Text(l10n.workspaceConfirm),
-                            content: Text(items[i].displayName),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: Text(l10n.workspaceCancel),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: Text(l10n.workspaceConfirm),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (ok != true) return;
-                        final err = await provider.deleteWorkspace(items[i].id);
-                        if (err != null && context.mounted) {
-                          showAppSnackBar(
-                            context,
-                            message:
-                                err == WorkspaceProvider.errorTerminalStopFailed
-                                ? l10n.workspaceTerminalStopFailed
-                                : l10n.workspaceCannotDeleteDefault,
-                          );
-                        }
-                      },
-              ),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              l10n.storageMountsWorkspacesNote,
-              style: TextStyle(
-                fontSize: 11.5,
-                color: cs.onSurface.withValues(alpha: 0.55),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MountRow extends StatelessWidget {
-  const _MountRow({
-    required this.alias,
-    required this.path,
-    required this.readOnly,
-    required this.builtin,
-    required this.onTap,
-    this.onEdit,
-    this.onDelete,
-  });
-
-  final String alias;
-  final String path;
-  final bool readOnly;
-  final bool builtin;
-  final VoidCallback onTap;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context)!;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      alias,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: AppFontWeights.medium,
-                        color: cs.onSurface.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: readOnly
-                            ? cs.onSurface.withValues(alpha: 0.06)
-                            : cs.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Text(
-                        readOnly ? l10n.storageMountsReadOnlyLabel : 'rw',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: readOnly
-                              ? cs.onSurface.withValues(alpha: 0.6)
-                              : cs.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  path,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: cs.onSurface.withValues(alpha: 0.55),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          if (onEdit != null)
-            _TactileIconButton(
-              icon: Lucide.Pencil,
-              color: cs.onSurface.withValues(alpha: 0.7),
-              size: 16,
-              onTap: onEdit!,
-            ),
-          if (!builtin && onDelete != null)
-            _TactileIconButton(
-              icon: Lucide.Trash2,
-              color: cs.error.withValues(alpha: 0.8),
-              size: 16,
-              onTap: onDelete!,
-            ),
-        ],
-      ),
-    );
-  }
 }

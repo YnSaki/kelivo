@@ -10,10 +10,71 @@ import '../../../theme/app_font_weights.dart';
 import '../../../theme/app_semantic_colors.dart';
 import 'workspace_detail_page.dart';
 
+/// Opens the workspace add dialog. Shared by the mobile list page and the
+/// desktop settings pane. Returns the created workspace (null on cancel,
+/// empty name, or failure).
+Future<Workspace?> showAddWorkspaceDialog(BuildContext context) async {
+  final l10n = AppLocalizations.of(context)!;
+  final controller = TextEditingController();
+  final provider = context.read<WorkspaceProvider>();
+  try {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.workspaceAdd),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: l10n.workspaceNameHint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.workspaceCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.workspaceConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return null;
+    final name = controller.text.trim();
+    if (name.isEmpty) return null;
+    try {
+      return await provider.createWorkspace(displayName: name);
+    } catch (e) {
+      if (context.mounted) {
+        showAppSnackBar(context, message: e.toString());
+      }
+      return null;
+    }
+  } finally {
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  }
+}
+
 class WorkspaceListPage extends StatelessWidget {
-  const WorkspaceListPage({super.key, this.embedded = false});
+  const WorkspaceListPage({
+    super.key,
+    this.embedded = false,
+    this.onOpenWorkspace,
+    this.selectedId,
+    this.onDataChanged,
+  });
 
   final bool embedded;
+
+  /// When provided, tapping a card calls this instead of pushing
+  /// [WorkspaceDetailPage] (used by the desktop master-detail pane).
+  final ValueChanged<Workspace>? onOpenWorkspace;
+
+  /// Highlights the card for this workspace id (master-detail selection).
+  final String? selectedId;
+
+  /// Fired after a workspace deletion succeeded (storage usage refresh).
+  final VoidCallback? onDataChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -36,13 +97,17 @@ class WorkspaceListPage extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _WorkspaceCard(
                   workspace: ws,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => WorkspaceDetailPage(workspaceId: ws.id),
-                      ),
-                    );
-                  },
+                  selected: ws.id == selectedId,
+                  onTap: onOpenWorkspace != null
+                      ? () => onOpenWorkspace!(ws)
+                      : () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WorkspaceDetailPage(workspaceId: ws.id),
+                            ),
+                          );
+                        },
                   onDelete: ws.alias == Workspace.defaultAlias
                       ? null
                       : () async {
@@ -65,6 +130,9 @@ class WorkspaceListPage extends StatelessWidget {
                           );
                           if (ok != true || !context.mounted) return;
                           final err = await wp.deleteWorkspace(ws.id);
+                          if (err == null && context.mounted) {
+                            onDataChanged?.call();
+                          }
                           if (err != null && context.mounted) {
                             showAppSnackBar(
                               context,
@@ -90,54 +158,12 @@ class WorkspaceListPage extends StatelessWidget {
           IconButton(
             tooltip: l10n.workspaceAdd,
             icon: Icon(Lucide.Plus, color: cs.onSurface),
-            onPressed: () => _showAddDialog(context),
+            onPressed: () => showAddWorkspaceDialog(context),
           ),
         ],
       ),
       body: body,
     );
-  }
-
-  Future<void> _showAddDialog(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController();
-    final provider = context.read<WorkspaceProvider>();
-    try {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(l10n.workspaceAdd),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(hintText: l10n.workspaceNameHint),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.workspaceCancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.workspaceConfirm),
-            ),
-          ],
-        ),
-      );
-      if (ok == true && context.mounted) {
-        final name = controller.text.trim();
-        if (name.isEmpty) return;
-        try {
-          await provider.createWorkspace(displayName: name);
-        } catch (e) {
-          if (context.mounted) {
-            showAppSnackBar(context, message: e.toString());
-          }
-        }
-      }
-    } finally {
-      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
-    }
   }
 }
 
@@ -145,11 +171,13 @@ class _WorkspaceCard extends StatelessWidget {
   const _WorkspaceCard({
     required this.workspace,
     required this.onTap,
+    this.selected = false,
     this.onDelete,
   });
 
   final Workspace workspace;
   final VoidCallback onTap;
+  final bool selected;
   final VoidCallback? onDelete;
 
   @override
@@ -163,9 +191,12 @@ class _WorkspaceCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
+            color: selected ? cs.primary.withValues(alpha: 0.06) : null,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.12),
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.55)
+                  : cs.outlineVariant.withValues(alpha: 0.12),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
