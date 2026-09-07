@@ -1,5 +1,48 @@
 # Changelog
 
+## [3.2.0] - 2026-09-07
+
+### Added
+
+- **Android workspace sandbox auto-start & keep-alive** — terminal keep-alive and auto-open on app launch, so MCP servers, gateways and other long-running services start with the sandbox (#692 by @Pheobe-Southwood)
+- **Android background keep-alive guide page** — a new settings guide walks Chinese OEM ROM users through foreground-service whitelist config (#704 by @cup113)
+- **Configurable exponential-backoff auto-retry** — off by default; helps multi-round tasks and flaky model calls (#675 by @cup113, @Chevey339)
+- **Multi-bubble rendering** — optional setting splits assistant replies into independent bubbles by blank lines, improving long-reply reading (#688 by @Pheobe-Southwood, @xuanxuan9929)
+- **Per-conversation care schedules** — "Ta's Letters" plans moved from assistant-shared to per-conversation, with follow-assistant / explicit on / off states, avoiding same-assistant schedule conflicts (#640 by @Pheobe-Southwood)
+- **Conversation model locking** — optional setting: switching assistant models no longer disturbs the model selected in existing conversations (#611 by @cup113)
+- **New model adapters** — GPT-6 Astra, Claude Fable 5.1, Qwen 3.8, Muse 1.3, GLM-5.3 (#752 by @cup113, @Chevey339)
+- **Group chat image input** — images can now be sent in group chats, matched to each assistant's model capabilities (#699 by @cup113)
+- **Shortcut commands** — quick phrases and command injection merged into unified "shortcut commands": four injection points (system prompt / before & after user message / on input focus), per-round or session-persistent activation (#693 by @Pheobe-Southwood)
+- **Backup auto snapshots** — automatic local backup snapshots, capped at 3, guarding against data loss from missed manual backups (#612 by @banana4432, @cup113)
+- **Reasoning budget slider** — the mobile reasoning budget sheet redesigned as a custom animated slider (#759 by @cup113, @Chevey339)
+- Dedicated subagent config page: consolidates subagent settings, replacing the incomplete old dialog (#701 by @cup113)
+- Save temporary conversations: one tap promotes a temporary conversation to history (#745 by @cup113)
+- Font file deletion: storage management can list and delete imported fonts (#747 by @cup113)
+- Desktop group chat embedding: no longer a full-window route over the shell; embedded in a tab with dialog-based settings (#756 by @cup113)
+- Model compatibility: GLM-5.2, Kimi K2.6 and DashScope thinking-only rules (issue #732) (#753 by @cup113, @Chevey339)
+
+### Fixed
+
+- **Math rendering** — vendored flutter_math_fork fixes ovalbox/operatorname/\tag rendering errors (#655 by @cup113, @Chevey339)
+- **Desktop group chat creation** — fixed silent creation failure (#716 by @cup113)
+- **Zero-width characters in copy** — rendered-text selection no longer copies U+200B (#757 by @cup113)
+- **Workspace root settings** — restored Windows workspace-root relocation, moved into the workspace settings pane to help save C-drive space (#758 by @cup113)
+- Memory tool feedback: writes return JSON with explicit success, stopping infinite memory creation (#719 by @cup113)
+- Android dependency installs: mirror source selection prevents install hangs (#703 by @cup113)
+- iOS keep-alive permissions: restored/synced toggles now match OS permission state, fixing silent failure on new-device restores (#746 by @cup113)
+- Thinking-tag leakage: utility text generation (titles/summaries/suggestions) strips `<think>` tags, including re-generated titles (#697 by @cup113)
+- MiniMax no-thinking mode: request now carries thinking-control params (#721 by @cup113)
+- Workspace export: skips Unix socket files, no longer fails on unreadable special files (#727 by @cup113)
+- Streaming tables & preview: table scroll offset preserved during streaming; HTML preview spinner stops restarting (#718 by @cup113, @Chevey339)
+- Stale tool card extents: no longer corrupt the timeline render range during streaming (#670 by @cup113, @Chevey339)
+- Markdown emphasis: stronger bold/italic boundary matching in code blocks (#683 by @cup113)
+- Gemini thought-signature: upstream artifact-storage fix ported; no more 400s from missing/leaked tool history (#702 by @cup113, @Chevey339)
+- OpenCode session headers: stable session headers for OpenCode Go (#715 by @cup113, @Chevey339)
+- Markdown paragraphs & bubbles: copy/select-all keeps paragraph breaks; bubble size matches streamed vs final states (#717 by @cup113, @Chevey339)
+- Web dialog-style import: fixed GitHub import dialog full-height and horizontal truncation (#720 by @cup113)
+- Desktop deletion conflicts: "View" opens the conflict page directly, no longer routing via the storage page (#748 by @cup113)
+- Auto-retry countdown: visible in later rounds and tool-only rounds (#749 by @cup113, @Chevey339)
+
 ## [3.1.2] - 2026-09-03
 
 ### Added

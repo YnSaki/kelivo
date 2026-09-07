@@ -29,7 +29,9 @@ Unlike most personal-customization or single-feature forks, Cuplivo aims to add 
 
 ### Signature Chat Experience
 
-1. **Flexible file system operations** — Weighty Linux sandbox and lightweight file system access: the full Linux sandbox on **Android** can select a distribution in-app and open a Termux-like interactive terminal from workspace settings (independent of the model shell tool), and can mount external directories (SAF) into the workspace with scheduled syncing; **iOS** runs the sandbox via iSH; users who complete the setup can execute command-line tools. For lighter tasks, the built-in filesystem MCP server reads, writes and regex-searches local files through an in-memory server and mounts local directories without a command line (security-first), with an in-app file browser, paginated grep results and context, code structure outlines, downloading internet resources into the workspace, and long-webpage workspace cache continuation; on desktop, the built-in workspace directory location is user-configurable, with open-externally and share actions for workspace files.
+1. **Flexible file system operations** — Sandbox runtime and lightweight file system access:
+   - **Sandbox runtime** — Full Linux sandbox: **Android** can select a distribution in-app and open a Termux-like interactive terminal from workspace settings (independent of the model shell tool), and can mount external directories (SAF) into the workspace with scheduled syncing; **iOS** runs the sandbox via iSH; users who complete the setup can execute command-line tools. Android also supports persistent sandbox sessions — terminal keep-alive and auto-open of the sandbox on app launch, so MCP servers, gateways and other long-running services start with the sandbox.
+   - **Lightweight file system access** — The built-in filesystem MCP server reads, writes and regex-searches local files through an in-memory server and mounts local directories without a command line (security-first), with an in-app file browser, paginated grep results and context, code structure outlines, downloading internet resources into the workspace, and long-webpage workspace cache continuation; on desktop, the built-in workspace directory location is user-configurable, with open-externally and share actions for workspace files.
 
 2. **Proactive care** — AI can proactively send care messages to users on a configurable schedule (Android only).
    - *Android-only*: background alarm + notification channel; alarm persists through force-stop
@@ -82,15 +84,23 @@ Unlike most personal-customization or single-feature forks, Cuplivo aims to add 
 
 9. **Conversation export to PDF** — Export the current conversation to PDF via the WebView renderer on Windows and Android.
 
+10. **Shortcut commands** — Quick phrases and command injection unified into "shortcut commands": four injection points (system prompt / before & after user message / on input focus), per-round or session-persistent activation.
+
+11. **Save temporary conversations** — Temporary conversations can be promoted to history with one tap.
+
 ### UI & Rendering
 
 1. **Web conversation view (experimental)** — Enable the experimental toggle to render standard conversations in a WebView on Android/iOS/macOS/Windows, with a declarative "Web conversation style library" JSON style import for bubble and card styling.
 
-2. **Reading mode** — Long assistant answers can open in a dedicated reading mode to reduce fatigue.
+2. **Multi-bubble rendering** — Optional setting: assistant replies split into multiple independent bubbles by blank lines, improving long-reply reading.
 
-3. **SVG preview** — Renders SVG diagrams inline within `svg` code blocks.
+3. **Math formula rendering** — Bundled flutter_math_fork fixes `ovalbox`, `operatorname` and `\tag` rendering errors.
 
-4. **Preset messages** — Preset messages collapsed behind a toggle bar in the chat list; new conversations are blocked when only presets exist.
+4. **Reading mode** — Long assistant answers can open in a dedicated reading mode to reduce fatigue.
+
+5. **SVG preview** — Renders SVG diagrams inline within `svg` code blocks.
+
+6. **Preset messages** — Preset messages collapsed behind a toggle bar in the chat list; new conversations are blocked when only presets exist.
 
 ### Additional Fixes
 
