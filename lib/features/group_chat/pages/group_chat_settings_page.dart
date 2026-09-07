@@ -312,6 +312,8 @@ class _GroupChatSettingsPageState extends State<GroupChatSettingsPage> {
     await context.read<GroupChatProvider>().duplicateGroup(group);
     if (!context.mounted) return;
     showAppSnackBar(context, message: l10n.groupChatDuplicateDone);
+    // Closes the settings route (mobile) or the settings dialog (embedded
+    // desktop), matching the delete flow's exit semantics.
     Navigator.of(context).pop();
   }
 

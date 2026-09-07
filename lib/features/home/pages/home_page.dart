@@ -1140,17 +1140,18 @@ class _HomePageState extends State<HomePage>
   /// queued sends survive switching between groups or back to single chat.
   /// The [IndexedStack] swaps which one is visible; a group's view is only
   /// disposed when the group is deleted (see
-  /// HomePageController._onGroupChatsChanged).
+  /// HomePageController._onGroupChatsChanged). The single-chat body keeps
+  /// its [IndexedStack] parenting even with zero opened groups so the last
+  /// deletion does not remount it.
   Widget _buildTabletBodyWithGroupChat(
     BuildContext context,
     ColorScheme cs,
     String? groupChatId,
   ) {
-    final singleChatBody = _wrapWithDropTarget(_buildTabletBody(context, cs));
-    final openedIds = _controller.openedGroupChatIds;
-    if (openedIds.isEmpty) return singleChatBody;
     // The inner Scaffold uses extendBodyBehindAppBar; offset the group
     // content below the group header, mirroring _chatTopOverlayInset.
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final openedIds = _controller.openedGroupChatIds;
     var index = 0;
     if (_controller.isGroupChatMode && groupChatId != null) {
       index = openedIds.indexOf(groupChatId) + 1;
@@ -1158,12 +1159,10 @@ class _HomePageState extends State<HomePage>
     return IndexedStack(
       index: index,
       children: [
-        singleChatBody,
+        _wrapWithDropTarget(_buildTabletBody(context, cs)),
         for (final id in openedIds)
           Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-            ),
+            padding: EdgeInsets.only(top: topPadding),
             child: GroupChatView(
               key: ValueKey('desktop_group_chat_slot_$id'),
               groupChatId: id,

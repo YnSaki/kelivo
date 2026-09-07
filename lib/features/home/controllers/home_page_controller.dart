@@ -822,7 +822,7 @@ class HomePageController extends ChangeNotifier {
   }
 
   /// Drops deleted groups from the slot (disposing their views and rounds);
-  /// the currently shown group falls back to the previously opened one.
+  /// the currently shown group falls back to the most recently opened one.
   void _onGroupChatsChanged() {
     if (_disposed) return;
     if (_openedGroupIds.isEmpty) return;
@@ -834,7 +834,15 @@ class HomePageController extends ChangeNotifier {
     if (removed.isEmpty) return;
     for (final id in removed) {
       _openedGroupIds.remove(id);
-      _groupInputFocuses.remove(id)?.dispose();
+      // Dispose the composer focus node only after the group's widget
+      // subtree has unmounted (this listener runs synchronously inside
+      // GroupChatProvider.notifyListeners, one frame ahead of the rebuild
+      // that unmounts the view).
+      final node = _groupInputFocuses.remove(id);
+      if (node == null) continue;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        node.dispose();
+      });
     }
     if (_groupChatId == null || !_openedGroupIds.contains(_groupChatId)) {
       _groupChatId = _openedGroupIds.isEmpty ? null : _openedGroupIds.last;
