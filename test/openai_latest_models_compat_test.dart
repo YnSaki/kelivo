@@ -143,6 +143,33 @@ void main() {
         openAINormalizeReasoningEffort('high', 'meta/muse-glimmer-30b'),
         'auto',
       );
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5-codex'), 'low');
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.1-codex'), 'low');
+      expect(
+        openAINormalizeReasoningEffort('off', 'openai/gpt-5.1-codex-max'),
+        'low',
+      );
+      expect(openAINormalizeReasoningEffort('xhigh', 'gpt-5.1-codex'), 'high');
+      expect(
+        openAINormalizeReasoningEffort('xhigh', 'gpt-5.1-codex-max'),
+        'xhigh',
+      );
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.2-codex'), 'low');
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.3-codex'), 'low');
+      expect(
+        openAINormalizeReasoningEffort('off', 'openai/gpt-5.3-codex'),
+        'low',
+      );
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5-pro'), 'high');
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.2-pro'), 'medium');
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.4-pro'), 'medium');
+      expect(openAINormalizeReasoningEffort('off', 'gpt-5.5-pro'), 'medium');
+      expect(openAISupportsNoneReasoning('gpt-5.3-codex'), isFalse);
+      expect(openAISupportsXhighReasoning('gpt-5.3-codex'), isTrue);
+      expect(openAINormalizeReasoningEffort('off', 'glm-5.2'), 'off');
+      expect(openAINormalizeReasoningEffort('low', 'glm-5.2'), 'low');
+      expect(openAINormalizeReasoningEffort('xhigh', 'z-ai/glm-5.2'), 'xhigh');
+      expect(openAISupportsMaxReasoning('glm-5.2'), isTrue);
     });
 
     test(
@@ -257,6 +284,33 @@ void main() {
       expect(offBody.containsKey('top_p'), isFalse);
       expect(maxBody['reasoning_effort'], 'max');
       expect(maxBody.containsKey('temperature'), isFalse);
+    });
+
+    test('Codex and Pro models clamp off to the lowest legal effort', () async {
+      final codexOff = await _captureChatBody(
+        modelId: 'gpt-5.3-codex',
+        thinkingBudget: 0,
+      );
+      final namespacedCodexOff = await _captureChatBody(
+        modelId: 'openai/gpt-5.2-codex',
+        thinkingBudget: 0,
+      );
+      final proOff = await _captureChatBody(
+        modelId: 'gpt-5.2-pro',
+        thinkingBudget: 0,
+      );
+      final openRouterCodexOff = await _captureChatBody(
+        modelId: 'openai/gpt-5.3-codex',
+        thinkingBudget: 0,
+        providerId: 'OpenRouter',
+      );
+
+      expect(codexOff['reasoning_effort'], 'low');
+      expect(namespacedCodexOff['reasoning_effort'], 'low');
+      expect(proOff['reasoning_effort'], 'medium');
+      expect(openRouterCodexOff['reasoning'], {'effort': 'low'});
+      expect(openRouterCodexOff.containsKey('reasoning_effort'), isFalse);
+      expect(openRouterCodexOff['reasoning'], isNot({'enabled': false}));
     });
 
     test('Grok Responses streams reasoning text and clamps off to low', () async {

@@ -1546,7 +1546,6 @@ class ChatApiService {
     ProviderConfig? config,
   }) {
     if (_isClaudeThinkingAlwaysOnModel(modelId)) {
-      if (!_isClaudeReasoningEnabled(budget)) return null;
       return <String, dynamic>{'type': 'adaptive', 'display': 'summarized'};
     }
     if (!_isClaudeReasoningEnabled(budget)) {
@@ -1570,11 +1569,12 @@ class ChatApiService {
     ProviderConfig? config,
   }) {
     if (_isClaudeThinkingAlwaysOnModel(modelId)) {
-      final effort = _normalizeClaudeEffort(
-        _claudeEffortForBudget(budget),
-        modelId,
-      );
-      if (effort == 'auto' || effort == 'off') return null;
+      // Adaptive thinking cannot be disabled. Omitting effort defaults to high,
+      // so UI "off" must send the lowest legal level instead.
+      var effort = _claudeEffortForBudget(budget);
+      if (effort == 'off') effort = 'low';
+      effort = _normalizeClaudeEffort(effort, modelId);
+      if (effort == 'auto') return null;
       return <String, dynamic>{'effort': effort};
     }
     if (_isDeepSeekClaudeCompatible(modelId, config: config)) {
