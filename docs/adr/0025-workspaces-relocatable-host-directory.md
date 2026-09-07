@@ -28,3 +28,8 @@ The optional move of existing files is same-volume rename, falling back to copy+
 - `filesystem_mounts_v1` (external mounts) and `workspaces_dir_v1` are both device-local in effect: loaded/honored on desktop only, still carried in settings.json (desktop→desktop migration works, phone restore is inert).
 - The preview char budget diverged from `kelivo_read` at the same time (256 KB user-facing vs 32 KB model window) — a related but separate decision recorded in CONTEXT.md "File content preview".
 - Residual risk: a desktop user who relocated to a path that later becomes unavailable (drive letter change, network mount gone) gets a sandbox that `FilesystemMountsProvider.init()` recreates at that path; the old default location is not consulted. The settings page always shows the effective path.
+
+## Amendment (2026-09): entry moved to the desktop settings Workspace pane
+
+- The relocation UI was originally a row inside the storage page's mounts panel; the multi-workspace rework (32d6f094) dropped the panel and left the feature unreachable. It is restored as the "Workspace Location" card in Settings → Workspace (`WorkspaceManagementView`), backed by `WorkspaceProvider.setWorkspacesRootLocation` (the single live implementation; the duplicate `FilesystemMountsProvider.setWorkspacesLocation` was deleted together with its tests, which now target the workspace provider).
+- Guard 3 (external-mount overlap) is retired: `WorkspaceProvider._validateRootLocation` checks guards 1, 2, 5, and 6 only, because external mount config is no longer loaded anywhere in production. Guards 4/6 remain in force for the mounts config that still rides settings.json.

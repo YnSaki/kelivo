@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:Cuplivo/core/database/business_preferences.dart';
 
 import '../services/mcp/kelivo_filesystem/kelivo_filesystem_server.dart';
@@ -13,11 +11,12 @@ import '../../utils/platform_utils.dart';
 
 /// Owns the global filesystem mount configuration for `@kelivo/filesystem`.
 ///
-/// The built-in `@workspaces` mount (rw sandbox, host location user-configurable
-/// on desktop via [AppDirectories.workspacesDirPrefsKey]) is always present and
-/// is the only mount on mobile. External mounts are desktop-only, never sync,
-/// and live in SharedPreferences (`filesystem_mounts_v1`), which means they
-/// ride `settings.json` in backups automatically — but they are loaded ONLY on
+/// The built-in `@workspaces` mount (rw sandbox; host location owned and
+/// relocated by `WorkspaceProvider` on desktop via
+/// [AppDirectories.workspacesDirPrefsKey]) is always present and is the only
+/// mount on mobile. External mounts are desktop-only, never sync, and live in
+/// SharedPreferences (`filesystem_mounts_v1`), which means they ride
+/// `settings.json` in backups automatically — but they are loaded ONLY on
 /// desktop, so a backup restored on a phone can never surface a foreign host
 /// path (see CONTEXT.md "Filesystem MCP").
 class FilesystemMountsProvider extends ChangeNotifier {
@@ -31,8 +30,6 @@ class FilesystemMountsProvider extends ChangeNotifier {
   static const String errorPathInvalid = 'path_invalid';
   static const String errorPathNotFound = 'path_not_found';
   static const String errorSyncOverlap = 'sync_overlap';
-  static const String errorInsideWorkspaces = 'inside_workspaces';
-  static const String errorDestinationNotEmpty = 'destination_not_empty';
 
   final List<FilesystemMount> _external = <FilesystemMount>[];
   String? _workspacesPath;
@@ -163,157 +160,6 @@ class FilesystemMountsProvider extends ChangeNotifier {
     _external.removeWhere((m) => m.alias == alias);
     await _persist();
     notifyListeners();
-  }
-
-  /// Relocates the built-in `@workspaces` host directory (desktop only).
-  /// Returns `null` on success or an error code for the UI to localize.
-  /// When [moveFiles] is true, existing sandbox content is moved to the new
-  /// location (same-volume rename, or copy+delete when the target exists or
-  /// the move crosses volumes); otherwise the old directory is left in place
-  /// and the new one starts empty. A non-empty destination is rejected when
-  /// [moveFiles] is true — its content would silently become part of the
-  /// synced sandbox.
-  Future<String?> setWorkspacesLocation(
-    String path, {
-    required bool moveFiles,
-  }) async {
-    await init();
-    final trimmed = path.trim();
-    final err = await _validateWorkspacesLocation(trimmed);
-    if (err != null) return err;
-    final current = _workspacesPath;
-    final same =
-        current != null &&
-        AppDirectories.canonPath(trimmed) == AppDirectories.canonPath(current);
-    if (!same) {
-      if (moveFiles && current != null) {
-        final dst = Directory(trimmed);
-        if (await dst.exists() && await _dirHasEntries(dst)) {
-          return errorDestinationNotEmpty;
-        }
-      }
-      // Persist BEFORE moving: if the pref write fails, nothing has moved yet.
-      // workspaces_dir_v1 is device-local (localOnly registry) + physical SP.
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(AppDirectories.workspacesDirPrefsKey, trimmed);
-      if (moveFiles && current != null) {
-        try {
-          await _moveDirectoryContents(current, trimmed);
-        } catch (e) {
-          // Move failed after the pref was persisted: roll the setting back
-          // and attempt to move the data back (best-effort).
-          debugPrint('setWorkspacesLocation: move failed: $e');
-          try {
-            await prefs.setString(
-              AppDirectories.workspacesDirPrefsKey,
-              current,
-            );
-          } catch (e2) {
-            debugPrint('setWorkspacesLocation: pref rollback failed: $e2');
-          }
-          try {
-            if (await Directory(trimmed).exists()) {
-              await _moveDirectoryContents(trimmed, current);
-            }
-          } catch (e3) {
-            debugPrint('setWorkspacesLocation: move-back failed: $e3');
-          }
-          rethrow;
-        }
-      }
-      _workspacesPath = trimmed;
-      notifyListeners();
-    }
-    return null;
-  }
-
-  Future<String?> _validateWorkspacesLocation(String path) async {
-    if (path.isEmpty) return errorPathInvalid;
-    final trimmed = path.trim();
-    final isUnc = trimmed.startsWith('\\\\');
-    if (!(trimmed.startsWith('/') || isUnc || _hasDrivePrefix(trimmed))) {
-      return errorPathInvalid;
-    }
-    final current = _workspacesPath;
-    if (current != null &&
-        AppDirectories.canonPath(trimmed) !=
-            AppDirectories.canonPath(current)) {
-      // Never nest the sandbox inside itself (recursive-copy hazard).
-      if (AppDirectories.isPathInside(trimmed, current)) {
-        return errorInsideWorkspaces;
-      }
-      // Never widen the sandbox to contain the current sandbox or any other
-      // sync tree — both would sweep synced content into the pack walk.
-      final roots = await AppDirectories.getSyncRootPaths();
-      for (final r in roots) {
-        if (AppDirectories.pathsOverlap(trimmed, r)) {
-          return errorSyncOverlap;
-        }
-      }
-      // Never overlap an existing external mount, either direction: a
-      // sandbox containing a mount would sweep the mount's host content into
-      // backups, and a sandbox inside a mount would resolve the same host
-      // file under two aliases — a delete via the mount alias writes no
-      // marker and would resurrect on the next sync merge.
-      for (final m in _external) {
-        if (AppDirectories.pathsOverlap(trimmed, m.path)) {
-          return errorSyncOverlap;
-        }
-      }
-    }
-    return null;
-  }
-
-  Future<bool> _dirHasEntries(Directory dir) async {
-    await for (final _ in dir.list(followLinks: false)) {
-      return true;
-    }
-    return false;
-  }
-
-  Future<void> _moveDirectoryContents(String from, String to) async {
-    final src = Directory(from);
-    final dst = Directory(to);
-    if (!await src.exists()) return;
-    try {
-      await src.rename(to);
-      return;
-    } on FileSystemException {
-      // Target exists or cross-volume: copy recursively, then remove the
-      // source.
-      await dst.create(recursive: true);
-      await _copyDirectoryRecursive(src, dst);
-      await src.delete(recursive: true);
-    }
-  }
-
-  Future<void> _copyDirectoryRecursive(Directory src, Directory dst) async {
-    await dst.create(recursive: true);
-    await for (final ent in src.list(followLinks: false)) {
-      final targetPath = p.join(dst.path, p.basename(ent.path));
-      if (ent is Directory) {
-        await _copyDirectoryRecursive(ent, Directory(targetPath));
-      } else if (ent is File) {
-        final modified = await ent.lastModified();
-        await ent.copy(targetPath);
-        // Preserve mtimes: relocation is a physical move, not new content —
-        // stamping mtime=now would re-sync the whole sandbox to LAN peers in
-        // one burst and re-pack it into every incremental backup.
-        await File(targetPath).setLastModified(modified);
-      } else if (ent is Link) {
-        // Best-effort link recreation: reliable on POSIX, needs privileges
-        // on Windows — a failure is logged, not fatal.
-        try {
-          final target = await ent.target();
-          await Link(targetPath).create(target);
-        } catch (e) {
-          debugPrint(
-            'setWorkspacesLocation: failed to recreate link '
-            '${ent.path}: $e',
-          );
-        }
-      }
-    }
   }
 
   Future<void> _persist() async {

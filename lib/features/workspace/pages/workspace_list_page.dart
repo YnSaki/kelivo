@@ -10,10 +10,62 @@ import '../../../theme/app_font_weights.dart';
 import '../../../theme/app_semantic_colors.dart';
 import 'workspace_detail_page.dart';
 
+/// Opens the workspace add dialog. Shared by the mobile list page and the
+/// desktop settings pane.
+Future<void> showAddWorkspaceDialog(BuildContext context) async {
+  final l10n = AppLocalizations.of(context)!;
+  final controller = TextEditingController();
+  final provider = context.read<WorkspaceProvider>();
+  try {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.workspaceAdd),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: l10n.workspaceNameHint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.workspaceCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.workspaceConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      final name = controller.text.trim();
+      if (name.isEmpty) return;
+      try {
+        await provider.createWorkspace(displayName: name);
+      } catch (e) {
+        if (context.mounted) {
+          showAppSnackBar(context, message: e.toString());
+        }
+      }
+    }
+  } finally {
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  }
+}
+
 class WorkspaceListPage extends StatelessWidget {
-  const WorkspaceListPage({super.key, this.embedded = false});
+  const WorkspaceListPage({
+    super.key,
+    this.embedded = false,
+    this.onOpenWorkspace,
+  });
 
   final bool embedded;
+
+  /// When provided, tapping a card calls this instead of pushing
+  /// [WorkspaceDetailPage] (used by the desktop master-detail pane).
+  final ValueChanged<Workspace>? onOpenWorkspace;
 
   @override
   Widget build(BuildContext context) {
@@ -36,13 +88,16 @@ class WorkspaceListPage extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _WorkspaceCard(
                   workspace: ws,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => WorkspaceDetailPage(workspaceId: ws.id),
-                      ),
-                    );
-                  },
+                  onTap: onOpenWorkspace != null
+                      ? () => onOpenWorkspace!(ws)
+                      : () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WorkspaceDetailPage(workspaceId: ws.id),
+                            ),
+                          );
+                        },
                   onDelete: ws.alias == Workspace.defaultAlias
                       ? null
                       : () async {
@@ -90,54 +145,12 @@ class WorkspaceListPage extends StatelessWidget {
           IconButton(
             tooltip: l10n.workspaceAdd,
             icon: Icon(Lucide.Plus, color: cs.onSurface),
-            onPressed: () => _showAddDialog(context),
+            onPressed: () => showAddWorkspaceDialog(context),
           ),
         ],
       ),
       body: body,
     );
-  }
-
-  Future<void> _showAddDialog(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController();
-    final provider = context.read<WorkspaceProvider>();
-    try {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(l10n.workspaceAdd),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(hintText: l10n.workspaceNameHint),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.workspaceCancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.workspaceConfirm),
-            ),
-          ],
-        ),
-      );
-      if (ok == true && context.mounted) {
-        final name = controller.text.trim();
-        if (name.isEmpty) return;
-        try {
-          await provider.createWorkspace(displayName: name);
-        } catch (e) {
-          if (context.mounted) {
-            showAppSnackBar(context, message: e.toString());
-          }
-        }
-      }
-    } finally {
-      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
-    }
   }
 }
 
