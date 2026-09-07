@@ -3162,6 +3162,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get reasoningBudgetSheetCustomHint => '例如：2048 (-1 自动，0 关闭)';
 
   @override
+  String get reasoningBudgetSliderLow => '轻度 (Low)';
+
+  @override
+  String get reasoningBudgetSliderMedium => '中度 (Medium)';
+
+  @override
+  String get reasoningBudgetSliderHigh => '重度 (High)';
+
+  @override
+  String get reasoningBudgetSliderXhigh => '极限 (XHigh)';
+
+  @override
+  String get reasoningBudgetSliderMax => '全力 (Max)';
+
+  @override
   String chatMessageWidgetFileNotFound(String fileName) {
     return '文件不存在: $fileName';
   }
@@ -13058,6 +13073,21 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get reasoningBudgetSheetCustomHint => '例如：2048 (-1 自动，0 关闭)';
 
   @override
+  String get reasoningBudgetSliderLow => '轻度 (Low)';
+
+  @override
+  String get reasoningBudgetSliderMedium => '中度 (Medium)';
+
+  @override
+  String get reasoningBudgetSliderHigh => '重度 (High)';
+
+  @override
+  String get reasoningBudgetSliderXhigh => '极限 (XHigh)';
+
+  @override
+  String get reasoningBudgetSliderMax => '全力 (Max)';
+
+  @override
   String chatMessageWidgetFileNotFound(String fileName) {
     return '文件不存在: $fileName';
   }
@@ -22952,6 +22982,21 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get reasoningBudgetSheetCustomHint => '例如：2048 (-1 自動，0 關閉)';
+
+  @override
+  String get reasoningBudgetSliderLow => '輕度 (Low)';
+
+  @override
+  String get reasoningBudgetSliderMedium => '中度 (Medium)';
+
+  @override
+  String get reasoningBudgetSliderHigh => '重度 (High)';
+
+  @override
+  String get reasoningBudgetSliderXhigh => '極限 (XHigh)';
+
+  @override
+  String get reasoningBudgetSliderMax => '全力 (Max)';
 
   @override
   String chatMessageWidgetFileNotFound(String fileName) {
