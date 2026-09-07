@@ -51,6 +51,8 @@ class HomeDesktopScaffold extends StatelessWidget {
     required this.onNewConversation,
     required this.onCreateNewConversation,
     required this.onToggleTemporaryConversation,
+    required this.onSaveTemporaryConversation,
+    required this.canSaveTemporaryConversation,
     required this.onSelectModel,
     required this.canToggleTemporaryConversation,
     required this.temporaryConversationEnabled,
@@ -89,6 +91,8 @@ class HomeDesktopScaffold extends StatelessWidget {
   final VoidCallback onNewConversation;
   final Future<void> Function() onCreateNewConversation;
   final Future<void> Function() onToggleTemporaryConversation;
+  final Future<void> Function() onSaveTemporaryConversation;
+  final bool canSaveTemporaryConversation;
   final VoidCallback onSelectModel;
   final bool canToggleTemporaryConversation;
   final bool temporaryConversationEnabled;
@@ -549,6 +553,15 @@ class HomeDesktopScaffold extends StatelessWidget {
           onTap: onToggleRightSidebar,
         ),
       const SizedBox(width: 2),
+      if (canSaveTemporaryConversation)
+        IosIconButton(
+          size: 20,
+          padding: const EdgeInsets.all(8),
+          minSize: 40,
+          semanticLabel: AppLocalizations.of(context)!.temporaryChatSaveTooltip,
+          icon: Lucide.Save,
+          onTap: onSaveTemporaryConversation,
+        ),
       IosIconButton(
         size: 20,
         padding: const EdgeInsets.all(8),

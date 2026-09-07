@@ -304,6 +304,18 @@
     }
   },
   "storageSpaceAiGenerated": "AI generated",
+  "storageSpaceFontsManageHint": "Fonts marked \"In use\" are currently applied to the app or the code editor and cannot be deleted here.",
+  "storageSpaceFontsInUse": "In use",
+  "storageSpaceNoFonts": "No fonts",
+  "storageSpaceDeletedFontsDone": "Deleted {count} font files",
+  "@storageSpaceDeletedFontsDone": {
+    "description": "Message shown after deleting font files from the storage page.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "storageSpaceMarkdownRefLimitation": "Note: Markdown-referenced local images are not counted. AI-generated images show as 'AI generated' — do not delete them.",
   "settingsPageAboutSection": "About",
   "settingsPageAbout": "About",
@@ -2743,6 +2755,8 @@
   "temporaryChatTitle": "Temporary Chat",
   "temporaryChatEmptyMessage": "Temporary chats do not appear in history and will be deleted completely after you leave.",
   "temporaryChatToggleTooltip": "Toggle temporary chat",
+  "temporaryChatSaveTooltip": "Save temporary chat to history",
+  "temporaryChatSaved": "Saved to history",
   "quickPhraseBackTooltip": "Back",
   "quickPhraseGlobalTitle": "Quick Phrase",
   "quickPhraseAssistantTitle": "Assistant Quick Phrase",

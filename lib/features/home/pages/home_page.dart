@@ -914,6 +914,17 @@ class _HomePageState extends State<HomePage>
           _controller.forceScrollToBottomSoon(animate: false);
         }
       },
+      onSaveTemporaryConversation: () async {
+        final l10n = AppLocalizations.of(context);
+        final messenger = ScaffoldMessenger.of(context);
+        final saved = await _controller.saveTemporaryConversation();
+        if (saved && mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text(l10n!.temporaryChatSaved)),
+          );
+        }
+      },
+      canSaveTemporaryConversation: _controller.canSaveTemporaryConversation,
       canToggleTemporaryConversation:
           _controller.canToggleTemporaryConversation,
       temporaryConversationEnabled: _controller.isTemporaryConversation,
@@ -1060,6 +1071,17 @@ class _HomePageState extends State<HomePage>
         await _controller.toggleTemporaryConversation();
         if (mounted) _controller.forceScrollToBottomSoon(animate: false);
       },
+      onSaveTemporaryConversation: () async {
+        final l10n = AppLocalizations.of(context);
+        final messenger = ScaffoldMessenger.of(context);
+        final saved = await _controller.saveTemporaryConversation();
+        if (saved && mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text(l10n!.temporaryChatSaved)),
+          );
+        }
+      },
+      canSaveTemporaryConversation: _controller.canSaveTemporaryConversation,
       canToggleTemporaryConversation:
           _controller.canToggleTemporaryConversation,
       temporaryConversationEnabled: _controller.isTemporaryConversation,
@@ -3169,8 +3191,8 @@ class _HomePageState extends State<HomePage>
     final ap = context.read<AssistantProvider>();
     final a = ap.currentAssistant;
     final layout = resolveInputBarButtonLayout(
-      savedOrder: settings.chatInputButtonOrder,
-      savedMoreIds: settings.chatInputMoreButtonIds,
+      savedOrder: settings.chatInputButtonOrderPhone,
+      savedMoreIds: settings.chatInputMoreButtonIdsPhone,
       tabletLayout: false,
     );
     // Phone bucket = configured in-more ids (in config order) + row overflow.

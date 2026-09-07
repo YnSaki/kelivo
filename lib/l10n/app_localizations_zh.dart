@@ -695,6 +695,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get storageSpaceAiGenerated => 'AI 生成';
 
   @override
+  String get storageSpaceFontsManageHint => '标有“使用中”的字体正在被应用或代码编辑器使用，无法在此处删除。';
+
+  @override
+  String get storageSpaceFontsInUse => '使用中';
+
+  @override
+  String get storageSpaceNoFonts => '暂无字体';
+
+  @override
+  String storageSpaceDeletedFontsDone(int count) {
+    return '已删除 $count 个字体文件';
+  }
+
+  @override
   String get storageSpaceMarkdownRefLimitation =>
       '注：不统计 Markdown 格式引用的本地图片。images/ 下的 AI 生成图片显示为「AI 生成」——请勿误删。';
 
@@ -6525,6 +6539,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get temporaryChatToggleTooltip => '切换临时对话';
 
   @override
+  String get temporaryChatSaveTooltip => '将临时对话保存为正式对话';
+
+  @override
+  String get temporaryChatSaved => '已保存到历史记录';
+
+  @override
   String get quickPhraseBackTooltip => '返回';
 
   @override
@@ -10569,6 +10589,20 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get storageSpaceAiGenerated => 'AI 生成';
+
+  @override
+  String get storageSpaceFontsManageHint => '标有“使用中”的字体正在被应用或代码编辑器使用，无法在此处删除。';
+
+  @override
+  String get storageSpaceFontsInUse => '使用中';
+
+  @override
+  String get storageSpaceNoFonts => '暂无字体';
+
+  @override
+  String storageSpaceDeletedFontsDone(int count) {
+    return '已删除 $count 个字体文件';
+  }
 
   @override
   String get storageSpaceMarkdownRefLimitation =>
@@ -16401,6 +16435,12 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get temporaryChatToggleTooltip => '切换临时对话';
 
   @override
+  String get temporaryChatSaveTooltip => '将临时对话保存为正式对话';
+
+  @override
+  String get temporaryChatSaved => '已保存到历史记录';
+
+  @override
   String get quickPhraseBackTooltip => '返回';
 
   @override
@@ -20445,6 +20485,21 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get storageSpaceAiGenerated => 'AI 生成';
+
+  @override
+  String get storageSpaceFontsManageHint =>
+      '標有「使用中」的字體正被應用程式或程式碼編輯器使用，無法在此處刪除。';
+
+  @override
+  String get storageSpaceFontsInUse => '使用中';
+
+  @override
+  String get storageSpaceNoFonts => '暫無字體';
+
+  @override
+  String storageSpaceDeletedFontsDone(int count) {
+    return '已刪除 $count 個字體檔案';
+  }
 
   @override
   String get storageSpaceMarkdownRefLimitation =>
@@ -26274,6 +26329,12 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get temporaryChatToggleTooltip => '切換臨時對話';
+
+  @override
+  String get temporaryChatSaveTooltip => '將臨時對話儲存為正式對話';
+
+  @override
+  String get temporaryChatSaved => '已儲存到歷史記錄';
 
   @override
   String get quickPhraseBackTooltip => '返回';
