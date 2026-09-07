@@ -1210,6 +1210,39 @@ class HomeViewModel extends ChangeNotifier {
     onScrollToBottom?.call();
   }
 
+  /// Convert the current temporary conversation into a persisted one (issue
+  /// #726). Returns true when a conversation was actually saved.
+  Future<bool> saveTemporaryConversation() async {
+    final convo = currentConversation;
+    if (convo == null || !_chatService.isTemporaryConversation(convo.id)) {
+      return false;
+    }
+
+    // Only reset a title that is still the placeholder: a manually renamed
+    // temporary conversation keeps its preferred name untouched.
+    final isPlaceholderTitle =
+        convo.title ==
+        AppLocalizations.of(_contextProvider)?.temporaryChatTitle;
+    final saved = await _chatService.persistTemporaryConversation(
+      convo.id,
+      newTitle: isPlaceholderTitle ? getTitleForLocale(_contextProvider) : null,
+    );
+    if (!saved) return false;
+
+    // Refresh the controller's view of the now-persisted conversation.
+    _chatController.updateCurrentConversation(
+      _chatService.getConversation(convo.id),
+    );
+    notifyListeners();
+
+    // A placeholder title was reset to the default: generate a meaningful one,
+    // like any normal conversation. A kept title needs no regeneration.
+    if (isPlaceholderTitle) {
+      unawaited(_maybeGenerateTitleFor(convo.id, force: true));
+    }
+    return true;
+  }
+
   /// Fork conversation at a specific message.
   Future<void> forkConversation(ChatMessage message) async {
     final preserveVersions = _contextProvider
@@ -1683,6 +1716,9 @@ class HomeViewModel extends ChangeNotifier {
   Future<void> _maybeGenerateSummaryFor(String conversationId) async {
     final convo = _chatService.getConversation(conversationId);
     if (convo == null) return;
+    // Summaries only feed past-conversation search; temporary chats are never
+    // searchable and their summary lives on a draft that is discarded anyway.
+    if (_chatService.isTemporaryConversation(convo.id)) return;
 
     final settings = _contextProvider.read<SettingsProvider>();
     final msgCount = convo.messageIds.length;

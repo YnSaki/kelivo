@@ -12280,6 +12280,18 @@ abstract class AppLocalizations {
   /// **'Toggle temporary chat'**
   String get temporaryChatToggleTooltip;
 
+  /// No description provided for @temporaryChatSaveTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save temporary chat to history'**
+  String get temporaryChatSaveTooltip;
+
+  /// No description provided for @temporaryChatSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to history'**
+  String get temporaryChatSaved;
+
   /// No description provided for @quickPhraseBackTooltip.
   ///
   /// In en, this message translates to:
