@@ -101,7 +101,7 @@ void main() {
     expect(settings.chatInputButtonsCustomized, isTrue);
   });
 
-  group('phone-layout bucket (ADR-0054)', () {
+  group('phone-layout bucket (ADR-0062)', () {
     test(
       'persists to phone keys and never touches the tablet bucket',
       () async {

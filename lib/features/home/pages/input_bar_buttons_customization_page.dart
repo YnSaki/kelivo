@@ -191,7 +191,7 @@ class InputBarButtonsCustomizationContent extends StatelessWidget {
     // placement — e.g. the customize entry is OFF (in the More bucket) by
     // default on every platform. A first toggle/reorder persists the resolved
     // state explicitly. The layout bucket follows the current form factor
-    // (tablet/desktop keys vs phone keys, ADR-0054).
+    // (tablet/desktop keys vs phone keys, ADR-0062).
     final resolved = resolveInputBarButtonLayout(
       savedOrder: isTabletWide
           ? settings.chatInputButtonOrder

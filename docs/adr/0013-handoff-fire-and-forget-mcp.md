@@ -1,4 +1,4 @@
-# Handoff: Fire-and-Forget Delegation via In-Memory MCP Server
+# ADR-0013: Handoff: Fire-and-Forget Delegation via In-Memory MCP Server
 
 Handoff lets one assistant delegate a task to another. We chose fire-and-forget semantics (no result collection) implemented as an in-memory MCP server (`@kelivo/subagent`), rather than synchronous delegation inside the outer model's tool loop.
 

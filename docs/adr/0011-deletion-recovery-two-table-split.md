@@ -1,4 +1,4 @@
-# Deletion Recovery: Two-Table Split (deleted_records + deletion_markers)
+# ADR-0011: Deletion Recovery: Two-Table Split (deleted_records + deletion_markers)
 
 Split deletion tracking into two Drift tables with disjoint responsibilities:
 `deleted_records` (`DeletedRecordRows`) holds recoverable payloads (JSON bundles)

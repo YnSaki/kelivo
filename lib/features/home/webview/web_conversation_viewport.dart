@@ -263,7 +263,7 @@ class _WebConversationViewportState extends State<WebConversationViewport> {
   }
 
   Future<void> _initializeFlutterWebView(int generation) async {
-    // The shell must load from a loopback HTTP origin (ADR-0051): a
+    // The shell must load from a loopback HTTP origin (ADR-0057): a
     // `file://` document origin is opaque on WebKit and blocks the shell's
     // ES-module graph, so it can never signal `ready`.
     LocalWebChatShellServer server;

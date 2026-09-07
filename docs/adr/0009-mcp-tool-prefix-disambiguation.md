@@ -1,4 +1,4 @@
-# MCP Tool Name Disambiguation via Per-Server Prefix
+# ADR-0009: MCP Tool Name Disambiguation via Per-Server Prefix
 
 When multiple MCP servers (or an MCP server and a built-in tool) expose tools with the same `function.name`, the LLM API rejects the entire request as a duplicate-name error. We resolve this with a user-configured per-server prefix (`{prefix}_{originalName}`), enforced by a hard block at send time with a guidance dialog.
 

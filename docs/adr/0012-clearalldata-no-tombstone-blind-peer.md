@@ -1,4 +1,4 @@
-# clearAllData Writes Neither Trash Nor Tombstones
+# ADR-0012: clearAllData Writes Neither Trash Nor Tombstones
 
 `clearAllData` is the single intentional exception to "delete writes trash". It
 writes no `deleted_records` rows (the user's intent is "wipe everything";

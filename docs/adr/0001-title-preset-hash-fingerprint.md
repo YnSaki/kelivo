@@ -1,4 +1,4 @@
-# 1. 标题预设采用 Hash Fingerprint 方案
+# ADR-0001: 标题预设采用 Hash Fingerprint 方案
 
 - **日期：** 2026-06-18
 - **状态：** 已采纳

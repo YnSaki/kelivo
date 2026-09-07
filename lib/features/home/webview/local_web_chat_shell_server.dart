@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Serves the bundled Web chat shell from a loopback HTTP origin so Darwin
-/// (iOS/macOS) WKWebView never uses a `file://` document origin (ADR-0051).
+/// (iOS/macOS) WKWebView never uses a `file://` document origin (ADR-0057).
 /// Windows uses a WebView2 HTTPS virtual host and Android uses
 /// `appassets.androidplatform.net`; this server closes the last gap.
 ///

@@ -1,4 +1,4 @@
-# Workspace Terminal is an Android proot PTY, not exec
+# ADR-0032: Workspace Terminal is an Android proot PTY, not exec
 
 Status: superseded by [ADR-0054](0054-termux-owned-workspace-terminal-sessions.md)
 

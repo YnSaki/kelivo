@@ -1,4 +1,4 @@
-# ADR-0054: Unified Quick Instructions with Frozen Invocations and Request-Scoped Tool Restrictions
+# ADR-0061: Unified Quick Instructions with Frozen Invocations and Request-Scoped Tool Restrictions
 
 Status: accepted
 

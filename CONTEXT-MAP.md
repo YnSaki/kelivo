@@ -1,6 +1,6 @@
 # Context Map
 
-本仓库有两个限界上下文（拆分与边界见 [ADR-0053](./docs/adr/0053-monorepo-website-workspace.md)）。
+本仓库有两个限界上下文（拆分与边界见 [ADR-0060](./docs/adr/0060-monorepo-website-workspace.md)）。
 
 ## Contexts
 

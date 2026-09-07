@@ -1,4 +1,4 @@
-# ADR-0051: Darwin shell origin — in-process loopback server
+# ADR-0057: Darwin shell origin — in-process loopback server
 
 ADR-0043 states the Web chat shell never loads from a `file://` origin, but the
 Darwin (iOS/macOS) implementation loaded it with `webview_flutter`

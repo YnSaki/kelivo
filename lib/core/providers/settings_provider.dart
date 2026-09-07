@@ -3182,7 +3182,7 @@ class SettingsProvider extends ChangeNotifier {
   // tablet/desktop-layout bucket (zero migration), the `_phone` keys are the
   // phone-layout bucket. Same-form-factor LAN sync / backup still crosses
   // devices; cross-form-factor layouts never overwrite each other (issue
-  // #570, ADR-0054).
+  // #570, ADR-0062).
 
   List<String> _chatInputButtonOrder = const <String>[];
   List<String> get chatInputButtonOrder => _chatInputButtonOrder;

@@ -1,4 +1,4 @@
-# Time injection at message tail to preserve cache prefix
+# ADR-0006: Time injection at message tail to preserve cache prefix
 
 LLM providers (Anthropic, OpenAI, etc.) cache the longest stable prefix of the message array. Putting timestamps in the system prompt or using volatile template variables (`{{ time }}`, `{cur_date}`) invalidates the entire prefix on every request. We inject a per-message timestamp (`\n\n(Mon 25-07-26 14:03:22)`) derived from the immutable `ChatMessage.timestamp` at the tail of each user message instead. Historical messages produce byte-identical output across requests on a device with a stable timezone (the timestamp uses device-local time without a UTC offset), so the prefix remains cacheable. Only the new trailing user message differs — which is expected since it carries new content anyway.
 

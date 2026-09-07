@@ -1,4 +1,4 @@
-# ADR-0052: Sync Priority — per-session conflict-direction bit for LAN sync (issue #615)
+# ADR-0059: Sync Priority — per-session conflict-direction bit for LAN sync (issue #615)
 
 LAN sync applies a fixed-policy merge on both peers: ID-skip unions for chats, incoming-wins field-merge for assistants, per-key LWW for scalars, mtime-wins for files, advisory tombstones. When a stale device syncs into a fresh one, the fixed winner can drag fresh data backward (e.g. an old assistant copy overwrites the newer one because `_mergeAssistantMaps` ignores `Assistant.updatedAt`). We add a **per-session** three-mode conflict-direction bit chosen by the initiator — auto (default, current behavior) / local wins / peer wins — which flips only the **winner of an id-conflict**, while merge-only semantics (fill-absent, union, never delete) stay always on. It is a merge-direction bit, not `RestoreMode.overwrite`.
 

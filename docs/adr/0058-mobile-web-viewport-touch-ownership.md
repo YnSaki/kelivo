@@ -1,4 +1,4 @@
-# ADR-0052: Mobile Web Viewport Touch Ownership
+# ADR-0058: Mobile Web Viewport Touch Ownership
 
 The Web conversation shell (ADR-0043) renders chat in a platform WebView, but
 mobile touch panning must be owned by that WebView, not by the compensation

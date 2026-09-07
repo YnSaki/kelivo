@@ -1,6 +1,6 @@
 # Cuplivo Web（官网与备份工具）
 
-`website/` 工作区的限界上下文：官方站（`cuplivo.cup11.top`）与 Kelivo 家族备份工具。所有处理均在浏览器本地完成，**数据不出浏览器**（硬边界，见根 ADR-0053）。前身是独立仓库 `cup113/kelivo-helper`，历史已通过 git subtree 并入；工具 UI 单主页——工具页面只在官网（B1），独立域名已退役为 301 跳板。
+`website/` 工作区的限界上下文：官方站（`cuplivo.cup11.top`）与 Kelivo 家族备份工具。所有处理均在浏览器本地完成，**数据不出浏览器**（硬边界，见根 ADR-0060）。前身是独立仓库 `cup113/kelivo-helper`，历史已通过 git subtree 并入；工具 UI 单主页——工具页面只在官网（B1），独立域名已退役为 301 跳板。
 
 ## Language
 
@@ -47,7 +47,7 @@ deleted.json 中的删除记录（`{entityType, id, deletedAt}`），仅含 id �
 由幸存消息重建的会话最小结构：id、title（取首条 user 消息）、messageIds、时间戳。**必须挂载到恢复助手**——`assistantId: null` 的会话在 Kelivo UI 中不可见。
 
 **官网（Official Website）**:
-`cuplivo.cup11.top` 承载的营销/文档/下载页面与工具路由（`/tools/*`）。工具 UI 单主页（B1，ADR-0053）：迁移/兼容/恢复页面只存在于官网；`kelivo-helper.netlify.app`（旧站）与 `kelivo-fill-assistant.netlify.app`（遗留单文件工具站）已退役为 `_redirects` 永久跳板。
+`cuplivo.cup11.top` 承载的营销/文档/下载页面与工具路由（`/tools/*`）。工具 UI 单主页（B1，ADR-0060）：迁移/兼容/恢复页面只存在于官网；`kelivo-helper.netlify.app`（旧站）与 `kelivo-fill-assistant.netlify.app`（遗留单文件工具站）已退役为 `_redirects` 永久跳板。
 
 **后端边界（Backend Boundary）**:
 若未来出现服务端，只承载**公共只读数据**（release 元数据、公告、下载统计），以独立服务 + CORS 开放接入；**永不接收用户备份数据或用户输入**。CORS 开放只解决"谁能调"，不改变"什么数据可以出浏览器"这条信任边界。

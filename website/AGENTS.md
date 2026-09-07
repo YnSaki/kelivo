@@ -24,7 +24,7 @@ pnpm -r build         # 静态构建所有包
 - 决策记录走 `website/docs/adr/`（独立编号；请勿并入仓库根 `docs/adr/`——那里只放 Flutter/仓库级决策）。
 - 术语与边界以 `website/CONTEXT.md` + 根 `CONTEXT-MAP.md` 为准。
 
-## 硬边界（根 `docs/adr/0053`）
+## 硬边界（根 `docs/adr/0060`）
 
 - **备份处理（迁移/兼容/恢复）必须纯浏览器端**：任何包不得引入将用户备份数据（聊天记录、settings.json、密钥等）上传的代码路径。
 - 后端（若存在）只承载公共只读数据（release 元数据/公告），永不接收用户备份或用户输入。

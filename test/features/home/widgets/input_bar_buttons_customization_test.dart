@@ -62,7 +62,7 @@ void main() {
       await tester.pump();
 
       // 800x600 is below the tablet breakpoint (900), so the toggle writes the
-      // phone-layout bucket; the tablet bucket stays untouched (ADR-0054).
+      // phone-layout bucket; the tablet bucket stays untouched (ADR-0062).
       // First toggle also seeds the resolved order explicitly (sentinel
       // unset → persist the default split).
       expect(
@@ -149,7 +149,7 @@ void main() {
 
     // 800x600 is below the tablet breakpoint (900): the first reorder seeds
     // the PHONE bucket (order + resolved More), the tablet bucket stays
-    // untouched (ADR-0054) — same "first edit persists the resolved state
+    // untouched (ADR-0062) — same "first edit persists the resolved state
     // explicitly" semantics, per form factor.
     expect(settings.chatInputButtonOrderPhone, isNotEmpty);
     expect(
