@@ -147,13 +147,19 @@ void main() {
     list.onReorderItem!(0, 1);
     await tester.pumpAndSettle();
 
-    expect(settings.chatInputButtonOrder, isNotEmpty);
+    // 800x600 is below the tablet breakpoint (900): the first reorder seeds
+    // the PHONE bucket (order + resolved More), the tablet bucket stays
+    // untouched (ADR-0054) — same "first edit persists the resolved state
+    // explicitly" semantics, per form factor.
+    expect(settings.chatInputButtonOrderPhone, isNotEmpty);
     expect(
-      settings.chatInputMoreButtonIds,
+      settings.chatInputMoreButtonIdsPhone,
       containsAll(<String>[
         inputBarButtonProactiveCare,
         inputBarButtonCustomize,
       ]),
     );
+    expect(settings.chatInputButtonOrder, isEmpty);
+    expect(settings.chatInputMoreButtonIds, isEmpty);
   });
 }
