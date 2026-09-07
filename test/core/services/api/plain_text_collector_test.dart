@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/core/services/api/chat_api_service.dart';
 import 'package:Cuplivo/core/services/api/plain_text_collector.dart';
+import 'package:Cuplivo/core/services/api/providers/gemini_thought_signature.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -90,6 +91,48 @@ void main() {
     await future;
 
     expect(snapshots, ['ab', 'abc']);
+  });
+
+  test('strips Gemini signatures and reports them separately', () async {
+    const firstSignature =
+        '<!-- gemini_thought_signatures:{"text":{"k":"thoughtSignature","v":"first"}} -->';
+    const lastSignature =
+        '<!-- gemini_thought_signatures:{"text":{"k":"thoughtSignature","v":"last"}} -->';
+    final firstPayload = encodeGeminiThoughtSignature(
+      textKey: 'thoughtSignature',
+      textValue: 'first',
+    );
+    final lastPayload = encodeGeminiThoughtSignature(
+      textKey: 'thoughtSignature',
+      textValue: 'last',
+    );
+    final chunks = StreamController<ChatStreamChunk>();
+    addTearDown(() => chunks.close());
+    final collector = PlainTextCollector(sendMessageStream: fakeSender(chunks));
+    final signatures = <String>[];
+
+    final future = collector.collect(
+      config: testConfig(),
+      modelId: 'gemini-3-pro',
+      messages: const [],
+      onGeminiThoughtSignature: signatures.add,
+    );
+    await pumpEventQueue();
+    chunks
+      ..add(
+        ChatStreamChunk(
+          content: 'visible reply$firstSignature',
+          isDone: false,
+          totalTokens: 0,
+        ),
+      )
+      ..add(
+        ChatStreamChunk(content: lastSignature, isDone: true, totalTokens: 1),
+      );
+    await chunks.close();
+
+    expect(await future, 'visible reply');
+    expect(signatures, [firstPayload, lastPayload]);
   });
 
   test(

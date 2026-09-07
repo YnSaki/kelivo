@@ -25,6 +25,7 @@ import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/generation_engine.dart';
 import '../../../core/services/tts/tts_text_selection.dart';
 import '../../../core/services/haptics.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/services/proactive_care_alarm_service.dart';
 import '../../../core/services/logging/flutter_logger.dart';
 import '../../../core/services/storage/message_locate_bus.dart';
@@ -61,7 +62,6 @@ import '../services/translation_service.dart';
 import '../services/file_upload_service.dart';
 import '../widgets/chat_input_bar.dart';
 import '../utils/conversation_model_binding.dart';
-import '../utils/model_display_helper.dart';
 import '../widgets/quick_instruction_editing_controller.dart';
 import '../../model/widgets/model_select_sheet.dart';
 
@@ -166,6 +166,7 @@ class HomePageController extends ChangeNotifier {
   StreamSubscription<ChatAction>? _chatActionSub;
   StreamSubscription<MessageLocateTarget>? _locateSub;
   ReceivePort? _proactiveCarePort;
+  final Completer<void> _proactiveCareReady = Completer<void>();
 
   // ============================================================================
   // Animation Controllers
@@ -381,12 +382,7 @@ class HomePageController extends ChangeNotifier {
       }
       _proactiveCarePort = port;
       port.listen((dynamic data) {
-        final assistantId = data?.toString() ?? '';
-        debugPrint(
-          '[ProactiveCare] Main isolate received trigger for $assistantId',
-        );
-        if (assistantId.isEmpty) return;
-        unawaited(_viewModel.handleProactiveCareTrigger(assistantId));
+        unawaited(_handleProactiveCarePortMessage(data));
       });
     } catch (e) {
       debugPrint('[ProactiveCare] Port setup failed: $e');
@@ -394,6 +390,38 @@ class HomePageController extends ChangeNotifier {
         'Proactive care port setup failed: $e',
         tag: 'HomePageController',
       );
+    }
+  }
+
+  Future<void> _handleProactiveCarePortMessage(dynamic data) async {
+    try {
+      if (data is! Map) {
+        throw const FormatException('proactive-care payload is not a map');
+      }
+      final payload = Map<Object?, Object?>.from(data);
+      await _proactiveCareReady.future;
+      if (payload['event'] == 'refresh') {
+        final conversationId = payload['conversationId']?.toString();
+        if (conversationId == null || conversationId.isEmpty) {
+          throw const FormatException('refresh conversationId is missing');
+        }
+        await _chatService.refreshConversationFromDb(conversationId);
+        if (currentConversation?.id == conversationId) {
+          _chatController.updateCurrentConversation(
+            _chatService.getConversation(conversationId),
+          );
+          _chatController.reloadMessages();
+        }
+        return;
+      }
+      final trigger = ProactiveCareAlarmTrigger.fromMap(payload);
+      debugPrint(
+        '[ProactiveCare] Main isolate received trigger for '
+        '${trigger.conversationId}',
+      );
+      await _viewModel.handleProactiveCareTrigger(trigger);
+    } catch (e) {
+      debugPrint('[ProactiveCare] Invalid main-isolate message: $e');
     }
   }
 
@@ -500,7 +528,11 @@ class HomePageController extends ChangeNotifier {
       messageGenerationService: _messageGenerationService,
       streamController: _streamController,
       pipeline: pipeline,
+      onMaybeUpdateProactiveCare:
+          _viewModel.maybeUpdateProactiveCareAfterMultiAI,
     );
+    _viewModel.onMultiAISlotSettled = (messageId, succeeded) =>
+        multiAIEngine.handleSlotSettled(messageId, succeeded: succeeded);
     multiAIEngine.addListener(notifyListeners);
   }
 
@@ -733,28 +765,19 @@ class HomePageController extends ChangeNotifier {
     final prefs = _context.read<SettingsProvider>();
     final assistantProvider = _context.read<AssistantProvider>();
     final ctx = _context;
-    // Conversation model independence: resolve the effective chat model
-    // (assistant binding ?? global) that new conversations snapshot. The
-    // assistant binding goes through the same atomic chain as every other
-    // read: a partial assistant pair falls back to the global pair instead
-    // of hybridizing provider from one layer and model from another.
+    // Conversation model independence: the production snapshot resolver is
+    // created by the shared builder (tested behaviorally against the real
+    // ChatService funnel); the controller only wires it and guards the
+    // context lifetime.
+    final snapshotResolver = buildConversationModelSnapshotResolver(
+      readSettings: () => ctx.read<SettingsProvider>(),
+      findAssistant: (assistantId) => assistantId == null
+          ? null
+          : ctx.read<AssistantProvider>().getById(assistantId),
+    );
     _chatService.setCreationModelSnapshotResolver((assistantId) async {
       if (!ctx.mounted) return null;
-      final settings = ctx.read<SettingsProvider>();
-      if (!settings.conversationModelIndependent) return null;
-      final assistant = assistantId == null
-          ? null
-          : ctx.read<AssistantProvider>().getById(assistantId);
-      final resolved = resolveChatModel(
-        settings,
-        assistant,
-        null,
-        conversationModelIndependent: true,
-      );
-      if (resolved.providerKey == null || resolved.modelId == null) {
-        return null;
-      }
-      return (providerKey: resolved.providerKey, modelId: resolved.modelId);
+      return snapshotResolver(assistantId);
     });
     await _chatService.init();
     if (!ctx.mounted) return;
@@ -766,7 +789,8 @@ class HomePageController extends ChangeNotifier {
     if (ProactiveCareAlarmService.isSupported) {
       try {
         await ProactiveCareAlarmService.rescheduleAll(
-          assistantProvider.assistants,
+          conversations: _chatService.getAllConversations(),
+          assistants: assistantProvider.assistants,
         );
       } catch (e) {
         debugPrint('[ProactiveCare] Startup rescheduleAll failed: $e');
@@ -775,6 +799,9 @@ class HomePageController extends ChangeNotifier {
           tag: 'HomePageController',
         );
       }
+    }
+    if (!_proactiveCareReady.isCompleted) {
+      _proactiveCareReady.complete();
     }
     final pinnedId = await _applyStartupAssistant(prefs, assistantProvider);
     if (prefs.newChatOnLaunch) {
@@ -808,6 +835,39 @@ class HomePageController extends ChangeNotifier {
         await _createNewConversation();
       }
       recoverMultiAIState();
+    }
+    if (!_disposed && ctx.mounted) {
+      NotificationService.proactiveCareTargets.attach(
+        this,
+        _handleProactiveCareNotificationTarget,
+      );
+    }
+  }
+
+  void _handleProactiveCareNotificationTarget(String conversationId) {
+    unawaited(_openProactiveCareNotificationTarget(conversationId));
+  }
+
+  Future<void> _openProactiveCareNotificationTarget(
+    String conversationId,
+  ) async {
+    if (_disposed || !_context.mounted) return;
+    if (_chatService.getConversation(conversationId) == null) {
+      debugPrint(
+        '[ProactiveCare] Notification conversation $conversationId not found',
+      );
+      return;
+    }
+    try {
+      await openGlobalSearchResult(
+        conversationId: conversationId,
+        messageId: '',
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[ProactiveCare] Failed to open notification conversation '
+        '$conversationId: $e\n$st',
+      );
     }
   }
 
@@ -3077,6 +3137,7 @@ class HomePageController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    NotificationService.proactiveCareTargets.detach(this);
     _translationService.cancelAll();
     if (_chatControllerReady) {
       final conversationId = currentConversation?.id;

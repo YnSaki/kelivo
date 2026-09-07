@@ -255,6 +255,126 @@ void main() {
     });
 
     test(
+      'conversation model binding survives a real export/restore round-trip',
+      () async {
+        // Export side: a real ChatService over the fake root's file DB.
+        final source = ChatService();
+        await source.init();
+        final bound = await source.createConversation(assistantId: 'a1');
+        await source.setConversationModelBinding(
+          conversationId: bound.id,
+          providerKey: 'OpenAI',
+          modelId: 'gpt-5',
+        );
+
+        final sync = DataSync(preferences: businessPrefs, chatService: source);
+        final zipFile = await sync.prepareBackupFile(
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: true,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: false,
+              skills: false,
+            ),
+          ),
+        );
+
+        // Restore side: a second real ChatService rooted in a different
+        // directory, so export input and restored output are independent DBs.
+        final targetRoot = Directory('${root.path}/target_app');
+        await targetRoot.create();
+        final originalPathProvider = PathProviderPlatform.instance;
+        PathProviderPlatform.instance = _FakePathProviderPlatform(
+          targetRoot.path,
+        );
+        final target = ChatService();
+        try {
+          await DataSync(
+            preferences: businessPrefs,
+            chatService: target,
+          ).restoreFromLocalFile(
+            zipFile,
+            const WebDavConfig(
+              content: BackupContentScope(
+                chatsAndAssistants: true,
+                attachments: false,
+                workspaces: false,
+                fontsAndAvatars: false,
+                settings: false,
+                skills: false,
+              ),
+            ),
+            mode: RestoreMode.merge,
+          );
+
+          final restored = await target.repo.getConversation(bound.id);
+          expect(restored?.chatModelProvider, 'OpenAI');
+          expect(restored?.chatModelId, 'gpt-5');
+        } finally {
+          await target.close();
+          await source.close();
+          PathProviderPlatform.instance = originalPathProvider;
+        }
+      },
+    );
+
+    test('partial binding in a JSONL backup restores as unbound', () async {
+      final targetRoot = Directory('${root.path}/target_app2');
+      await targetRoot.create();
+      final originalPathProvider = PathProviderPlatform.instance;
+      PathProviderPlatform.instance = _FakePathProviderPlatform(
+        targetRoot.path,
+      );
+      final target = ChatService();
+      try {
+        final convsFile = File('${root.path}/partial_conversations.jsonl');
+        await convsFile.writeAsString(
+          '{"conversation": ${jsonEncode(<String, dynamic>{'id': 'c-partial', 'title': 'Partial', 'createdAt': DateTime(2026, 1, 1).toIso8601String(), 'updatedAt': DateTime(2026, 1, 1).toIso8601String(), 'chatModelProvider': 'Gemini'})}}\n',
+        );
+        final msgsFile = File('${root.path}/partial_messages.jsonl');
+        await msgsFile.writeAsString('');
+        final metaFile = File('${root.path}/partial_chats_meta.json');
+        await metaFile.writeAsString(
+          jsonEncode(<String, dynamic>{'message_count': 0}),
+        );
+        final zipFile = File('${root.path}/partial_pair.zip');
+        final encoder = ZipFileEncoder();
+        encoder.create(zipFile.path);
+        encoder.addFileSync(convsFile, 'conversations.jsonl');
+        encoder.addFileSync(msgsFile, 'messages.jsonl');
+        encoder.addFileSync(metaFile, 'chats_meta.json');
+        encoder.closeSync();
+
+        await DataSync(
+          preferences: businessPrefs,
+          chatService: target,
+        ).restoreFromLocalFile(
+          zipFile,
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: true,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: false,
+              skills: false,
+            ),
+          ),
+          mode: RestoreMode.merge,
+        );
+
+        final restored = await target.repo.getConversation('c-partial');
+        expect(restored?.chatModelProvider, isNull);
+        expect(restored?.chatModelId, isNull);
+      } finally {
+        await target.close();
+        PathProviderPlatform.instance = originalPathProvider;
+      }
+    });
+
+    test(
       'overwrite aborts before writes when workspace terminals cannot stop',
       () async {
         final settingsSource = File('${root.path}/incoming_settings.json');
@@ -2493,6 +2613,89 @@ void main() {
 
         final assistants = await chatService.getAllAssistants();
         expect(assistants.single.ocrMode, 'auto');
+      },
+    );
+
+    test(
+      'old backup defaults the proactive-care decision limit to unlimited',
+      () async {
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
+        final zipFile = await makeSettingsZip({
+          'assistants_v1': jsonEncode([
+            {'id': 'a1', 'name': 'Legacy A'},
+          ]),
+        });
+
+        await DataSync(
+          preferences: businessPrefs,
+          chatService: chatService,
+        ).restoreFromLocalFile(
+          zipFile,
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: true,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: true,
+              skills: true,
+            ),
+          ),
+          mode: RestoreMode.overwrite,
+        );
+
+        expect(
+          (await chatService.getAllAssistants())
+              .single
+              .proactiveCareDecisionHistoryMessageLimit,
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'merge with an old backup preserves the local decision limit',
+      () async {
+        final chatService = _InMemoryChatService();
+        addTearDown(chatService.closeDb);
+        await chatService.putAssistants([
+          Assistant(
+            id: 'a1',
+            name: 'Local Alpha',
+            proactiveCareDecisionHistoryMessageLimit: 17,
+          ),
+        ]);
+        final zipFile = await makeSettingsZip({
+          'assistants_v1': jsonEncode([
+            {'id': 'a1', 'name': 'Incoming Alpha'},
+          ]),
+        });
+
+        await DataSync(
+          preferences: businessPrefs,
+          chatService: chatService,
+        ).restoreFromLocalFile(
+          zipFile,
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: true,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: true,
+              skills: true,
+            ),
+          ),
+          mode: RestoreMode.merge,
+        );
+
+        expect(
+          (await chatService.getAllAssistants())
+              .single
+              .proactiveCareDecisionHistoryMessageLimit,
+          17,
+        );
       },
     );
 

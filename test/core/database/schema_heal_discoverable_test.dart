@@ -6,7 +6,7 @@ import 'package:Cuplivo/core/models/assistant.dart';
 import 'package:Cuplivo/core/models/chat_message.dart';
 import 'package:Cuplivo/core/models/conversation.dart';
 import 'package:Cuplivo/core/models/group_chat.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' show Variable;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' as sqlite;
@@ -271,7 +271,7 @@ void main() {
   });
 
   test(
-    'heal adds conversation model binding columns (v22 column shape)',
+    'heal adds conversation model binding columns (v23 column shape)',
     () async {
       _createLegacyDb(
         dbFile,
@@ -581,7 +581,302 @@ CREATE TABLE group_chat_rows (
 
     await repo.close();
   });
+
+  test('v22 migration adds conversation proactive-care columns and transfers the '
+      'future legacy schedule to the newest normal conversation', () async {
+    _createLegacyDb(
+      dbFile,
+      userVersion: 21,
+      missingIsPreset: false,
+      missingHandoffColumns: false,
+      missingContextTokens: false,
+      missingV15RequestMetadata: false,
+      missingQuoteJson: false,
+      includeWorkspaceBindingColumns: true,
+      includeWorkspaceV20Columns: true,
+      includeConversationKindColumn: true,
+      missingPreferenceRows: false,
+    );
+    final future = DateTime.utc(2099, 1, 2, 3, 4, 5);
+    final raw = sqlite.sqlite3.open(dbFile.path);
+    raw.execute(
+      'INSERT INTO assistant_rows '
+      '(id, name, proactive_care_next_message_at, sort_order, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['a1', 'Alpha', _secondsSinceEpoch(future), 0, 1, 1],
+    );
+    raw.execute(
+      'INSERT INTO conversation_rows '
+      '(id, title, created_at, updated_at, assistant_id) '
+      'VALUES (?, ?, ?, ?, ?)',
+      ['older', 'Older', 1, 10, 'a1'],
+    );
+    raw.execute(
+      'INSERT INTO conversation_rows '
+      '(id, title, created_at, updated_at, assistant_id) '
+      'VALUES (?, ?, ?, ?, ?)',
+      ['newer', 'Newer', 1, 20, 'a1'],
+    );
+    raw.close();
+
+    final repo = ChatDatabaseRepository.open(file: dbFile);
+    await repo.ensureReady();
+
+    final columns = await repo.db
+        .customSelect('PRAGMA table_info(conversation_rows)')
+        .get();
+    expect(
+      columns.map((row) => row.read<String>('name')),
+      containsAll(<String>[
+        'proactive_care_enabled_override',
+        'proactive_care_next_message_at',
+      ]),
+    );
+    expect(
+      (await repo.getConversation('older'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    final migrated = await repo.getConversation('newer');
+    expect(migrated?.proactiveCareEnabledOverride, isNull);
+    expect(
+      migrated?.proactiveCareNextMessageAt?.isAtSameMomentAs(future),
+      isTrue,
+    );
+    expect((await repo.getAssistant('a1'))?.proactiveCareNextMessageAt, isNull);
+
+    await repo.close();
+  });
+
+  test('heal restores missing v22 conversation proactive-care columns when '
+      'user_version already advanced', () async {
+    _createLegacyDb(
+      dbFile,
+      userVersion: 22,
+      missingIsPreset: false,
+      missingHandoffColumns: false,
+      missingContextTokens: false,
+      missingV15RequestMetadata: false,
+      missingQuoteJson: false,
+      includeWorkspaceBindingColumns: true,
+      includeWorkspaceV20Columns: true,
+      missingPreferenceRows: false,
+    );
+
+    final repo = ChatDatabaseRepository.open(file: dbFile);
+    await repo.ensureReady();
+    final nextMessageAt = DateTime.utc(2028, 3, 4, 5, 6, 7);
+    await repo.putConversation(
+      Conversation(
+        id: 'healed-v22',
+        title: 'Healed',
+        proactiveCareEnabledOverride: false,
+        proactiveCareNextMessageAt: nextMessageAt,
+      ),
+    );
+
+    final loaded = await repo.getConversation('healed-v22');
+    expect(loaded?.proactiveCareEnabledOverride, isFalse);
+    expect(
+      loaded?.proactiveCareNextMessageAt?.isAtSameMomentAs(nextMessageAt),
+      isTrue,
+    );
+
+    await repo.close();
+  });
+
+  test(
+    'v22 migration adds the proactive-care decision history limit',
+    () async {
+      _createLegacyDb(
+        dbFile,
+        userVersion: 21,
+        missingIsPreset: false,
+        missingHandoffColumns: false,
+        missingContextTokens: false,
+        missingV15RequestMetadata: false,
+        missingQuoteJson: false,
+        includeWorkspaceBindingColumns: true,
+        includeWorkspaceV20Columns: true,
+        includeConversationKindColumn: true,
+        missingPreferenceRows: false,
+      );
+      final raw = sqlite.sqlite3.open(dbFile.path);
+      raw.execute(
+        'INSERT INTO assistant_rows '
+        '(id, name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        ['legacy', 'Legacy', 0, 1, 1],
+      );
+      raw.close();
+
+      final repo = ChatDatabaseRepository.open(file: dbFile);
+      await repo.ensureReady();
+
+      final version = await repo.db.customSelect('PRAGMA user_version').get();
+      // The v22 migration block runs, then the ADR-0055 binding columns land
+      // under v23, so a v21 database ends at the current version 23.
+      expect(version.single.read<int>('user_version'), 23);
+
+      final columns = await repo.db
+          .customSelect('PRAGMA table_info(assistant_rows)')
+          .get();
+      expect(
+        columns.map((row) => row.read<String>('name')),
+        contains('proactive_care_decision_history_message_limit'),
+      );
+      expect(
+        (await repo.getAssistant(
+          'legacy',
+        ))?.proactiveCareDecisionHistoryMessageLimit,
+        isNull,
+      );
+
+      await repo.close();
+    },
+  );
+
+  test(
+    'heal restores a missing v22 proactive-care decision history limit',
+    () async {
+      _createLegacyDb(
+        dbFile,
+        userVersion: 22,
+        missingIsPreset: false,
+        missingHandoffColumns: false,
+        missingContextTokens: false,
+        missingV15RequestMetadata: false,
+        missingQuoteJson: false,
+        includeWorkspaceBindingColumns: true,
+        includeWorkspaceV20Columns: true,
+        includeConversationKindColumn: true,
+        includeConversationV22Columns: true,
+        missingPreferenceRows: false,
+      );
+
+      final repo = ChatDatabaseRepository.open(file: dbFile);
+      await repo.ensureReady();
+      await repo.putAssistant(
+        Assistant(
+          id: 'healed-v22',
+          name: 'Healed',
+          proactiveCareDecisionHistoryMessageLimit: 19,
+        ),
+        sortOrder: 0,
+      );
+
+      expect(
+        (await repo.getAssistant(
+          'healed-v22',
+        ))?.proactiveCareDecisionHistoryMessageLimit,
+        19,
+      );
+
+      await repo.close();
+    },
+  );
+
+  test('legacy transfer preserves conversation schedules and clears future '
+      'assistant schedules without eligible targets', () async {
+    _createLegacyDb(
+      dbFile,
+      userVersion: 22,
+      missingIsPreset: false,
+      missingHandoffColumns: false,
+      missingContextTokens: false,
+      missingV15RequestMetadata: false,
+      missingQuoteJson: false,
+      includeWorkspaceBindingColumns: true,
+      includeWorkspaceV20Columns: true,
+      includeConversationKindColumn: true,
+      includeConversationV22Columns: true,
+      missingPreferenceRows: false,
+    );
+    final future = DateTime.utc(2099, 2, 3, 4, 5, 6);
+    final existing = DateTime.utc(2098, 2, 3, 4, 5, 6);
+    final past = DateTime.utc(2020, 1, 1);
+    final raw = sqlite.sqlite3.open(dbFile.path);
+    for (final entry in <(String, DateTime)>[
+      ('existing', future),
+      ('no-target', future),
+      ('group-only', future),
+      ('past', past),
+    ]) {
+      raw.execute(
+        'INSERT INTO assistant_rows '
+        '(id, name, proactive_care_next_message_at, sort_order, created_at, updated_at) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        [entry.$1, entry.$1, _secondsSinceEpoch(entry.$2), 0, 1, 1],
+      );
+    }
+    raw.execute(
+      'INSERT INTO conversation_rows '
+      '(id, title, created_at, updated_at, assistant_id, conversation_kind, '
+      'proactive_care_next_message_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        'target',
+        'Target',
+        1,
+        10,
+        'existing',
+        'normal',
+        _secondsSinceEpoch(existing),
+      ],
+    );
+    raw.execute(
+      'INSERT INTO conversation_rows '
+      '(id, title, created_at, updated_at, assistant_id, conversation_kind) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['group', 'Group', 1, 10, 'group-only', 'group'],
+    );
+    raw.execute(
+      'INSERT INTO conversation_rows '
+      '(id, title, created_at, updated_at, assistant_id, conversation_kind) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['past-target', 'Past', 1, 10, 'past', 'normal'],
+    );
+    raw.close();
+
+    final repo = ChatDatabaseRepository.open(file: dbFile);
+    await repo.ensureReady();
+
+    expect(
+      (await repo.getConversation(
+        'target',
+      ))?.proactiveCareNextMessageAt?.isAtSameMomentAs(existing),
+      isTrue,
+    );
+    expect(
+      (await repo.getConversation('group'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    expect(
+      (await repo.getConversation('past-target'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    expect(
+      (await repo.getAssistant('existing'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    expect(
+      (await repo.getAssistant('no-target'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    expect(
+      (await repo.getAssistant('group-only'))?.proactiveCareNextMessageAt,
+      isNull,
+    );
+    expect(
+      (await repo.getAssistant(
+        'past',
+      ))?.proactiveCareNextMessageAt?.isAtSameMomentAs(past),
+      isTrue,
+    );
+
+    await repo.close();
+  });
 }
+
+int _secondsSinceEpoch(DateTime value) =>
+    value.millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
 
 /// Builds a v13-era DB shape (assistant/conversation/message tables only —
 /// group/trash tables are never created, so they are always "missing" for the
@@ -598,6 +893,8 @@ void _createLegacyDb(
   bool missingQuoteJson = true,
   bool includeWorkspaceBindingColumns = false,
   bool includeWorkspaceV20Columns = false,
+  bool includeConversationKindColumn = false,
+  bool includeConversationV22Columns = false,
   bool missingPreferenceRows = true,
   bool missingConversationModelBinding = true,
 }) {
@@ -633,6 +930,13 @@ void _createLegacyDb(
   final conversationModelBindingColumns = missingConversationModelBinding
       ? ''
       : ",\n  chat_model_provider TEXT NULL,\n  chat_model_id TEXT NULL";
+  final conversationKindColumn = includeConversationKindColumn
+      ? ",\n  conversation_kind TEXT NOT NULL DEFAULT 'normal'"
+      : '';
+  final conversationV22Columns = includeConversationV22Columns
+      ? ',\n  proactive_care_enabled_override INTEGER NULL'
+            ',\n  proactive_care_next_message_at INTEGER NULL'
+      : '';
   raw.execute('''
 CREATE TABLE assistant_rows (
   id TEXT NOT NULL PRIMARY KEY,
@@ -695,7 +999,7 @@ CREATE TABLE conversation_rows (
   summary TEXT NULL,
   last_summarized_message_count INTEGER NOT NULL DEFAULT 0,
   chat_suggestions_json TEXT NOT NULL DEFAULT '[]',
-  parent_conversation_id TEXT NULL$workspaceV20ConversationColumn$conversationModelBindingColumns
+  parent_conversation_id TEXT NULL$workspaceV20ConversationColumn$conversationKindColumn$conversationV22Columns$conversationModelBindingColumns
 );
 ''');
   final isPresetColumn = missingIsPreset

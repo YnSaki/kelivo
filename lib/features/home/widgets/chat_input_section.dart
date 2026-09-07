@@ -56,6 +56,7 @@ class ChatInputSection extends StatelessWidget {
     this.onQuickPhrase,
     this.onLongPressQuickPhrase,
     this.onDocumentProcessing,
+    this.onConversationProactiveCare,
     this.onOpenMiniMap,
     this.onPickCamera,
     this.onPickPhotos,
@@ -104,6 +105,7 @@ class ChatInputSection extends StatelessWidget {
   final VoidCallback? onQuickPhrase;
   final VoidCallback? onLongPressQuickPhrase;
   final VoidCallback? onDocumentProcessing;
+  final VoidCallback? onConversationProactiveCare;
   final VoidCallback? onOpenMiniMap;
   final VoidCallback? onPickCamera;
   final VoidCallback? onPickPhotos;
@@ -224,6 +226,7 @@ class ChatInputSection extends StatelessWidget {
           isDesktop ||
           (unlocked(inputBarButtonDocument) && onDocumentProcessing != null),
       onDocumentProcessing: onDocumentProcessing,
+      onConversationProactiveCare: onConversationProactiveCare,
       // Tablet-specific parameters
       showMiniMapButton: isTablet,
       onOpenMiniMap: isTablet ? onOpenMiniMap : null,

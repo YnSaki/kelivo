@@ -1,4 +1,9 @@
+import '../../../core/models/assistant.dart';
 import '../../../core/models/conversation.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/services/chat/chat_service.dart'
+    show ConversationModelSnapshotResolver;
+import 'model_display_helper.dart';
 
 /// Where an in-conversation model selection should be persisted.
 enum ConversationModelWriteTarget {
@@ -37,4 +42,33 @@ bool conversationModelBindingActive(Conversation? conversation) {
   if (conversation == null) return false;
   return conversation.chatModelProvider != null &&
       conversation.chatModelId != null;
+}
+
+/// The production creation-time snapshot resolver (installed by
+/// `HomePageController.initChat` at startup).
+///
+/// Extracted so the actual production bridge is behaviorally testable: the
+/// resolver is created here and the controller only wires it, so a unit test
+/// can drive `ChatService.createConversation` / `createDraftConversation`
+/// through it and assert what gets persisted (a complete pair of the atomic
+/// chain — never a mixed tuple from a partial assistant binding).
+ConversationModelSnapshotResolver buildConversationModelSnapshotResolver({
+  required SettingsProvider Function() readSettings,
+  required Assistant? Function(String? assistantId) findAssistant,
+}) {
+  return (assistantId) async {
+    final settings = readSettings();
+    if (!settings.conversationModelIndependent) return null;
+    final assistant = findAssistant(assistantId);
+    final resolved = resolveChatModel(
+      settings,
+      assistant,
+      null,
+      conversationModelIndependent: true,
+    );
+    if (resolved.providerKey == null || resolved.modelId == null) {
+      return null;
+    }
+    return (providerKey: resolved.providerKey, modelId: resolved.modelId);
+  };
 }

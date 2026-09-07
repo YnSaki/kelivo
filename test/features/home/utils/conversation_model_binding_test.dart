@@ -303,6 +303,28 @@ void main() {
       expect(kept.chatModelId, 'gpt-4o');
     });
   });
+
+  group('conversation_model_independent_v1 toggle persistence', () {
+    test(
+      'toggle survives a SettingsProvider reload from the same store',
+      () async {
+        final prefs = BusinessPreferences.memoryForTests(const {});
+        final sp1 = SettingsProvider(preferences: prefs);
+        await _waitUntil(() => sp1.currentModelId != null);
+        expect(sp1.conversationModelIndependent, isFalse);
+
+        await sp1.setConversationModelIndependent(true);
+        final sp2 = SettingsProvider(preferences: prefs);
+        await _waitUntil(() => sp2.currentModelId != null);
+        expect(sp2.conversationModelIndependent, isTrue);
+
+        await sp2.setConversationModelIndependent(false);
+        final sp3 = SettingsProvider(preferences: prefs);
+        await _waitUntil(() => sp3.currentModelId != null);
+        expect(sp3.conversationModelIndependent, isFalse);
+      },
+    );
+  });
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {

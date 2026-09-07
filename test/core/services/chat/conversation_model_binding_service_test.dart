@@ -3,8 +3,12 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 // ignore: depend_on_referenced_packages
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:Cuplivo/core/database/business_preferences.dart';
+import 'package:Cuplivo/core/models/assistant.dart';
 import 'package:Cuplivo/core/models/conversation.dart';
+import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/core/services/chat/chat_service.dart';
+import 'package:Cuplivo/features/home/utils/conversation_model_binding.dart';
 
 /// Regression tests for the conversation model binding write outlet and the
 /// creation-time snapshot path (ADR-0055 "conversation model independence").
@@ -38,6 +42,10 @@ class _FakePathProviderPlatform extends PathProviderPlatform {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // Captured once before any test swaps the singleton; restored in tearDown
+  // so later tests in the same isolate never use a deleted-temp-dir fake.
+  final originalPathProvider = PathProviderPlatform.instance;
+
   late Directory tempDir;
   late ChatService service;
   // Mutable snapshot result the tests install via setCreationModelSnapshotResolver.
@@ -59,6 +67,7 @@ void main() {
     if (await tempDir.exists()) {
       await tempDir.delete(recursive: true);
     }
+    PathProviderPlatform.instance = originalPathProvider;
   });
 
   group('creation-time snapshot (ADR-0055)', () {
@@ -252,4 +261,100 @@ void main() {
       },
     );
   });
+
+  group('production snapshot bridge (buildConversationModelSnapshotResolver)', () {
+    test(
+      'provider-only assistant snapshots the complete global pair (persisted)',
+      () async {
+        final settings = SettingsProvider(
+          preferences: BusinessPreferences.memoryForTests(const {
+            'selected_model_v1': 'DeepSeek::deepseek-v4-flash',
+          }),
+        );
+        await _waitUntil(() => settings.currentModelId != null);
+        await settings.setConversationModelIndependent(true);
+        service.setCreationModelSnapshotResolver(
+          buildConversationModelSnapshotResolver(
+            readSettings: () => settings,
+            findAssistant: (id) => id == 'pa'
+                ? Assistant(id: 'pa', name: 'PA', chatModelProvider: 'Gemini')
+                : null,
+          ),
+        );
+
+        final convo = await service.createConversation(assistantId: 'pa');
+        expect(convo.chatModelProvider, 'DeepSeek');
+        expect(convo.chatModelId, 'deepseek-v4-flash');
+        final rows = service.repo.getAllCompleteConversationsSync();
+        expect(rows, hasLength(1));
+        expect(rows.first.chatModelProvider, 'DeepSeek');
+        expect(rows.first.chatModelId, 'deepseek-v4-flash');
+      },
+    );
+
+    test(
+      'model-only assistant draft snapshots the global pair and rides promotion',
+      () async {
+        final settings = SettingsProvider(
+          preferences: BusinessPreferences.memoryForTests(const {
+            'selected_model_v1': 'DeepSeek::deepseek-v4-flash',
+          }),
+        );
+        await _waitUntil(() => settings.currentModelId != null);
+        await settings.setConversationModelIndependent(true);
+        service.setCreationModelSnapshotResolver(
+          buildConversationModelSnapshotResolver(
+            readSettings: () => settings,
+            findAssistant: (id) => id == 'ma'
+                ? Assistant(id: 'ma', name: 'MA', chatModelId: 'gemini-3')
+                : null,
+          ),
+        );
+
+        final draft = await service.createDraftConversation(
+          title: 'New Chat',
+          assistantId: 'ma',
+        );
+        expect(draft.chatModelProvider, 'DeepSeek');
+        expect(draft.chatModelId, 'deepseek-v4-flash');
+        await service.addMessage(
+          conversationId: draft.id,
+          role: 'user',
+          content: 'hi',
+        );
+
+        final rows = service.repo.getAllCompleteConversationsSync();
+        expect(rows, hasLength(1));
+        expect(rows.first.chatModelProvider, 'DeepSeek');
+        expect(rows.first.chatModelId, 'deepseek-v4-flash');
+      },
+    );
+
+    test('the real resolver returns null while the toggle is off', () async {
+      final settings = SettingsProvider(
+        preferences: BusinessPreferences.memoryForTests(const {
+          'selected_model_v1': 'DeepSeek::deepseek-v4-flash',
+        }),
+      );
+      await _waitUntil(() => settings.currentModelId != null);
+      service.setCreationModelSnapshotResolver(
+        buildConversationModelSnapshotResolver(
+          readSettings: () => settings,
+          findAssistant: (_) => null,
+        ),
+      );
+
+      final convo = await service.createConversation(assistantId: 'a1');
+      expect(convo.chatModelProvider, isNull);
+      expect(convo.chatModelId, isNull);
+    });
+  });
+}
+
+Future<void> _waitUntil(bool Function() predicate) async {
+  for (var i = 0; i < 200; i++) {
+    if (predicate()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('timed out waiting for condition');
 }
