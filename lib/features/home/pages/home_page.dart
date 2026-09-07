@@ -1112,7 +1112,6 @@ class _HomePageState extends State<HomePage>
       appBarOverride: groupChatMode
           ? _GroupChatDesktopAppBar(
               groupChatId: groupChatId,
-              onClose: _controller.exitGroupChatMode,
               onOpenSettings: () => showGroupChatSettingsDesktopDialog(
                 context,
                 groupChatId: groupChatId,
@@ -1136,34 +1135,42 @@ class _HomePageState extends State<HomePage>
   }
 
   /// Content column of the desktop/tablet chat layout with the group-chat
-  /// slot merged in. Both the single-chat body and the group view stay
-  /// mounted (shell keep-alive philosophy): streaming in either direction
-  /// continues while the other one is shown. The [IndexedStack] swaps which
-  /// one is visible; the group view itself is keyed by group id, so opening
-  /// a different group disposes the previous one (same dispose semantics as
-  /// a mobile route pop, which requests a round stop).
+  /// slot merged in. Every group opened in the session stays mounted (shell
+  /// keep-alive philosophy) with its own keyed [GroupChatView]: rounds and
+  /// queued sends survive switching between groups or back to single chat.
+  /// The [IndexedStack] swaps which one is visible; a group's view is only
+  /// disposed when the group is deleted (see
+  /// HomePageController._onGroupChatsChanged).
   Widget _buildTabletBodyWithGroupChat(
     BuildContext context,
     ColorScheme cs,
     String? groupChatId,
   ) {
     final singleChatBody = _wrapWithDropTarget(_buildTabletBody(context, cs));
-    if (groupChatId == null) return singleChatBody;
+    final openedIds = _controller.openedGroupChatIds;
+    if (openedIds.isEmpty) return singleChatBody;
     // The inner Scaffold uses extendBodyBehindAppBar; offset the group
     // content below the group header, mirroring _chatTopOverlayInset.
-    final groupBody = Padding(
-      padding: EdgeInsets.only(
-        top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-      ),
-      child: GroupChatView(
-        key: ValueKey('desktop_group_chat_slot_$groupChatId'),
-        groupChatId: groupChatId,
-        inputFocusNode: _controller.groupInputFocus,
-      ),
-    );
+    var index = 0;
+    if (_controller.isGroupChatMode && groupChatId != null) {
+      index = openedIds.indexOf(groupChatId) + 1;
+    }
     return IndexedStack(
-      index: _controller.isGroupChatMode ? 1 : 0,
-      children: [singleChatBody, groupBody],
+      index: index,
+      children: [
+        singleChatBody,
+        for (final id in openedIds)
+          Padding(
+            padding: EdgeInsets.only(
+              top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+            ),
+            child: GroupChatView(
+              key: ValueKey('desktop_group_chat_slot_$id'),
+              groupChatId: id,
+              inputFocusNode: _controller.groupInputFocusFor(id),
+            ),
+          ),
+      ],
     );
   }
 
@@ -3588,20 +3595,18 @@ class _HomePageState extends State<HomePage>
 }
 
 /// Header of the desktop group-chat slot, shown in place of the
-/// conversation app bar while the group view is visible (mirrors the
+/// conversation app bar while a group view is visible (mirrors the
 /// [ChatSelectionAppBar] override pattern). Settings opens the desktop
-/// dialog; close hides the slot and returns to the single-chat view (the
-/// selected group keeps running offstage).
+/// dialog. Back navigation goes through the sidebar (single-chat actions
+/// hide the slot while the group keeps running).
 class _GroupChatDesktopAppBar extends StatelessWidget
     implements PreferredSizeWidget {
   const _GroupChatDesktopAppBar({
     required this.groupChatId,
-    required this.onClose,
     required this.onOpenSettings,
   });
 
   final String groupChatId;
-  final VoidCallback onClose;
   final VoidCallback onOpenSettings;
 
   @override
@@ -3615,13 +3620,6 @@ class _GroupChatDesktopAppBar extends StatelessWidget
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      leading: IosIconButton(
-        icon: Lucide.X,
-        size: 22,
-        minSize: 44,
-        semanticLabel: MaterialLocalizations.of(context).closeButtonTooltip,
-        onTap: onClose,
-      ),
       title: Text(
         group?.name ?? '',
         maxLines: 1,

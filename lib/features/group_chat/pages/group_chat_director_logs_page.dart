@@ -118,6 +118,13 @@ class _GroupChatDirectorLogsPageState extends State<GroupChatDirectorLogsPage> {
 
     if (group == null) {
       if (widget.embedded) {
+        // The group vanished while the dialog was open (e.g. deleted via
+        // restore/backup somewhere else). Close the dialog instead of
+        // leaving a dead not-found body, mirroring the assistant desktop
+        // dialog.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).maybePop();
+        });
         return Center(child: Text(l10n.groupChatNotFound));
       }
       return Scaffold(

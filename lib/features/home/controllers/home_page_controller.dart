@@ -221,13 +221,14 @@ class HomePageController extends ChangeNotifier {
   String _globalSearchQuery = '';
 
   // Desktop group-chat slot (Chat tab content swap, see GroupChatNavigationBus).
-  // The selected group is RETAINED when the slot is hidden so an in-flight
-  // round keeps running in the background; only opening a different group
-  // disposes the previous group's view (same key-swap semantics as a mobile
-  // push/pop, whose dispose requests a round stop).
+  // Every group opened in the current session stays alive: single-chat
+  // navigation only hides the slot while all groups keep streaming in the
+  // background, and only deleting a group disposes its view (whose dispose
+  // requests a round stop). _groupChatId is the currently shown group.
+  final List<String> _openedGroupIds = <String>[];
   String? _groupChatId;
   bool _groupChatVisible = false;
-  FocusNode? _groupInputFocus;
+  final Map<String, FocusNode> _groupInputFocuses = <String, FocusNode>{};
   GroupChatProvider? _groupChatProvider;
 
   // Message-level spotlight target after selecting a global search result
@@ -282,13 +283,18 @@ class HomePageController extends ChangeNotifier {
   UserMessageEditState? get userMessageEditState => _userMessageEditState;
 
   // Desktop group-chat slot
+  List<String> get openedGroupChatIds => List.unmodifiable(_openedGroupIds);
   String? get activeGroupChatId => _groupChatId;
   bool get isGroupChatMode => _groupChatVisible && _groupChatId != null;
 
-  /// Composer focus node of the group-chat slot. Lazily created and owned by
-  /// this controller so hotkeys can target the (possibly hidden) group view.
-  FocusNode get groupInputFocus =>
-      _groupInputFocus ??= FocusNode(debugLabel: 'groupChatInputFocus');
+  /// Composer focus node of [groupId]'s group view. Lazily created and owned
+  /// by this controller so hotkeys can target the (possibly hidden) group
+  /// view. Disposed when the group is removed from the slot (deleted).
+  FocusNode groupInputFocusFor(String groupId) =>
+      _groupInputFocuses.putIfAbsent(
+        groupId,
+        () => FocusNode(debugLabel: 'groupChatInputFocus_$groupId'),
+      );
   bool get isUserMessageEditActive => _userMessageEditState != null;
 
   static double get sidebarMinWidth => _sidebarMinWidth;
@@ -731,9 +737,10 @@ class HomePageController extends ChangeNotifier {
         case ChatAction.focusInput:
           if (isDesktopPlatform) {
             final groupMode = isGroupChatMode;
+            final groupId = groupMode ? _groupChatId : null;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (groupMode) {
-                groupInputFocus.requestFocus();
+              if (groupId != null) {
+                groupInputFocusFor(groupId).requestFocus();
               } else {
                 _inputFocus.requestFocus();
               }
@@ -775,9 +782,9 @@ class HomePageController extends ChangeNotifier {
   // Desktop group-chat slot
   // ============================================================================
 
-  /// Hides the group-chat slot and returns to the single-chat view. The
-  /// selected group is retained so an in-flight round keeps running in the
-  /// background (matches the shell's keep-alive philosophy for tab switches).
+  /// Hides the group-chat slot and returns to the single-chat view. Every
+  /// opened group stays mounted offstage, so all their rounds keep running
+  /// in the background (matches the shell's keep-alive philosophy).
   void exitGroupChatMode() {
     if (!_groupChatVisible) return;
     _groupChatVisible = false;
@@ -794,31 +801,47 @@ class HomePageController extends ChangeNotifier {
         exitGroupChatMode();
         return;
       }
-      final id = target.groupChatId!;
-      if (_groupChatId != id && _selecting) {
-        // Entering group mode cancels the single-chat selection; the
-        // selection app bar belongs to the single-chat content that is now
-        // hidden.
-        cancelSelection();
-      }
-      _groupChatId = id;
-      _groupChatVisible = true;
-      notifyListeners();
+      _openGroupChatSlot(target.groupChatId!);
     });
   }
 
-  /// Drops the whole slot when the selected group is deleted (e.g. via the
-  /// settings dialog opened from the slot header) instead of leaving a
-  /// not-found view mounted.
+  void _openGroupChatSlot(String groupChatId) {
+    // Opening an already-open group just switches back to its live view
+    // (round/queue state untouched).
+    if (!_openedGroupIds.contains(groupChatId)) {
+      _openedGroupIds.add(groupChatId);
+    }
+    if (_groupChatId != groupChatId && _selecting) {
+      // Entering group mode cancels the single-chat selection; the
+      // selection app bar belongs to the single-chat content now hidden.
+      cancelSelection();
+    }
+    _groupChatId = groupChatId;
+    _groupChatVisible = true;
+    notifyListeners();
+  }
+
+  /// Drops deleted groups from the slot (disposing their views and rounds);
+  /// the currently shown group falls back to the previously opened one.
   void _onGroupChatsChanged() {
     if (_disposed) return;
-    final id = _groupChatId;
-    if (id == null) return;
+    if (_openedGroupIds.isEmpty) return;
     final gp = _groupChatProvider;
     if (gp == null || !gp.loaded) return;
-    if (gp.getById(id) != null) return;
-    _groupChatId = null;
-    _groupChatVisible = false;
+    final removed = _openedGroupIds
+        .where((id) => gp.getById(id) == null)
+        .toList(growable: false);
+    if (removed.isEmpty) return;
+    for (final id in removed) {
+      _openedGroupIds.remove(id);
+      _groupInputFocuses.remove(id)?.dispose();
+    }
+    if (_groupChatId == null || !_openedGroupIds.contains(_groupChatId)) {
+      _groupChatId = _openedGroupIds.isEmpty ? null : _openedGroupIds.last;
+    }
+    if (_groupChatId == null) {
+      _groupChatVisible = false;
+    }
     notifyListeners();
   }
 
@@ -3272,7 +3295,10 @@ class HomePageController extends ChangeNotifier {
     try {
       _groupChatProvider?.removeListener(_onGroupChatsChanged);
     } catch (_) {}
-    _groupInputFocus?.dispose();
+    for (final node in _groupInputFocuses.values) {
+      node.dispose();
+    }
+    _groupInputFocuses.clear();
     _chatController.dispose();
     _streamController.dispose();
     super.dispose();

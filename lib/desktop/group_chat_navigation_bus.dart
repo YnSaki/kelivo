@@ -31,7 +31,8 @@ class GroupChatNavigationBus {
   }
 
   /// Hides the desktop group-chat slot and returns to the single-chat view.
-  /// The selected group is retained so an in-flight round keeps running.
+  /// Every previously opened group stays mounted offstage, so all their
+  /// in-flight rounds keep running.
   void exitGroupChat() {
     _controller.add(const GroupChatNavigationTarget.exit());
   }

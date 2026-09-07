@@ -262,9 +262,8 @@ void main() {
     });
   });
 
-  testWidgets('desktop: opening a different group swaps the selected group', (
-    tester,
-  ) async {
+  testWidgets('desktop: opening a different group keeps the first alive and '
+      'switches back and forth', (tester) async {
     await _withPlatform(TargetPlatform.macOS, () async {
       final harness = await _pumpHarness(tester);
       addTearDown(() => harness.dispose(tester));
@@ -275,6 +274,15 @@ void main() {
       await tester.pump();
       expect(harness.controller.activeGroupChatId, 'group-b');
       expect(harness.controller.isGroupChatMode, isTrue);
+      // Both stay mounted (rounds keep running in the background).
+      expect(harness.controller.openedGroupChatIds, ['group-a', 'group-b']);
+
+      // Switching back to the previously opened group reuses its live view.
+      GroupChatNavigationBus.instance.openGroupChat('group-a');
+      await tester.pump();
+      expect(harness.controller.activeGroupChatId, 'group-a');
+      expect(harness.controller.isGroupChatMode, isTrue);
+      expect(harness.controller.openedGroupChatIds, ['group-a', 'group-b']);
     });
   });
 
@@ -315,6 +323,36 @@ void main() {
       await tester.pump();
       expect(harness.controller.activeGroupChatId, isNull);
       expect(harness.controller.isGroupChatMode, isFalse);
+      expect(harness.controller.openedGroupChatIds, isEmpty);
+    });
+  });
+
+  testWidgets('desktop: deleting a background group drops only that group', (
+    tester,
+  ) async {
+    await _withPlatform(TargetPlatform.macOS, () async {
+      final harness = await _pumpHarness(tester);
+      addTearDown(() => harness.dispose(tester));
+
+      final doomed = (await tester.runAsync(
+        () => harness.groupChats.createGroup(name: 'Doomed Background'),
+      ))!;
+      final current = (await tester.runAsync(
+        () => harness.groupChats.createGroup(name: 'Current Group'),
+      ))!;
+      await tester.pump();
+
+      GroupChatNavigationBus.instance.openGroupChat(doomed.id);
+      await tester.pump();
+      GroupChatNavigationBus.instance.openGroupChat(current.id);
+      await tester.pump();
+      expect(harness.controller.activeGroupChatId, current.id);
+
+      await tester.runAsync(() => harness.groupChats.deleteGroup(doomed.id));
+      await tester.pump();
+      expect(harness.controller.activeGroupChatId, current.id);
+      expect(harness.controller.isGroupChatMode, isTrue);
+      expect(harness.controller.openedGroupChatIds, hasLength(1));
     });
   });
 
