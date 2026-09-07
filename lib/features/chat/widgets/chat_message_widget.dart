@@ -33,6 +33,7 @@ import '../../../core/models/assistant.dart';
 import '../../../core/providers/tts_provider.dart';
 import '../../../core/services/tts/tts_text_selection.dart';
 import '../../../shared/widgets/markdown_with_highlight.dart';
+import '../../../shared/widgets/sanitizing_selection_area.dart';
 import '../../../shared/widgets/snackbar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../l10n/app_localizations.dart';
@@ -848,6 +849,28 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
         : TtsTextSelectionMode.fullText;
     final content = TtsTextSelection.apply(text, mode: effectiveMode);
     context.read<TtsProvider>().speak(content);
+  }
+
+  void _shareSelectedPlainText(SelectableRegionState region) {
+    final selected = _selectedPlainText;
+    if (selected == null || selected.trim().isEmpty) return;
+    unawaited(
+      SystemChannels.platform.invokeMethod<String>('Share.invoke', selected),
+    );
+    // Mirrors the framework's per-platform post-share behavior for the
+    // default toolbar Share button (see
+    // `SelectableRegionState.contextMenuButtonItems`).
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+        region.clearSelection();
+      case TargetPlatform.iOS:
+        region.hideToolbar(false);
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        region.hideToolbar();
+    }
   }
 
   // Local expand state for inline <think> card (defaults to expanded)
@@ -1751,7 +1774,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     }
 
     return isDesktop
-        ? SelectionArea(
+        ? SanitizingSelectionArea(
             key: ValueKey('user_${widget.message.id}'),
             child: content,
           )
@@ -2045,17 +2068,35 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     );
 
     return RepaintBoundary(
-      child: SelectionArea(
+      child: SanitizingSelectionArea(
         key: ValueKey(
           contentKey.isEmpty
               ? 'assistant_${widget.message.id}'
               : 'assistant_${widget.message.id}_$contentKey',
         ),
         onSelectionChanged: (selection) {
-          _selectedPlainText = selection?.plainText;
+          // Sanitize at capture: the rendered selection may contain
+          // renderer-inserted invisible characters (soft-break ZWSPs, etc.).
+          // Everything downstream (plain copy, markdown copy fallback,
+          // quote, reply, speak) uses this value.
+          _selectedPlainText = selection == null
+              ? null
+              : stripRendererInsertedCharacters(selection.plainText);
         },
         contextMenuBuilder: (context, selectableRegionState) {
           final defaultItems = selectableRegionState.contextMenuButtonItems
+              .map((item) {
+                // Share copies through the system share sheet; keep it on
+                // the sanitized selection like the copy buttons below, and
+                // mirror the framework's post-share behavior.
+                if (item.type == ContextMenuButtonType.share) {
+                  return item.copyWith(
+                    onPressed: () =>
+                        _shareSelectedPlainText(selectableRegionState),
+                  );
+                }
+                return item;
+              })
               .where((item) => item.type != ContextMenuButtonType.copy)
               .toList();
           if (widget.message.isStreaming) {
@@ -2809,7 +2850,7 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                           Padding(
                             padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
                             child: RepaintBoundary(
-                              child: SelectionArea(
+                              child: SanitizingSelectionArea(
                                 key: ValueKey(
                                   'translation_${widget.message.id}',
                                 ),
@@ -4308,17 +4349,21 @@ class _ChainOfThoughtReasoningStepState
                 child: SingleChildScrollView(
                   controller: _scroll,
                   physics: const BouncingScrollPhysics(),
-                  child: SelectionArea(child: reasoningContent(display)),
+                  child: SanitizingSelectionArea(
+                    child: reasoningContent(display),
+                  ),
                 ),
               )
             : SingleChildScrollView(
                 controller: _scroll,
                 physics: const NeverScrollableScrollPhysics(),
-                child: SelectionArea(child: reasoningContent(display)),
+                child: SanitizingSelectionArea(
+                  child: reasoningContent(display),
+                ),
               ),
       );
     } else if (state == _ReasoningStepState.expanded) {
-      content = SelectionArea(child: reasoningContent(display));
+      content = SanitizingSelectionArea(child: reasoningContent(display));
     }
 
     return _TimelineStepShell(
@@ -6521,7 +6566,7 @@ class _ReasoningSectionState extends State<_ReasoningSection>
     }
 
     // Enable long-press text selection in reasoning body
-    body = SelectionArea(child: body);
+    body = SanitizingSelectionArea(child: body);
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),

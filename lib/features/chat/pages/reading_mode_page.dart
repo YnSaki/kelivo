@@ -9,6 +9,7 @@ import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../shared/widgets/markdown_with_highlight.dart';
+import '../../../shared/widgets/sanitizing_selection_area.dart';
 import '../../../shared/widgets/snackbar.dart';
 import 'package:Cuplivo/theme/app_font_weights.dart';
 import '../utils/message_visual_content.dart';
@@ -156,7 +157,7 @@ class _ReadingModePageState extends State<ReadingModePage> {
               ),
               // SelectionArea must live inside the scroll view so selections
               // can span the whole document without a scrollable parent.
-              child: SelectionArea(
+              child: SanitizingSelectionArea(
                 child: MarkdownWithCodeHighlight(
                   text: _visualContent ?? '',
                   baseStyle: TextStyle(
