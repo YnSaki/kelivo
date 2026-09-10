@@ -4556,6 +4556,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get modelDetailSheetAbilitiesLabel => 'Abilities';
 
   @override
+  String get modelDetailSheetReasoningEffortsLabel =>
+      'Custom Reasoning Efforts';
+
+  @override
+  String get modelDetailSheetReasoningEffortsHint =>
+      'When enabled, the reasoning slider stops follow this list and override the built-in model knowledge; when disabled, the built-in knowledge is used.';
+
+  @override
   String get modelDetailSheetTextMode => 'Text';
 
   @override

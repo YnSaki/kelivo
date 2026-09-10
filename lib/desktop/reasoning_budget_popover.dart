@@ -241,6 +241,9 @@ class _ReasoningContent extends StatelessWidget {
 
   bool _isCustomSelected(
     int? budget, {
+    required bool showLow,
+    required bool showMedium,
+    required bool showHigh,
     required bool showXhigh,
     required bool showMax,
   }) {
@@ -248,16 +251,19 @@ class _ReasoningContent extends StatelessWidget {
     final presets = <int>{
       -1,
       0,
-      1024,
-      16000,
-      32000,
+      if (showLow) 1024,
+      if (showMedium) 16000,
+      if (showHigh) 32000,
       if (showXhigh) 64000,
       if (showMax) 128000,
     };
     return !presets.contains(v);
   }
 
-  bool _showXhighOption(BuildContext context, SettingsProvider settings) {
+  (String, String)? _currentModelRef(
+    BuildContext context,
+    SettingsProvider settings,
+  ) {
     final assistant = context.read<AssistantProvider>().currentAssistant;
     final currentProvider =
         modelProvider ??
@@ -265,31 +271,46 @@ class _ReasoningContent extends StatelessWidget {
         settings.currentModelProvider;
     final currentModelId =
         modelId ?? assistant?.chatModelId ?? settings.currentModelId;
-    if (currentProvider == null || currentModelId == null) return false;
-    return settings.supportsXhighReasoning(currentProvider, currentModelId);
+    if (currentProvider == null || currentModelId == null) return null;
+    return (currentProvider, currentModelId);
+  }
+
+  bool _showXhighOption(BuildContext context, SettingsProvider settings) {
+    final ref = _currentModelRef(context, settings);
+    if (ref == null) return false;
+    return settings.supportsXhighReasoning(ref.$1, ref.$2);
   }
 
   bool _showMaxOption(BuildContext context, SettingsProvider settings) {
-    final assistant = context.read<AssistantProvider>().currentAssistant;
-    final currentProvider =
-        modelProvider ??
-        assistant?.chatModelProvider ??
-        settings.currentModelProvider;
-    final currentModelId =
-        modelId ?? assistant?.chatModelId ?? settings.currentModelId;
-    if (currentProvider == null || currentModelId == null) return false;
-    return settings.supportsMaxReasoning(currentProvider, currentModelId);
+    final ref = _currentModelRef(context, settings);
+    if (ref == null) return false;
+    return settings.supportsMaxReasoning(ref.$1, ref.$2);
+  }
+
+  /// The model's explicit effort vocabulary, or null when it follows the
+  /// built-in registry. Low/medium/high tiles follow the vocabulary too.
+  List<String>? _vocabulary(BuildContext context, SettingsProvider settings) {
+    final ref = _currentModelRef(context, settings);
+    if (ref == null) return null;
+    return settings.reasoningEffortsVocabulary(ref.$1, ref.$2);
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final sp = context.watch<SettingsProvider>();
+    final vocabulary = _vocabulary(context, sp);
+    final showLow = vocabulary == null || vocabulary.contains('low');
+    final showMedium = vocabulary == null || vocabulary.contains('medium');
+    final showHigh = vocabulary == null || vocabulary.contains('high');
     final showXhigh = _showXhighOption(context, sp);
     final showMax = _showMaxOption(context, sp);
     final selected = sp.thinkingBudget ?? -1;
     final customActive = _isCustomSelected(
       sp.thinkingBudget,
+      showLow: showLow,
+      showMedium: showMedium,
+      showHigh: showHigh,
       showXhigh: showXhigh,
       showMax: showMax,
     );
@@ -353,33 +374,36 @@ class _ReasoningContent extends StatelessWidget {
               label: l10n.reasoningBudgetSheetAuto,
               value: -1,
             ),
-            tile(
-              leadingBuilder: (c) => ReasoningIcons.budgetIcon(
-                ReasoningIcons.lightBudget,
-                size: 16,
-                color: c,
+            if (showLow)
+              tile(
+                leadingBuilder: (c) => ReasoningIcons.budgetIcon(
+                  ReasoningIcons.lightBudget,
+                  size: 16,
+                  color: c,
+                ),
+                label: l10n.reasoningBudgetSheetLight,
+                value: 1024,
               ),
-              label: l10n.reasoningBudgetSheetLight,
-              value: 1024,
-            ),
-            tile(
-              leadingBuilder: (c) => ReasoningIcons.budgetIcon(
-                ReasoningIcons.mediumBudget,
-                size: 16,
-                color: c,
+            if (showMedium)
+              tile(
+                leadingBuilder: (c) => ReasoningIcons.budgetIcon(
+                  ReasoningIcons.mediumBudget,
+                  size: 16,
+                  color: c,
+                ),
+                label: l10n.reasoningBudgetSheetMedium,
+                value: 16000,
               ),
-              label: l10n.reasoningBudgetSheetMedium,
-              value: 16000,
-            ),
-            tile(
-              leadingBuilder: (c) => ReasoningIcons.budgetIcon(
-                ReasoningIcons.heavyBudget,
-                size: 16,
-                color: c,
+            if (showHigh)
+              tile(
+                leadingBuilder: (c) => ReasoningIcons.budgetIcon(
+                  ReasoningIcons.heavyBudget,
+                  size: 16,
+                  color: c,
+                ),
+                label: l10n.reasoningBudgetSheetHeavy,
+                value: 32000,
               ),
-              label: l10n.reasoningBudgetSheetHeavy,
-              value: 32000,
-            ),
             if (showXhigh)
               tile(
                 leadingBuilder: (c) => ReasoningIcons.budgetIcon(

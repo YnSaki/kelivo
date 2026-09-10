@@ -38,6 +38,46 @@ Future<SettingsProvider> _settingsForClaudeModel(
   return settings;
 }
 
+/// Niche (registry-unmatched) model with an optional per-model
+/// reasoning-effort vocabulary override.
+Future<SettingsProvider> _settingsForOverriddenModel(
+  WidgetTester tester, {
+  required ProviderKind kind,
+  required String modelId,
+  List<String>? reasoningEfforts,
+}) async {
+  businessPrefs = BusinessPreferences.memoryForTests({});
+  final settings = SettingsProvider(preferences: businessPrefs);
+  await tester.pump(const Duration(milliseconds: 300));
+  await tester.pump();
+
+  await settings.setProviderConfig(
+    'NicheProvider',
+    ProviderConfig(
+      id: 'NicheProvider',
+      enabled: true,
+      name: 'NicheProvider',
+      apiKey: 'test-key',
+      baseUrl: kind == ProviderKind.claude
+          ? 'https://api.anthropic.com/v1'
+          : 'https://api.niche.example/v1',
+      providerType: kind,
+      models: <String>[modelId],
+      modelOverrides: {
+        modelId: {
+          'type': 'chat',
+          'input': ['text'],
+          'output': ['text'],
+          'abilities': ['reasoning'],
+          if (reasoningEfforts != null) 'reasoningEfforts': reasoningEfforts,
+        },
+      },
+    ),
+  );
+  await settings.setCurrentModel('NicheProvider', modelId);
+  return settings;
+}
+
 Future<void> _pumpSheetLauncher(
   WidgetTester tester, {
   required SettingsProvider settings,
@@ -356,6 +396,112 @@ void main() {
       expect(find.text('3000'), findsNWidgets(2));
       // Sheet stays open after the dialog closes.
       expect(find.byKey(const ValueKey('reasoning-stop-1024')), findsOneWidget);
+    });
+
+    testWidgets('keeps xhigh/max hidden for unmatched models', (tester) async {
+      final settings = await _settingsForOverriddenModel(
+        tester,
+        kind: ProviderKind.openai,
+        modelId: 'my-niche-reasoner',
+      );
+      await _pumpSheetLauncher(tester, settings: settings);
+
+      await _openSheet(tester);
+
+      expect(find.byKey(const ValueKey('reasoning-stop-64000')), findsNothing);
+      expect(find.byKey(const ValueKey('reasoning-stop-128000')), findsNothing);
+    });
+
+    testWidgets('override vocabulary shows xhigh/max for unmatched models', (
+      tester,
+    ) async {
+      final settings = await _settingsForOverriddenModel(
+        tester,
+        kind: ProviderKind.openai,
+        modelId: 'my-niche-reasoner',
+        reasoningEfforts: const ['low', 'medium', 'high', 'xhigh', 'max'],
+      );
+      await _pumpSheetLauncher(tester, settings: settings);
+
+      await _openSheet(tester);
+
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-64000')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-128000')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('override vocabulary unlocks claude niche models', (
+      tester,
+    ) async {
+      final settings = await _settingsForOverriddenModel(
+        tester,
+        kind: ProviderKind.claude,
+        modelId: 'my-relay-model',
+        reasoningEfforts: const ['low', 'medium', 'high', 'xhigh', 'max'],
+      );
+      await _pumpSheetLauncher(tester, settings: settings);
+
+      await _openSheet(tester);
+
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-64000')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-128000')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('restrictive vocabulary hides low/medium/high stops too', (
+      tester,
+    ) async {
+      final settings = await _settingsForOverriddenModel(
+        tester,
+        kind: ProviderKind.openai,
+        modelId: 'my-niche-reasoner',
+        reasoningEfforts: const ['low', 'high'],
+      );
+      await _pumpSheetLauncher(tester, settings: settings);
+
+      await _openSheet(tester);
+
+      expect(find.byKey(const ValueKey('reasoning-stop-1024')), findsOneWidget);
+      expect(find.byKey(const ValueKey('reasoning-stop-16000')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-32000')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('reasoning-stop-64000')), findsNothing);
+      expect(find.byKey(const ValueKey('reasoning-stop-128000')), findsNothing);
+    });
+
+    testWidgets('single-level vocabulary leaves only that stop', (
+      tester,
+    ) async {
+      final settings = await _settingsForOverriddenModel(
+        tester,
+        kind: ProviderKind.openai,
+        modelId: 'my-niche-reasoner',
+        reasoningEfforts: const ['xhigh'],
+      );
+      await _pumpSheetLauncher(tester, settings: settings);
+
+      await _openSheet(tester);
+
+      expect(find.byKey(const ValueKey('reasoning-stop-1024')), findsNothing);
+      expect(find.byKey(const ValueKey('reasoning-stop-16000')), findsNothing);
+      expect(find.byKey(const ValueKey('reasoning-stop-32000')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('reasoning-stop-64000')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('reasoning-stop-128000')), findsNothing);
     });
   });
 }

@@ -4364,6 +4364,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get modelDetailSheetAbilitiesLabel => '能力';
 
   @override
+  String get modelDetailSheetReasoningEffortsLabel => '自定义推理等级';
+
+  @override
+  String get modelDetailSheetReasoningEffortsHint =>
+      '开启后推理滑杆档位以此为准，并覆盖内置模型知识；关闭则跟随内置。';
+
+  @override
   String get modelDetailSheetTextMode => '文本';
 
   @override
@@ -14291,6 +14298,13 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get modelDetailSheetAbilitiesLabel => '能力';
 
   @override
+  String get modelDetailSheetReasoningEffortsLabel => '自定义推理等级';
+
+  @override
+  String get modelDetailSheetReasoningEffortsHint =>
+      '开启后推理滑杆档位以此为准，并覆盖内置模型知识；关闭则跟随内置。';
+
+  @override
   String get modelDetailSheetTextMode => '文本';
 
   @override
@@ -24216,6 +24230,13 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get modelDetailSheetAbilitiesLabel => '能力';
+
+  @override
+  String get modelDetailSheetReasoningEffortsLabel => '自訂推理等級';
+
+  @override
+  String get modelDetailSheetReasoningEffortsHint =>
+      '開啟後推理滑桿檔位以此為準，並覆蓋內建模型知識；關閉則跟隨內建。';
 
   @override
   String get modelDetailSheetTextMode => '文字';

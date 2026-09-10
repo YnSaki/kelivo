@@ -6,6 +6,7 @@ import '../../../core/providers/model_provider.dart';
 import '../../../core/services/api/builtin_tools.dart';
 import '../../../core/services/model_override_resolver.dart';
 import '../../../core/services/logging/flutter_logger.dart';
+import '../../../core/utils/openai_model_compat.dart';
 import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/widgets/snackbar.dart';
@@ -118,6 +119,13 @@ class _ModelDetailSheetState extends State<_ModelDetailSheet>
   bool _googleYoutubeTool = false;
   bool _openaiCodeInterpreterTool = false;
   bool _openaiImageGenerationTool = false;
+
+  // Per-model reasoning-effort vocabulary override
+  // (modelOverrides[key]['reasoningEfforts']). The switch off = follow the
+  // built-in registry; the list is the slider's available stops.
+  bool _customReasoningEfforts = false;
+  List<String> _reasoningEfforts = [];
+  bool _reasoningEffortsInitialized = false;
 
   @override
   void initState() {
@@ -236,6 +244,10 @@ class _ModelDetailSheetState extends State<_ModelDetailSheet>
       _googleUrlContextTool =
           _googleUrlContextTool || ((tools['urlContext'] as bool?) ?? false);
     }
+    final parsedEfforts = reasoningEffortsOverride(ov);
+    _customReasoningEfforts = parsedEfforts != null;
+    _reasoningEfforts = parsedEfforts ?? <String>[];
+    _reasoningEffortsInitialized = parsedEfforts != null;
   }
 
   void _setType(ModelType next) {
@@ -266,6 +278,31 @@ class _ModelDetailSheetState extends State<_ModelDetailSheet>
     _cachedChatOutput = result.cachedChatOutput;
     _cachedChatAbilities = result.cachedChatAbilities;
     _cachedEmbeddingInput = result.cachedEmbeddingInput;
+  }
+
+  /// First enable with nothing persisted: prefill from the built-in registry
+  /// (openai kind) or the safe passthrough set (claude kind). Later off/on
+  /// toggles keep the in-memory list, an intentionally empty one included.
+  void _toggleCustomReasoningEfforts(bool on) {
+    setState(() {
+      _customReasoningEfforts = on;
+      if (on && !_reasoningEffortsInitialized) {
+        _reasoningEfforts = _defaultReasoningEfforts();
+        _reasoningEffortsInitialized = true;
+      }
+    });
+  }
+
+  List<String> _defaultReasoningEfforts() {
+    if (_providerKind == ProviderKind.openai) {
+      final support = openAIReasoningSupport(_idCtrl.text.trim());
+      if (support != null) {
+        return support.supportedEfforts
+            .where(kReasoningEffortVocabulary.contains)
+            .toList();
+      }
+    }
+    return <String>['low', 'medium', 'high'];
   }
 
   @override
@@ -596,6 +633,64 @@ class _ModelDetailSheetState extends State<_ModelDetailSheet>
                   }
                 }),
               ),
+              if (_abilities.contains(ModelAbility.reasoning) &&
+                  _providerKind != ProviderKind.google) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _label(
+                        context,
+                        l10n.modelDetailSheetReasoningEffortsLabel,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IosSwitch(
+                      value: _customReasoningEfforts,
+                      semanticLabel: l10n.modelDetailSheetReasoningEffortsLabel,
+                      onChanged: _toggleCustomReasoningEfforts,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.modelDetailSheetReasoningEffortsHint,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                if (_customReasoningEfforts) ...[
+                  const SizedBox(height: 8),
+                  SegmentedToggleMulti(
+                    options: [
+                      l10n.reasoningBudgetSheetLight,
+                      l10n.reasoningBudgetSheetMedium,
+                      l10n.reasoningBudgetSheetHeavy,
+                      l10n.reasoningBudgetSheetXhigh,
+                      l10n.reasoningBudgetSheetMax,
+                    ],
+                    isSelected: [
+                      for (final e in kReasoningEffortVocabulary)
+                        _reasoningEfforts.contains(e),
+                    ],
+                    allowEmpty: true,
+                    onChanged: (idx) => setState(() {
+                      final effort = kReasoningEffortVocabulary[idx];
+                      if (_reasoningEfforts.contains(effort)) {
+                        _reasoningEfforts.remove(effort);
+                      } else {
+                        _reasoningEfforts.add(effort);
+                      }
+                      _reasoningEfforts.sort(
+                        (a, b) => kReasoningEffortVocabulary
+                            .indexOf(a)
+                            .compareTo(kReasoningEffortVocabulary.indexOf(b)),
+                      );
+                    }),
+                  ),
+                ],
+              ],
             ],
           ],
         ),
@@ -909,6 +1004,8 @@ class _ModelDetailSheetState extends State<_ModelDetailSheet>
         'abilities': _abilities
             .map((e) => e == ModelAbility.reasoning ? 'reasoning' : 'tool')
             .toList(),
+      if (!isEmbedding && _customReasoningEfforts)
+        'reasoningEfforts': List<String>.of(_reasoningEfforts),
       'headers': headers,
       'body': bodies,
       if (!isEmbedding && builtInTools.isNotEmpty) 'builtInTools': builtInTools,

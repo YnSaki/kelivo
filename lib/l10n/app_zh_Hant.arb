@@ -1501,6 +1501,8 @@
   "modelDetailSheetInputModesLabel": "輸入模式",
   "modelDetailSheetOutputModesLabel": "輸出模式",
   "modelDetailSheetAbilitiesLabel": "能力",
+  "modelDetailSheetReasoningEffortsLabel": "自訂推理等級",
+  "modelDetailSheetReasoningEffortsHint": "開啟後推理滑桿檔位以此為準，並覆蓋內建模型知識；關閉則跟隨內建。",
   "modelDetailSheetTextMode": "文字",
   "modelDetailSheetImageMode": "圖片",
   "modelDetailSheetToolsAbility": "工具",

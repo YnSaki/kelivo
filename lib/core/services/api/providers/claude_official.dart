@@ -420,7 +420,12 @@ Stream<ChatStreamChunk> _sendClaudeStream(
         ? _claudeThinkingConfig(upstreamModelId, thinkingBudget, config: config)
         : null;
     final outputConfig = isReasoning
-        ? _claudeOutputConfig(upstreamModelId, thinkingBudget, config: config)
+        ? _claudeOutputConfig(
+            upstreamModelId,
+            thinkingBudget,
+            config: config,
+            effortsOverride: _claudeEffortsOverride(config, modelId),
+          )
         : null;
 
     // Prepare request body per round

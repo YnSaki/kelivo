@@ -137,6 +137,47 @@ String resolveApiModelIdOverride(
   return fallbackModelId;
 }
 
+/// Canonical effort vocabulary of the per-model reasoning-effort override
+/// (`modelOverrides[key]['reasoningEfforts']`). 'none' is intentionally
+/// absent: reasoning off means the parameter is omitted, never sent.
+const List<String> kReasoningEffortVocabulary = <String>[
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
+/// Parses the per-model reasoning-effort vocabulary override.
+///
+/// Returns null when the model carries no override (follow the built-in
+/// registry). An explicit list — empty included — is the user's vocabulary
+/// and replaces the registry entirely; an empty list means the model has no
+/// effort parameter at all (normalizes to 'auto'). Unknown values are
+/// dropped and the remainder is returned in canonical order.
+List<String>? reasoningEffortsOverride(Map<String, dynamic>? override) {
+  if (override == null) return null;
+  final raw = override['reasoningEfforts'] ?? override['reasoning_efforts'];
+  if (raw is! List) return null;
+  final parsed = raw.map((e) => e.toString().trim().toLowerCase()).toSet();
+  parsed.retainAll(kReasoningEffortVocabulary);
+  return kReasoningEffortVocabulary.where(parsed.contains).toList();
+}
+
+/// Builds a synthetic [OpenAIReasoningSupport] from a parsed vocabulary
+/// override. Null [efforts] (no override) returns null so callers fall back
+/// to the built-in registry.
+OpenAIReasoningSupport? reasoningSupportFromOverride(List<String>? efforts) {
+  if (efforts == null) return null;
+  if (efforts.isEmpty) {
+    return const OpenAIReasoningSupport(
+      supportedEfforts: <String>[],
+      effortParameterSupported: false,
+    );
+  }
+  return OpenAIReasoningSupport(supportedEfforts: List.of(efforts));
+}
+
 bool isOpenAIGpt5FamilyModel(String modelId) {
   return RegExp(r'gpt-5(?=$|[-.])', caseSensitive: false).hasMatch(modelId);
 }
@@ -159,12 +200,20 @@ bool isGlm52FamilyModel(String modelId) {
   );
 }
 
-bool openAISupportsXhighReasoning(String modelId) {
-  return openAIReasoningSupport(modelId)?.supportsXhigh ?? false;
+bool openAISupportsXhighReasoning(
+  String modelId, {
+  OpenAIReasoningSupport? overrideSupport,
+}) {
+  final support = overrideSupport ?? openAIReasoningSupport(modelId);
+  return support?.supportsXhigh ?? false;
 }
 
-bool openAISupportsMaxReasoning(String modelId) {
-  return openAIReasoningSupport(modelId)?.supportsMax ?? false;
+bool openAISupportsMaxReasoning(
+  String modelId, {
+  OpenAIReasoningSupport? overrideSupport,
+}) {
+  final support = overrideSupport ?? openAIReasoningSupport(modelId);
+  return support?.supportsMax ?? false;
 }
 
 bool openAISupportsNoneReasoning(String modelId) {
@@ -178,12 +227,16 @@ bool openAIChatCompletionsToolsRequireNone(String modelId) {
   );
 }
 
-String openAINormalizeReasoningEffort(String effort, String modelId) {
+String openAINormalizeReasoningEffort(
+  String effort,
+  String modelId, {
+  OpenAIReasoningSupport? overrideSupport,
+}) {
   final normalizedEffort = effort.trim().toLowerCase();
   if (normalizedEffort.isEmpty) return effort;
   if (normalizedEffort == 'auto') return 'auto';
 
-  final support = openAIReasoningSupport(modelId);
+  final support = overrideSupport ?? openAIReasoningSupport(modelId);
   if (support?.effortParameterSupported == false) return 'auto';
   if (normalizedEffort == 'off') {
     if (support?.supportsNone == true) return 'none';

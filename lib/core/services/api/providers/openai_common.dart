@@ -249,6 +249,7 @@ void _normalizeMoonshotKimiChatBody(
   required String upstreamModelId,
   required bool isReasoning,
   int? thinkingBudget,
+  OpenAIReasoningSupport? overrideSupport,
 }) {
   if (!_isKimiThinkingModel(upstreamModelId)) return;
 
@@ -264,7 +265,11 @@ void _normalizeMoonshotKimiChatBody(
       body.remove('reasoning_effort');
       return;
     }
-    final effort = openAINormalizeReasoningEffort(rawEffort, upstreamModelId);
+    final effort = openAINormalizeReasoningEffort(
+      rawEffort,
+      upstreamModelId,
+      overrideSupport: overrideSupport,
+    );
     if (effort == 'auto') {
       body.remove('reasoning_effort');
     } else {
@@ -374,17 +379,41 @@ Map<String, dynamic> _buildAssistantToolCallMessage({
   return msg;
 }
 
-String _openAIEffortForBudget(int? budget, String upstreamModelId) {
+/// Resolves the per-model reasoning-effort vocabulary override into a
+/// synthetic support, or null when the model carries no override (follow
+/// the built-in registry).
+OpenAIReasoningSupport? _overrideReasoningSupport(
+  ProviderConfig config,
+  String modelId,
+) {
+  final ov = config.modelOverrides[modelId];
+  return reasoningSupportFromOverride(
+    reasoningEffortsOverride(ov is Map ? ov.cast<String, dynamic>() : null),
+  );
+}
+
+String _openAIEffortForBudget(
+  int? budget,
+  String upstreamModelId, {
+  OpenAIReasoningSupport? overrideSupport,
+}) {
   final baseEffort = _effortForBudget(budget);
   var requestedEffort = baseEffort;
   if (baseEffort == 'high' && budget != null) {
-    if (budget >= 128000 && openAISupportsMaxReasoning(upstreamModelId)) {
+    final supportsMax =
+        overrideSupport?.supportsMax ??
+        openAISupportsMaxReasoning(upstreamModelId);
+    if (budget >= 128000 && supportsMax) {
       requestedEffort = 'max';
     } else if (budget >= 64000) {
       requestedEffort = 'xhigh';
     }
   }
-  return openAINormalizeReasoningEffort(requestedEffort, upstreamModelId);
+  return openAINormalizeReasoningEffort(
+    requestedEffort,
+    upstreamModelId,
+    overrideSupport: overrideSupport,
+  );
 }
 
 String _effectiveOpenAIEffort(
@@ -1239,6 +1268,7 @@ void _applyVendorReasoningKnobs(
   required _OpenAIProviderInfo info,
   required bool isReasoning,
   int? thinkingBudget,
+  OpenAIReasoningSupport? overrideSupport,
 }) {
   final off = _isOff(thinkingBudget);
   if (info.isOpenRouter) {
@@ -1287,6 +1317,7 @@ void _applyVendorReasoningKnobs(
         final effort = _openAIEffortForBudget(
           thinkingBudget,
           info.upstreamModelId,
+          overrideSupport: overrideSupport,
         );
         if (effort == 'auto') {
           body.remove('reasoning_effort');
@@ -1306,6 +1337,7 @@ void _applyVendorReasoningKnobs(
         final effort = _openAIEffortForBudget(
           thinkingBudget,
           info.upstreamModelId,
+          overrideSupport: overrideSupport,
         );
         if (effort == 'auto') {
           body.remove('reasoning_effort');
@@ -1401,7 +1433,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       canImageInput && !_isKimiK3Model(upstreamModelId);
   final sendToolResultImages = _shouldSendToolResultImages(config, modelId);
 
-  final effort = _openAIEffortForBudget(thinkingBudget, upstreamModelId);
+  final effort = _openAIEffortForBudget(
+    thinkingBudget,
+    upstreamModelId,
+    overrideSupport: _overrideReasoningSupport(config, modelId),
+  );
   final info = _OpenAIProviderInfo(
     host: Uri.tryParse(config.baseUrl)?.host.toLowerCase() ?? '',
     providerId: config.id.toLowerCase(),
@@ -1842,6 +1878,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       info: info,
       isReasoning: isReasoning,
       thinkingBudget: thinkingBudget,
+      overrideSupport: _overrideReasoningSupport(config, modelId),
     );
     if (info.isKimiThinkingModel) {
       _normalizeMoonshotKimiChatBody(
@@ -1849,6 +1886,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
         upstreamModelId: upstreamModelId,
         isReasoning: isReasoning,
         thinkingBudget: thinkingBudget,
+        overrideSupport: _overrideReasoningSupport(config, modelId),
       );
     }
   }
@@ -1904,6 +1942,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     upstreamModelId: upstreamModelId,
     isReasoning: isReasoning,
     thinkingBudget: thinkingBudget,
+    overrideSupport: _overrideReasoningSupport(config, modelId),
   );
   CodexDeviceCodeController.applyCodexResponseBodyDefaults(body, config);
   request.body = jsonEncode(body);
@@ -2474,6 +2513,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               upstreamModelId: upstreamModelId,
               isReasoning: isReasoning,
               thinkingBudget: thinkingBudget,
+              overrideSupport: _overrideReasoningSupport(config, modelId),
             );
 
             // Follow-up round: re-check freshness in case the token expired
@@ -3971,6 +4011,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               info: info,
               isReasoning: isReasoning,
               thinkingBudget: thinkingBudget,
+              overrideSupport: _overrideReasoningSupport(config, modelId),
             );
             _applyCompatibleBuiltInSearch(
               body2,
@@ -4511,6 +4552,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   info: info,
                   isReasoning: isReasoning,
                   thinkingBudget: thinkingBudget,
+                  overrideSupport: _overrideReasoningSupport(config, modelId),
                 );
                 _applyCompatibleBuiltInSearch(
                   body2,
