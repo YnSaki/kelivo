@@ -1246,6 +1246,8 @@ Stream<ChatStreamChunk> _sendGoogleStream(
     }
 
     String? finishReason; // detect stream completion from server
+    bool hasSeenPart = false;
+    bool stopAfterPart = false;
     await for (final chunk in _ensureTrailingNewline(sse)) {
       buffer += chunk;
       final lines = buffer.split('\n');
@@ -1279,6 +1281,7 @@ Stream<ChatStreamChunk> _sendGoogleStream(
               if (parts is! List) continue;
               for (final p in parts) {
                 if (p is! Map) continue;
+                hasSeenPart = true;
                 String? partThoughtSigKey;
                 dynamic partThoughtSigVal;
                 if (p.containsKey('thoughtSignature')) {
@@ -1535,7 +1538,14 @@ Stream<ChatStreamChunk> _sendGoogleStream(
               }
               // Capture explicit finish reason if present
               final fr = cand['finishReason'];
-              if (fr is String && fr.isNotEmpty) finishReason = fr;
+              if (fr is String && fr.isNotEmpty) {
+                finishReason = fr;
+                // Some proxies send empty STOP frames before any parts. Only a
+                // new STOP received with or after a part may finish the stream;
+                // later parts must not make an earlier empty STOP eligible
+                // retroactively.
+                if (fr == 'STOP') stopAfterPart = hasSeenPart;
+              }
 
               // Parse grounding metadata for citations if present
               final gm = cand['groundingMetadata'] ?? obj['groundingMetadata'];
@@ -1599,6 +1609,7 @@ Stream<ChatStreamChunk> _sendGoogleStream(
 
             // If server signaled finish, end stream immediately
             if (finishReason != null &&
+                (finishReason != 'STOP' || stopAfterPart) &&
                 calls.isEmpty &&
                 (!expectImage || receivedImage)) {
               // Emit final citations if any not emitted
