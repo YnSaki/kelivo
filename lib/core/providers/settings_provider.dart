@@ -567,6 +567,33 @@ class SettingsProvider extends ChangeNotifier {
     return resolveApiModelIdOverride(ov, modelId);
   }
 
+  /// Parsed per-model reasoning-effort vocabulary override
+  /// (`modelOverrides[key]['reasoningEfforts']`). Null = follow the built-in
+  /// registry; an explicit (possibly empty) list = the user's vocabulary and
+  /// the slider's available stops.
+  List<String>? reasoningEffortsVocabulary(String providerKey, String modelId) {
+    final cfg = getProviderConfig(providerKey);
+    final rawOv = cfg.modelOverrides[modelId];
+    return reasoningEffortsOverride(
+      rawOv is Map ? rawOv.cast<String, dynamic>() : null,
+    );
+  }
+
+  /// Per-model reasoning-effort vocabulary override
+  /// (`modelOverrides[key]['reasoningEfforts']`) as a synthetic support, or
+  /// null when the model carries no override (follow the built-in registry).
+  OpenAIReasoningSupport? _openAIReasoningSupportOverride(
+    ProviderConfig cfg,
+    String modelId,
+  ) {
+    final rawOv = cfg.modelOverrides[modelId];
+    return reasoningSupportFromOverride(
+      reasoningEffortsOverride(
+        rawOv is Map ? rawOv.cast<String, dynamic>() : null,
+      ),
+    );
+  }
+
   bool supportsXhighReasoning(String providerKey, String modelId) {
     final cfg = getProviderConfig(providerKey);
     final kind = ProviderConfig.classify(
@@ -575,6 +602,8 @@ class SettingsProvider extends ChangeNotifier {
     );
     switch (kind) {
       case ProviderKind.openai:
+        final overrideSupport = _openAIReasoningSupportOverride(cfg, modelId);
+        if (overrideSupport != null) return overrideSupport.supportsXhigh;
         final modelForCheck = resolveOpenAIUpstreamModelId(
           providerKey,
           modelId,
@@ -583,6 +612,8 @@ class SettingsProvider extends ChangeNotifier {
       case ProviderKind.claude:
         final rawOv = cfg.modelOverrides[modelId];
         final ov = rawOv is Map ? rawOv.cast<String, dynamic>() : null;
+        final efforts = reasoningEffortsOverride(ov);
+        if (efforts != null) return efforts.contains('xhigh');
         final modelForCheck = resolveApiModelIdOverride(ov, modelId);
         return _isDeepSeekClaudeCompatible(cfg, modelForCheck) ||
             _claudeSupportsXhighReasoning(modelForCheck);
@@ -599,6 +630,8 @@ class SettingsProvider extends ChangeNotifier {
     );
     switch (kind) {
       case ProviderKind.openai:
+        final overrideSupport = _openAIReasoningSupportOverride(cfg, modelId);
+        if (overrideSupport != null) return overrideSupport.supportsMax;
         final modelForCheck = resolveOpenAIUpstreamModelId(
           providerKey,
           modelId,
@@ -609,6 +642,8 @@ class SettingsProvider extends ChangeNotifier {
       case ProviderKind.claude:
         final rawOv = cfg.modelOverrides[modelId];
         final ov = rawOv is Map ? rawOv.cast<String, dynamic>() : null;
+        final efforts = reasoningEffortsOverride(ov);
+        if (efforts != null) return efforts.contains('max');
         final modelForCheck = resolveApiModelIdOverride(ov, modelId);
         return _isDeepSeekClaudeCompatible(cfg, modelForCheck) ||
             _claudeSupportsMaxReasoning(modelForCheck);

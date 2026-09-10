@@ -952,7 +952,11 @@ class ChatApiService {
         final isReasoning = effectiveInfo.abilities.contains(
           ModelAbility.reasoning,
         );
-        final effort = _openAIEffortForBudget(thinkingBudget, upstreamModelId);
+        final effort = _openAIEffortForBudget(
+          thinkingBudget,
+          upstreamModelId,
+          overrideSupport: _overrideReasoningSupport(config, modelId),
+        );
         final info = _OpenAIProviderInfo(
           host: Uri.tryParse(config.baseUrl)?.host.toLowerCase() ?? '',
           providerId: config.id.toLowerCase(),
@@ -1079,6 +1083,7 @@ class ChatApiService {
             info: info,
             isReasoning: isReasoning,
             thinkingBudget: thinkingBudget,
+            overrideSupport: _overrideReasoningSupport(config, modelId),
           );
           if (info.isKimiThinkingModel) {
             _normalizeMoonshotKimiChatBody(
@@ -1086,6 +1091,7 @@ class ChatApiService {
               upstreamModelId: upstreamModelId,
               isReasoning: isReasoning,
               thinkingBudget: thinkingBudget,
+              overrideSupport: _overrideReasoningSupport(config, modelId),
             );
           }
         }
@@ -1211,6 +1217,7 @@ class ChatApiService {
                 upstreamModelId,
                 thinkingBudget,
                 config: config,
+                effortsOverride: _claudeEffortsOverride(config, modelId),
               )
             : null;
         final body = <String, dynamic>{
@@ -1499,11 +1506,40 @@ class ChatApiService {
     return 'max';
   }
 
-  static String _normalizeClaudeEffort(String effort, String modelId) {
+  /// Resolves the per-model reasoning-effort vocabulary override
+  /// (`modelOverrides[key]['reasoningEfforts']`) for Claude-line requests.
+  /// Null means no override — follow the built-in model knowledge.
+  static List<String>? _claudeEffortsOverride(
+    ProviderConfig config,
+    String modelId,
+  ) {
+    final ov = config.modelOverrides[modelId];
+    return reasoningEffortsOverride(
+      ov is Map ? ov.cast<String, dynamic>() : null,
+    );
+  }
+
+  static String _normalizeClaudeEffort(
+    String effort,
+    String modelId, {
+    List<String>? effortsOverride,
+  }) {
     final normalizedEffort = effort.trim().toLowerCase();
     if (normalizedEffort.isEmpty) return effort;
     if (normalizedEffort == 'auto' || normalizedEffort == 'off') {
       return normalizedEffort;
+    }
+
+    if (effortsOverride != null) {
+      // The explicit vocabulary replaces the built-in version knowledge
+      // entirely and clamps low/medium/high too; the empty vocabulary means
+      // "no effort parameter" (normalizes to 'auto').
+      if (effortsOverride.isEmpty) return 'auto';
+      return openAINormalizeReasoningEffort(
+        normalizedEffort,
+        modelId,
+        overrideSupport: reasoningSupportFromOverride(effortsOverride),
+      );
     }
 
     final lower = modelId.trim().toLowerCase();
@@ -1567,13 +1603,18 @@ class ChatApiService {
     String modelId,
     int? budget, {
     ProviderConfig? config,
+    List<String>? effortsOverride,
   }) {
     if (_isClaudeThinkingAlwaysOnModel(modelId)) {
       // Adaptive thinking cannot be disabled. Omitting effort defaults to high,
       // so UI "off" must send the lowest legal level instead.
       var effort = _claudeEffortForBudget(budget);
       if (effort == 'off') effort = 'low';
-      effort = _normalizeClaudeEffort(effort, modelId);
+      effort = _normalizeClaudeEffort(
+        effort,
+        modelId,
+        effortsOverride: effortsOverride,
+      );
       if (effort == 'auto') return null;
       return <String, dynamic>{'effort': effort};
     }
@@ -1581,6 +1622,21 @@ class ChatApiService {
       if (!_isClaudeReasoningEnabled(budget)) return null;
       final effort = _claudeEffortForBudget(budget);
       if (effort == 'auto' || effort == 'off') return null;
+      if (effortsOverride != null) {
+        // Empty vocabulary = no effort parameter. The endpoint only accepts
+        // high/max, so the vocabulary can only pick between those two; any
+        // other explicit list stays silent rather than sending a foreign value.
+        if (effortsOverride.isEmpty) return null;
+        final wantsMax = effort == 'xhigh' || effort == 'max';
+        if (wantsMax && effortsOverride.contains('max')) {
+          return <String, dynamic>{'effort': 'max'};
+        }
+        if (effortsOverride.contains('high')) {
+          return <String, dynamic>{'effort': 'high'};
+        }
+        return null;
+      }
+      // DeepSeek's Claude-compatible endpoint only accepts high/max.
       return <String, dynamic>{
         'effort': (effort == 'xhigh' || effort == 'max') ? 'max' : 'high',
       };
@@ -1592,6 +1648,7 @@ class ChatApiService {
     final effort = _normalizeClaudeEffort(
       _claudeEffortForBudget(budget),
       modelId,
+      effortsOverride: effortsOverride,
     );
     if (effort == 'auto' || effort == 'off') return null;
     return <String, dynamic>{'effort': effort};

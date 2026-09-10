@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:Cuplivo/core/providers/settings_provider.dart';
 import 'package:Cuplivo/core/services/api/builtin_tools.dart';
 import 'package:Cuplivo/core/services/api/chat_api_service.dart';
+import 'package:Cuplivo/core/utils/openai_model_compat.dart';
 
 ProviderConfig _claudeConfig(
   String baseUrl, {
@@ -77,6 +78,7 @@ Future<Map<String, dynamic>> _captureClaudeRequestBody({
   double? topP,
   bool claudePromptCachingEnabled = false,
   String? claudePromptCachingTtl,
+  Map<String, dynamic> modelOverrides = const <String, dynamic>{},
   List<Map<String, dynamic>> messages = const [
     {'role': 'user', 'content': 'hello'},
   ],
@@ -107,6 +109,7 @@ Future<Map<String, dynamic>> _captureClaudeRequestBody({
   final chunks = await ChatApiService.sendMessageStream(
     config: _claudeConfig(
       'http://${server.address.address}:${server.port}',
+      modelOverrides: modelOverrides,
       claudePromptCachingEnabled: claudePromptCachingEnabled,
       claudePromptCachingTtl: claudePromptCachingTtl,
     ),
@@ -1449,6 +1452,155 @@ data: {"type":"message_stop"}
       );
       expect(imagePart['source']['media_type'], 'image/png');
       expect(imagePart['source']['data'], 'AQIDBA==');
+    });
+  });
+
+  group('per-model reasoning effort vocabulary override (Claude line)', () {
+    Map<String, dynamic> overridesWithEfforts(List<String>? efforts) {
+      return <String, dynamic>{
+        'relay/claude-opus-5': {
+          'type': 'chat',
+          'input': ['text'],
+          'output': ['text'],
+          'abilities': ['reasoning'],
+          if (efforts != null) 'reasoningEfforts': efforts,
+        },
+        'my-relay-model': {
+          'type': 'chat',
+          'input': ['text'],
+          'output': ['text'],
+          'abilities': ['reasoning'],
+          if (efforts != null) 'reasoningEfforts': efforts,
+        },
+      };
+    }
+
+    test('adaptive relay model keeps registry max without override', () async {
+      final body = await _captureClaudeRequestBody(
+        modelId: 'relay/claude-opus-5',
+        thinkingBudget: 128000,
+        modelOverrides: overridesWithEfforts(null),
+      );
+      expect(body['thinking'], {'type': 'adaptive', 'display': 'summarized'});
+      expect(body['output_config'], {'effort': 'max'});
+    });
+
+    test('restrictive vocabulary clamps max to high', () async {
+      final body = await _captureClaudeRequestBody(
+        modelId: 'relay/claude-opus-5',
+        thinkingBudget: 128000,
+        modelOverrides: overridesWithEfforts(const ['low', 'medium', 'high']),
+      );
+      expect(body['output_config'], {'effort': 'high'});
+    });
+
+    test('vocabulary unlocks xhigh for the relay model', () async {
+      final body = await _captureClaudeRequestBody(
+        modelId: 'relay/claude-opus-5',
+        thinkingBudget: 64000,
+        modelOverrides: overridesWithEfforts(const [
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+        ]),
+      );
+      expect(body['output_config'], {'effort': 'xhigh'});
+    });
+
+    test(
+      'non-adaptive niche model passes the unlocked budget through',
+      () async {
+        final body = await _captureClaudeRequestBody(
+          modelId: 'my-relay-model',
+          thinkingBudget: 128000,
+          modelOverrides: overridesWithEfforts(kReasoningEffortVocabulary),
+        );
+        expect(body['thinking'], {'type': 'enabled', 'budget_tokens': 128000});
+        expect(body.containsKey('output_config'), isFalse);
+      },
+    );
+
+    test('empty vocabulary omits effort on the adaptive relay', () async {
+      final body = await _captureClaudeRequestBody(
+        modelId: 'relay/claude-opus-5',
+        thinkingBudget: 64000,
+        modelOverrides: overridesWithEfforts(const <String>[]),
+      );
+      expect(body['thinking'], {'type': 'adaptive', 'display': 'summarized'});
+      expect(body.containsKey('output_config'), isFalse);
+    });
+
+    test(
+      'restrictive vocabulary clamps out-of-vocabulary low levels',
+      () async {
+        // budget 16000 maps to 'medium', which the vocabulary excludes.
+        final body = await _captureClaudeRequestBody(
+          modelId: 'relay/claude-opus-5',
+          thinkingBudget: 16000,
+          modelOverrides: overridesWithEfforts(const <String>['low', 'high']),
+        );
+        expect(body['output_config'], {'effort': 'high'});
+      },
+    );
+
+    test('empty vocabulary omits effort on DeepSeek Claude', () async {
+      final body = await _captureClaudeProviderBody(
+        modelId: 'deepseek-v4-pro',
+        config: _deepSeekClaudeConfig(
+          modelOverrides: const <String, dynamic>{
+            'deepseek-v4-pro': <String, dynamic>{
+              'type': 'chat',
+              'input': <String>['text'],
+              'output': <String>['text'],
+              'abilities': <String>['reasoning'],
+              'reasoningEfforts': <String>[],
+            },
+          },
+        ),
+        thinkingBudget: 64000,
+      );
+      expect(body['thinking'], {'type': 'enabled'});
+      expect(body.containsKey('output_config'), isFalse);
+    });
+
+    test('vocabulary without high/max silences DeepSeek effort', () async {
+      final body = await _captureClaudeProviderBody(
+        modelId: 'deepseek-v4-pro',
+        config: _deepSeekClaudeConfig(
+          modelOverrides: const <String, dynamic>{
+            'deepseek-v4-pro': <String, dynamic>{
+              'type': 'chat',
+              'input': <String>['text'],
+              'output': <String>['text'],
+              'abilities': <String>['reasoning'],
+              'reasoningEfforts': <String>['low'],
+            },
+          },
+        ),
+        thinkingBudget: 64000,
+      );
+      expect(body['thinking'], {'type': 'enabled'});
+      expect(body.containsKey('output_config'), isFalse);
+    });
+
+    test('vocabulary with max lets DeepSeek send max', () async {
+      final body = await _captureClaudeProviderBody(
+        modelId: 'deepseek-v4-pro',
+        config: _deepSeekClaudeConfig(
+          modelOverrides: const <String, dynamic>{
+            'deepseek-v4-pro': <String, dynamic>{
+              'type': 'chat',
+              'input': <String>['text'],
+              'output': <String>['text'],
+              'abilities': <String>['reasoning'],
+              'reasoningEfforts': <String>['low', 'max'],
+            },
+          },
+        ),
+        thinkingBudget: 64000,
+      );
+      expect(body['output_config'], {'effort': 'max'});
     });
   });
 }

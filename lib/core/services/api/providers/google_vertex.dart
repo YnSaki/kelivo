@@ -344,7 +344,11 @@ Stream<ChatStreamChunk> _sendGoogleVertexClaudeStream({
         ? _claudeThinkingConfig(upstreamId, effectiveThinkingBudget)
         : null;
     final outputConfig = isReasoning
-        ? _claudeOutputConfig(upstreamId, effectiveThinkingBudget)
+        ? _claudeOutputConfig(
+            upstreamId,
+            effectiveThinkingBudget,
+            effortsOverride: _claudeEffortsOverride(config, modelId),
+          )
         : null;
     final body = <String, dynamic>{
       'anthropic_version': 'vertex-2023-10-16',

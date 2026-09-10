@@ -21,6 +21,7 @@ ProviderConfig _openAIReasoningConfig({
   required String id,
   required String baseUrl,
   required String modelId,
+  List<String>? reasoningEfforts,
 }) {
   return ProviderConfig(
     id: id,
@@ -36,6 +37,7 @@ ProviderConfig _openAIReasoningConfig({
         'input': ['text'],
         'output': ['text'],
         'abilities': ['reasoning'],
+        if (reasoningEfforts != null) 'reasoningEfforts': reasoningEfforts,
       },
     },
   );
@@ -59,6 +61,7 @@ Future<Map<String, dynamic>> _captureGenerateTextBody({
   required String modelId,
   required int thinkingBudget,
   String? configBaseUrl,
+  List<String>? reasoningEfforts,
 }) async {
   late Map<String, dynamic> requestBody;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -92,6 +95,7 @@ Future<Map<String, dynamic>> _captureGenerateTextBody({
         id: providerId,
         baseUrl: effectiveBaseUrl,
         modelId: modelId,
+        reasoningEfforts: reasoningEfforts,
       ),
       modelId: modelId,
       prompt: 'summarize',
@@ -310,5 +314,76 @@ void main() {
         expect(disabledBody.containsKey('reasoning_effort'), isFalse);
       },
     );
+  });
+
+  group('per-model reasoning effort vocabulary override', () {
+    const nicheModel = 'my-niche-reasoner';
+
+    test('baseline: unmatched model clamps xhigh budget to high', () async {
+      final body = await _captureGenerateTextBody(
+        providerId: 'NicheProvider',
+        modelId: nicheModel,
+        thinkingBudget: 64000,
+      );
+      expect(body['reasoning_effort'], 'high');
+    });
+
+    test('vocabulary unlock sends xhigh verbatim', () async {
+      final body = await _captureGenerateTextBody(
+        providerId: 'NicheProvider',
+        modelId: nicheModel,
+        thinkingBudget: 64000,
+        reasoningEfforts: const ['low', 'medium', 'high', 'xhigh'],
+      );
+      expect(body['reasoning_effort'], 'xhigh');
+    });
+
+    test('vocabulary unlock sends max verbatim', () async {
+      final body = await _captureGenerateTextBody(
+        providerId: 'NicheProvider',
+        modelId: nicheModel,
+        thinkingBudget: 128000,
+        reasoningEfforts: const ['low', 'medium', 'high', 'xhigh', 'max'],
+      );
+      expect(body['reasoning_effort'], 'max');
+    });
+
+    test('restrictive vocabulary clamps out-of-vocabulary budget', () async {
+      final body = await _captureGenerateTextBody(
+        providerId: 'NicheProvider',
+        modelId: nicheModel,
+        thinkingBudget: 16000,
+        reasoningEfforts: const ['low', 'high'],
+      );
+      expect(body['reasoning_effort'], 'high');
+    });
+
+    test('empty vocabulary omits the effort parameter', () async {
+      final body = await _captureGenerateTextBody(
+        providerId: 'NicheProvider',
+        modelId: nicheModel,
+        thinkingBudget: 32000,
+        reasoningEfforts: const [],
+      );
+      expect(body.containsKey('reasoning_effort'), isFalse);
+    });
+
+    test('matched model honors the override over the registry', () async {
+      final overriddenBody = await _captureGenerateTextBody(
+        providerId: 'OpenAICompatTest',
+        modelId: 'kimi-k3',
+        thinkingBudget: 128000,
+        reasoningEfforts: const ['low', 'high'],
+      );
+      final registryBody = await _captureGenerateTextBody(
+        providerId: 'OpenAICompatTest',
+        modelId: 'kimi-k3',
+        thinkingBudget: 128000,
+      );
+
+      // Kimi K3 registry supports max; the restrictive override clamps it.
+      expect(overriddenBody['reasoning_effort'], 'high');
+      expect(registryBody['reasoning_effort'], 'max');
+    });
   });
 }

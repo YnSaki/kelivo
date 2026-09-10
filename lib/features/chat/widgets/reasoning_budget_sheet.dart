@@ -111,6 +111,9 @@ class _ReasoningBudgetSheetState extends State<_ReasoningBudgetSheet>
 
   List<_EffortStop> _buildStops(
     AppLocalizations l10n, {
+    required bool showLow,
+    required bool showMedium,
+    required bool showHigh,
     required bool showXhigh,
     required bool showMax,
   }) {
@@ -127,24 +130,27 @@ class _ReasoningBudgetSheetState extends State<_ReasoningBudgetSheet>
         value: -1,
         icon: ReasoningIcons.autoBudget,
       ),
-      _EffortStop(
-        title: l10n.reasoningBudgetSliderLow,
-        subtitle: l10n.reasoningBudgetSheetLightSubtitle,
-        value: 1024,
-        icon: ReasoningIcons.lightBudget,
-      ),
-      _EffortStop(
-        title: l10n.reasoningBudgetSliderMedium,
-        subtitle: l10n.reasoningBudgetSheetMediumSubtitle,
-        value: 16000,
-        icon: ReasoningIcons.mediumBudget,
-      ),
-      _EffortStop(
-        title: l10n.reasoningBudgetSliderHigh,
-        subtitle: l10n.reasoningBudgetSheetHeavySubtitle,
-        value: 32000,
-        icon: ReasoningIcons.heavyBudget,
-      ),
+      if (showLow)
+        _EffortStop(
+          title: l10n.reasoningBudgetSliderLow,
+          subtitle: l10n.reasoningBudgetSheetLightSubtitle,
+          value: 1024,
+          icon: ReasoningIcons.lightBudget,
+        ),
+      if (showMedium)
+        _EffortStop(
+          title: l10n.reasoningBudgetSliderMedium,
+          subtitle: l10n.reasoningBudgetSheetMediumSubtitle,
+          value: 16000,
+          icon: ReasoningIcons.mediumBudget,
+        ),
+      if (showHigh)
+        _EffortStop(
+          title: l10n.reasoningBudgetSliderHigh,
+          subtitle: l10n.reasoningBudgetSheetHeavySubtitle,
+          value: 32000,
+          icon: ReasoningIcons.heavyBudget,
+        ),
       if (showXhigh)
         _EffortStop(
           title: l10n.reasoningBudgetSliderXhigh,
@@ -240,7 +246,7 @@ class _ReasoningBudgetSheetState extends State<_ReasoningBudgetSheet>
     unawaited(context.read<SettingsProvider>().setThinkingBudget(chosen));
   }
 
-  bool _showXhighOption(SettingsProvider settings) {
+  (String, String)? _currentModelRef(SettingsProvider settings) {
     final assistant = context.read<AssistantProvider>().currentAssistant;
     final currentProvider =
         widget.modelProvider ??
@@ -248,20 +254,28 @@ class _ReasoningBudgetSheetState extends State<_ReasoningBudgetSheet>
         settings.currentModelProvider;
     final currentModelId =
         widget.modelId ?? assistant?.chatModelId ?? settings.currentModelId;
-    if (currentProvider == null || currentModelId == null) return false;
-    return settings.supportsXhighReasoning(currentProvider, currentModelId);
+    if (currentProvider == null || currentModelId == null) return null;
+    return (currentProvider, currentModelId);
+  }
+
+  bool _showXhighOption(SettingsProvider settings) {
+    final ref = _currentModelRef(settings);
+    if (ref == null) return false;
+    return settings.supportsXhighReasoning(ref.$1, ref.$2);
   }
 
   bool _showMaxOption(SettingsProvider settings) {
-    final assistant = context.read<AssistantProvider>().currentAssistant;
-    final currentProvider =
-        widget.modelProvider ??
-        assistant?.chatModelProvider ??
-        settings.currentModelProvider;
-    final currentModelId =
-        widget.modelId ?? assistant?.chatModelId ?? settings.currentModelId;
-    if (currentProvider == null || currentModelId == null) return false;
-    return settings.supportsMaxReasoning(currentProvider, currentModelId);
+    final ref = _currentModelRef(settings);
+    if (ref == null) return false;
+    return settings.supportsMaxReasoning(ref.$1, ref.$2);
+  }
+
+  /// The model's explicit effort vocabulary, or null when it follows the
+  /// built-in registry. Low/medium/high stops follow the vocabulary too.
+  List<String>? _vocabulary(SettingsProvider settings) {
+    final ref = _currentModelRef(settings);
+    if (ref == null) return null;
+    return settings.reasoningEffortsVocabulary(ref.$1, ref.$2);
   }
 
   Widget _buildLabelPill(BuildContext context) {
@@ -406,11 +420,18 @@ class _ReasoningBudgetSheetState extends State<_ReasoningBudgetSheet>
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
+    final vocabulary = _vocabulary(settings);
+    final showLow = vocabulary == null || vocabulary.contains('low');
+    final showMedium = vocabulary == null || vocabulary.contains('medium');
+    final showHigh = vocabulary == null || vocabulary.contains('high');
     final showXhigh = _showXhighOption(settings);
     final showMax = _showMaxOption(settings);
     final cs = Theme.of(context).colorScheme;
     _stops = _buildStops(
       l10nOf(context),
+      showLow: showLow,
+      showMedium: showMedium,
+      showHigh: showHigh,
       showXhigh: showXhigh,
       showMax: showMax,
     );

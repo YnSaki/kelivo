@@ -74,7 +74,16 @@ Map<String, dynamic>? _claudeOutputConfig(
   String modelId,
   int? budget, {
   ProviderConfig? config,
-}) => ChatApiService._claudeOutputConfig(modelId, budget, config: config);
+  List<String>? effortsOverride,
+}) => ChatApiService._claudeOutputConfig(
+  modelId,
+  budget,
+  config: config,
+  effortsOverride: effortsOverride,
+);
+
+List<String>? _claudeEffortsOverride(ProviderConfig cfg, String modelId) =>
+    ChatApiService._claudeEffortsOverride(cfg, modelId);
 
 bool _claudeShouldOmitSamplingParams(String modelId, int? budget) =>
     ChatApiService._claudeShouldOmitSamplingParams(modelId, budget);

@@ -1896,6 +1896,8 @@
   "modelDetailSheetInputModesLabel": "Input Modes",
   "modelDetailSheetOutputModesLabel": "Output Modes",
   "modelDetailSheetAbilitiesLabel": "Abilities",
+  "modelDetailSheetReasoningEffortsLabel": "Custom Reasoning Efforts",
+  "modelDetailSheetReasoningEffortsHint": "When enabled, the reasoning slider stops follow this list and override the built-in model knowledge; when disabled, the built-in knowledge is used.",
   "modelDetailSheetTextMode": "Text",
   "modelDetailSheetImageMode": "Image",
   "modelDetailSheetToolsAbility": "Tools",
