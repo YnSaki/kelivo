@@ -593,22 +593,46 @@ String _responsesReasoningText(dynamic rawOutput) {
   final buffer = StringBuffer();
   for (final item in rawOutput) {
     if (item is! Map || item['type'] != 'reasoning') continue;
-    final content = item['content'];
-    if (content is String) {
-      buffer.write(content);
-      continue;
+    // OpenAI-compatible gateways commonly put visible reasoning in `summary`,
+    // while the full reasoning item only contains encrypted content. Prefer
+    // content when it is available, and fall back to the summary array used by
+    // OAuth/Codex-style Responses implementations.
+    final content = _responsesReasoningValue(item['content']);
+    final summary = _responsesReasoningValue(item['summary']);
+    buffer.write(content.isNotEmpty ? content : summary);
+  }
+  return buffer.toString();
+}
+
+String _responsesReasoningValue(dynamic raw) {
+  if (raw is String) return raw;
+  if (raw is List) {
+    final buffer = StringBuffer();
+    for (final item in raw) {
+      buffer.write(_responsesReasoningValue(item));
     }
-    if (content is! List) continue;
-    for (final part in content) {
-      if (part is String) {
-        buffer.write(part);
-      } else if (part is Map &&
-          (part['type'] == 'reasoning_text' || part['type'] == 'text')) {
-        buffer.write((part['text'] ?? part['content'] ?? '').toString());
+    return buffer.toString();
+  }
+  if (raw is Map) {
+    for (final key in const <String>['text', 'summary', 'content']) {
+      final value = raw[key];
+      if (value is String) return value;
+      if (value is List) {
+        final nested = _responsesReasoningValue(value);
+        if (nested.isNotEmpty) return nested;
       }
     }
   }
-  return buffer.toString();
+  return '';
+}
+
+String _responsesReasoningKey(dynamic rawObj, {required bool isSummary}) {
+  final obj = rawObj is Map ? rawObj : const <String, dynamic>{};
+  final itemId = (obj['item_id'] ?? '').toString();
+  final outputIndex = (obj['output_index'] ?? '').toString();
+  final summaryIndex = (obj['summary_index'] ?? '').toString();
+  final prefix = isSummary ? 'summary' : 'reasoning';
+  return '$prefix:$itemId:$outputIndex:$summaryIndex';
 }
 
 String _stripDataUrlPrefix(String dataUrl) {
@@ -2305,6 +2329,68 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       <int, _ResponsesImageGenerationResult>{};
   List<Map<String, dynamic>> lastResponseOutputItems =
       const <Map<String, dynamic>>[];
+  // Responses API: remember streamed output items and reasoning text so
+  // terminal events can replay fragments that never arrived as deltas.
+  final Map<int, Map<String, dynamic>> respOutputItemsByIndex =
+      <int, Map<String, dynamic>>{};
+  final Map<String, int> respOutputItemIndexesById = <String, int>{};
+  final Map<String, String> respReasoningTextByKey = <String, String>{};
+
+  void rememberResponsesOutputItem(int index, Map item) {
+    final copied = Map<String, dynamic>.from(item);
+    respOutputItemsByIndex[index] = copied;
+    final itemId = (copied['id'] ?? '').toString();
+    if (itemId.isNotEmpty) respOutputItemIndexesById[itemId] = index;
+  }
+
+  List<Map<String, dynamic>> capturedResponsesOutputItems() {
+    final indexes = respOutputItemsByIndex.keys.toList()..sort();
+    return [for (final index in indexes) respOutputItemsByIndex[index]!];
+  }
+
+  /// Accumulates reasoning text per stream key and returns only the fragment
+  /// that has not been emitted yet. Final (`*.done` / item) payloads repeat
+  /// the whole text, so emit the missing suffix instead of duplicating it.
+  String? emitResponsesReasoning(
+    dynamic rawObj,
+    String text, {
+    required bool isSummary,
+    bool isFinal = false,
+  }) {
+    final key = _responsesReasoningKey(rawObj, isSummary: isSummary);
+    final previous = respReasoningTextByKey[key] ?? '';
+    var delta = text;
+    if (isFinal) {
+      if (text == previous || previous.startsWith(text)) return null;
+      if (text.startsWith(previous)) {
+        delta = text.substring(previous.length);
+      }
+    }
+    if (delta.isEmpty) return null;
+    respReasoningTextByKey[key] = '$previous$delta';
+    return delta;
+  }
+
+  String? emitResponsesReasoningItem(Map item) {
+    final content = _responsesReasoningValue(item['content']);
+    final summary = _responsesReasoningValue(item['summary']);
+    final text = content.isNotEmpty ? content : summary;
+    if (text.isEmpty) return null;
+    final isSummary = item['summary'] is List;
+    final itemId = (item['id'] ?? '').toString();
+    return emitResponsesReasoning(
+      <String, dynamic>{
+        'item_id': item['id'],
+        if (respOutputItemIndexesById[itemId] != null)
+          'output_index': respOutputItemIndexesById[itemId],
+        'summary_index': 0,
+      },
+      text,
+      isSummary: isSummary,
+      isFinal: true,
+    );
+  }
+
   String? finishReason;
   String?
   incompleteReason; // Responses API: json['response']['incomplete_details']['reason']
@@ -2874,25 +2960,47 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
           } else if (type == 'response.reasoning_summary_text.delta' ||
               type == 'response.reasoning_text.delta') {
             final delta = json['delta'];
-            if (delta is String) reasoning = delta;
+            if (delta is String && delta.isNotEmpty) {
+              reasoning = emitResponsesReasoning(
+                json,
+                delta,
+                isSummary: type == 'response.reasoning_summary_text.delta',
+              );
+            }
+          } else if (type == 'response.reasoning_summary_text.done' ||
+              type == 'response.reasoning_text.done') {
+            final doneText = json['text'];
+            if (doneText is String && doneText.isNotEmpty) {
+              reasoning = emitResponsesReasoning(
+                json,
+                doneText,
+                isSummary: type == 'response.reasoning_summary_text.done',
+                isFinal: true,
+              );
+            }
           } else if (type == 'response.output_item.added') {
             try {
               final item = json['item'];
               final idx = (json['output_index'] ?? 0) as int? ?? 0;
-              if (item is Map && (item['type'] ?? '') == 'function_call') {
-                final name = (item['name'] ?? '').toString();
-                final callId = (item['call_id'] ?? '').toString();
-                respToolCallsByIndex[idx] = {
-                  'call_id': callId,
-                  'name': name,
-                  'args': '',
-                };
-              } else if (item is Map &&
-                  _isResponsesImageGenerationType(item['type'])) {
-                responsesImagesByIndex.putIfAbsent(
-                  idx,
-                  () => const _ResponsesImageGenerationResult(),
-                );
+              if (item is Map) {
+                rememberResponsesOutputItem(idx, item);
+                final itemType = (item['type'] ?? '').toString();
+                if (itemType == 'reasoning') {
+                  reasoning = emitResponsesReasoningItem(item);
+                } else if (itemType == 'function_call') {
+                  final name = (item['name'] ?? '').toString();
+                  final callId = (item['call_id'] ?? '').toString();
+                  respToolCallsByIndex[idx] = {
+                    'call_id': callId,
+                    'name': name,
+                    'args': '',
+                  };
+                } else if (_isResponsesImageGenerationType(itemType)) {
+                  responsesImagesByIndex.putIfAbsent(
+                    idx,
+                    () => const _ResponsesImageGenerationResult(),
+                  );
+                }
               }
             } catch (_) {}
           } else if (type == 'response.image_generation_call.partial_image') {
@@ -2922,25 +3030,32 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
             try {
               final item = json['item'];
               final idx = (json['output_index'] ?? 0) as int? ?? 0;
-              if (item is Map && (item['type'] ?? '') == 'function_call') {
-                final args = (item['arguments'] ?? '').toString();
-                final entry = respToolCallsByIndex.putIfAbsent(
-                  idx,
-                  () => {
-                    'call_id': (item['call_id'] ?? '').toString(),
-                    'name': (item['name'] ?? '').toString(),
-                    'args': '',
-                  },
-                );
-                if (args.isNotEmpty) entry['args'] = args;
-              } else if (item is Map &&
-                  _isResponsesImageGenerationType(item['type'])) {
-                final b64 = (item['result'] ?? '').toString();
-                if (b64.isNotEmpty) {
-                  responsesImagesByIndex[idx] = _ResponsesImageGenerationResult(
-                    base64: b64,
-                    outputFormat: (item['output_format'] ?? '').toString(),
+              if (item is Map) {
+                rememberResponsesOutputItem(idx, item);
+                final itemType = (item['type'] ?? '').toString();
+                if (itemType == 'reasoning') {
+                  reasoning = emitResponsesReasoningItem(item);
+                } else if (itemType == 'function_call') {
+                  final args = (item['arguments'] ?? '').toString();
+                  final entry = respToolCallsByIndex.putIfAbsent(
+                    idx,
+                    () => {
+                      'call_id': (item['call_id'] ?? '').toString(),
+                      'name': (item['name'] ?? '').toString(),
+                      'args': '',
+                    },
                   );
+                  if (args.isNotEmpty) entry['args'] = args;
+                } else if (_isResponsesImageGenerationType(itemType)) {
+                  final b64 = (item['result'] ?? '').toString();
+                  if (b64.isNotEmpty) {
+                    responsesImagesByIndex[idx] =
+                        _ResponsesImageGenerationResult(
+                          base64: b64,
+                          outputFormat: (item['output_format'] ?? '')
+                              .toString(),
+                        );
+                  }
                 }
               }
             } catch (_) {}
@@ -2989,13 +3104,34 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               final output = json['response']?['output'];
               final items = <Map<String, dynamic>>[];
               final completedImageIndexes = <int>{};
-              // Save output items for potential follow-up call input
-              lastResponseOutputItems = const <Map<String, dynamic>>[];
+              // Save output items for potential follow-up call input. When the
+              // terminal payload omits them, fall back to items captured from
+              // streaming events so reasoning is not lost.
+              final terminalItems = <Map<String, dynamic>>[];
               if (output is List) {
-                lastResponseOutputItems = [
-                  for (final it in output)
-                    if (it is Map) (it.cast<String, dynamic>()),
-                ];
+                for (var index = 0; index < output.length; index++) {
+                  final rawItem = output[index];
+                  if (rawItem is! Map) continue;
+                  final item = Map<String, dynamic>.from(rawItem);
+                  rememberResponsesOutputItem(index, item);
+                  terminalItems.add(item);
+                }
+              }
+              lastResponseOutputItems = terminalItems.isNotEmpty
+                  ? terminalItems
+                  : capturedResponsesOutputItems();
+              for (final item in lastResponseOutputItems) {
+                if (item['type'] != 'reasoning') continue;
+                final reasoningItemText = emitResponsesReasoningItem(item);
+                if (reasoningItemText != null && reasoningItemText.isNotEmpty) {
+                  yield ChatStreamChunk(
+                    content: '',
+                    reasoning: reasoningItemText,
+                    isDone: false,
+                    totalTokens: totalTokens,
+                    usage: usage,
+                  );
+                }
               }
               if (output is List) {
                 int idx = 1;
