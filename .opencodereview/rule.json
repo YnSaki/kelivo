@@ -1,0 +1,54 @@
+{
+  "include": ["**/*.arb"],
+  "exclude": [
+    "lib/l10n/app_localizations*.dart",
+    "**/*.g.dart",
+    "**/*.freezed.dart"
+  ],
+  "rules": [
+    {
+      "path": ".github/workflows/*.{yml,yaml}",
+      "rule": "Cuplivo keeps several similar workflow files that must stay in sync (.github/workflows/pr-check.yml, web-ci.yml, build-stable-44.yml, ocr-review.yml). When build, version-bump, secret-injection or dependency-install logic changes in one, check whether the SAME change is required in the others and flag any workflow that was missed. Also enforce: least-privilege permissions:; secrets passed only to the steps that need them; never interpolate PR-controlled values (PR title, branch name, commit message) directly into run: - pass them through env: and quote them; in a pull_request_target workflow never check out, source or execute code or scripts from the PR branch; never commit real credentials (SILICONFLOW_KEY and keystore/alias/password values are injected from repository secrets at build time, and lib/secrets/fallback.dart must keep placeholders only)."
+    },
+    {
+      "path": "**/*.arb",
+      "rule": "Cuplivo localization contract: lib/l10n/app_en.arb, app_zh.arb, app_zh_Hans.arb and app_zh_Hant.arb must be updated in the SAME change. Flag as a bug: a new key added to only some of the four files; @key metadata, placeholders, plurals or select forms that disagree across the four; a key added without a translation in every language (desiredFileName.txt must not gain untranslated entries); keys that are not camelCase with a feature prefix, or that collide with an existing key; an edited message that leaves the other three languages stale. Never hand-edit the generated lib/l10n/app_localizations*.dart (flutter gen-l10n output)."
+    },
+    {
+      "path": "lib/core/database/**/*.dart",
+      "rule": "Drift/SQLite rules (app_database.dart, schema v21 with a migration strategy plus a self-heal pass). A new column or table requires all three in the same change: (a) the schema bump plus migration, (b) the matching entry in AppDatabase._healSchemaIfNeeded()'s heal set, (c) the regression test in test/core/database/schema_heal_discoverable_test.dart - flag whichever is missing. Never add director_message_rows back to the heal set (v14 deliberately dropped it). Group-conversation tables and columns must be wired into clearAllData (child-before-parent FK delete order), _exportChatsToFile and _restoreFromBackupFile together. Business preferences (settings, providers, MCP, worldbooks, memories, tags, TTS/ASR/search services, injection prompts) live in the preference_rows KV table and are reachable only through the BusinessPreferences facade - flag any new shared_preferences use outside BusinessKeyRegistry.localOnlyKeys. Writing Assistant data back to SharedPreferences is a data-loss bug and must be rejected: assistants persist in SQLite, and only the backup settings.json merge may carry them to disk. The two assistant row mappers ChatDatabaseRepository._assistantFromRow and ProactiveCareMessageFlow._assistantFromRow mirror each other over the same columns - flag a field added to one without the other."
+    },
+    {
+      "path": "lib/core/providers/**/*.dart",
+      "rule": "State management is Provider + ChangeNotifier only - flag Riverpod/Bloc/GetX/get_it or any new DI container. A new provider or service must be registered in the MultiProvider tree in lib/main.dart; a provider that is constructed but unregistered is invisible to the widget tree. Read state with context.watch<T>(), trigger actions with context.read<T>(). Business preferences go through the BusinessPreferences facade (SQLite KV), never shared_preferences; shared_preferences is only for device-local state (window geometry, hotkeys, OAuth tokens, chat input draft, workspaces_dir_v1, flutter_log_enabled_v1). Preference keys that arrive by upstream port or rebase must be re-homed to SQLite in the same change - a new key whose read side uses BusinessPreferences while its write side stays raw SharedPreferences silently breaks persistence."
+    },
+    {
+      "path": "lib/core/services/api/**/*.dart",
+      "rule": "These provider implementations are parallel surfaces that share bug patterns and feature gaps: openai_common.dart, claude_official.dart, google_common.dart, google_vertex.dart, google_gemini.dart, openai_responses.dart, openai_images.dart. When a fix or feature lands in one, check whether the same fix is required in the others and name the ones that were missed. All HTTP must go through DioHttpClient (lib/core/services/network/dio_http_client.dart) so SOCKS5 proxy, CancelToken and request logging keep working - flag new raw http.get, bare dio.Dio or ad-hoc client calls. Also flag unvalidated user input reaching a request URL or header, and any API key or token written into logs."
+    },
+    {
+      "path": "lib/desktop/**/*.dart",
+      "rule": "lib/desktop/** is the desktop app shell (nav rail, window title bar, hotkeys, tray, desktop settings), NOT a stretched mobile layout; shared chat content lives in lib/features/home/**. Flag desktop-only control flow added to mobile branches (home_mobile_layout.dart) and mobile-only assumptions leaking into desktop code. HARD CRASH CONSTRAINT: never use Material Slider on Windows paths - it creates an OverlayPortal that corrupts the Windows accessibility tree and crashes the app (issue #119); sliders must use the shared SfSliderTile (lib/shared/widgets/sf_slider_tile.dart) or a custom slider with no OverlayPortal. Desktop interactions need hover, right-click and keyboard paths, not only touch. All user-visible text (labels, tooltips, tray menus) must come from AppLocalizations."
+    },
+    {
+      "path": "lib/theme/**/*.dart",
+      "rule": "lib/theme/** is the single source of truth for theming. The 9 presets in ThemePalettes.all are the only preset source and are never generated at runtime; a custom theme stores ARGB ints and its full M3 ColorScheme is generated at runtime via HCT TONAL_SPOT - never hand-write a ColorScheme. AppSemanticColors is the ThemeExtension for tokens ColorScheme lacks (surfaceFill, surfaceCard, success/warning and their containers, searchHighlight, chartSeries) and is read through context.appColors. Flag raw color literals in UI code: new colors must use scheme roles, AppSemanticColors or theme constants, and a deliberately fixed color must carry a color-gate: ignore marker. Android dynamic color and Custom Theme stay mutually exclusive, with the active Custom Theme winning."
+    },
+    {
+      "path": "lib/**/*.dart",
+      "rule": "Repository-wide Dart rules for lib/**: (1) No user-visible string may be hardcoded in Dart UI code - page titles, button labels, SnackBar/Dialog/Tooltip content, semanticLabel, notification and tray text must all come from AppLocalizations. (2) Never hand-edit generated files (lib/l10n/app_localizations*.dart, lib/core/models/*.g.dart, lib/core/database/app_database.g.dart) - they come from flutter gen-l10n / build_runner. (3) No silent degradation - flag catch (_) {}, swallowed errors, hidden fallback paths, new error-swallowing logic and fake success branches; recoverable errors log context via debugPrint and continue, unrecoverable ones throw a specific exception. (4) The copyWith null-clear trap: on the sentinel pattern (lib/core/models/chat_message.dart, lib/core/providers/settings_provider.dart) copyWith(field: null) CLEARS the field, while on the plain ?? pattern (Conversation, Assistant, WorldBookEntry, AssistantRegex, QuickPhrase) it is a silent no-op - flag any copyWith(field: null) whose intent does not match the model's pattern, and flag mixing both patterns inside one model. (5) When a field is added to a model, check every consumer surface in the same change: copyWith, toJson/fromJson, clone/deep-copy, Drift table/column plus migration plus heal set plus repository read/write, backup/import/export round-trip, and equality when the field is identity-relevant. (6) Reuse the shared UI primitives (lib/shared/widgets/**, lib/shared/dialogs/**, lib/shared/responsive/**, lib/desktop/widgets/** - IosIconButton, IosCardPress, IosTileButton, IosSwitch, IosCheckbox, IosFormTextField, DesktopSelectDropdown, WindowTitleBar) - flag new page-private near-duplicates and Android ripple, Material default splash or default FAB emphasis, because the house style is custom iOS (color, opacity, subtle scale). (7) Navigation is Navigator 1.0 (Navigator.push(MaterialPageRoute(...))) with no go_router/auto_route, and desktop switches pages through the DesktopHomePage sidebar rather than the Navigator stack. (8) Keep it KISS/YAGNI - flag idle abstractions, empty config switches and unrelated refactors mixed into a bug fix; when a bug is fixed in one code path, look for parallel implementations of the same pattern and name the ones left unfixed."
+    },
+    {
+      "path": "test/**/*.dart",
+      "rule": "Test rules: flutter_test only - flag any new mockito/mocktail dependency, because hand-written Fake/Mock classes are the convention. Tests must be driven by the requirement, not by implementation details, and must cover the happy path, boundary inputs, failure paths and state transitions. A bug fix should come with a minimal failing case first; flag an after-the-fact weak-assertion test that would pass either way. Never widen a public API or expose private internals just to make a test possible. New user-visible behaviour needs a manual test plan (happy path plus edge cases) in the delivery notes."
+    },
+    {
+      "path": "dependencies/**/*.dart",
+      "rule": "dependencies/** holds vendored path dependencies treated as independent modules (mcp_client, tray_manager/packages/tray_manager, flutter_tts, flutter-permission-handler/permission_handler_windows). A fix or feature must land in the dependency's own source, not only be patched at the root repo surface - flag root-level workarounds that leave the dependency itself inconsistent. Flag changes that diverge from upstream without a stated reason, and check that the root package still compiles against the changed API. Do not raise style-only findings here: prefer regressions the change introduces."
+    },
+    {
+      "path": "**/*.dart",
+      "rule": "Apply the repository rules in AGENTS.md: localize every user-visible string, never hand-edit generated files, add no silent fallbacks or swallowed errors, keep the change to the minimum closed loop needed for the task, and do not mix unrelated refactoring into it."
+    }
+  ]
+}
