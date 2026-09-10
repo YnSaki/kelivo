@@ -4,6 +4,7 @@ import BackgroundTasks
 import UserNotifications
 import ActivityKit
 import EventKit
+import CoreLocation
 
 private let backgroundRefreshIdentifier = "com.cup11.cuplivo.background-generation.refresh"
 private let backgroundProcessingIdentifier = "com.cup11.cuplivo.background-generation.processing"
@@ -791,10 +792,11 @@ private final class NativeFileSaveHandler: NSObject, UIDocumentPickerDelegate {
 
 /// Native backend for the AI assistant's device-local tools on iOS.
 ///
-/// Calendar query/create is implemented with EventKit. Screen time has no
-/// generally available query API on iOS (the Screen Time frameworks require a
-/// special Family Controls entitlement), so it is not exposed here; the Dart
-/// side never offers that tool on iOS.
+/// Calendar query/create is implemented with EventKit. Location is dispatched
+/// to a dedicated handler. Screen time has no generally available query API on
+/// iOS (the Screen Time frameworks require a special Family Controls
+/// entitlement), so it is not exposed here; the Dart side never offers that
+/// tool on iOS.
 ///
 /// Methods receive the tool arguments as a JSON string and return a JSON
 /// string payload. Errors the LLM should see (missing permission, bad
@@ -806,6 +808,7 @@ private final class NativeFileSaveHandler: NSObject, UIDocumentPickerDelegate {
 /// (created events carried no notification).
 private final class DeviceLocalToolsHandler {
   private let eventStore = EKEventStore()
+  private let locationHandler = LocationToolHandler()
 
   func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = Self.parseArgs(call.arguments)
@@ -818,6 +821,15 @@ private final class DeviceLocalToolsHandler {
       result(hasCalendarPermission())
     case "requestCalendarPermission":
       requestCalendarPermission(result: result)
+    case "hasLocationPermission":
+      result(locationHandler.hasPermission())
+    case "requestLocationPermission":
+      locationHandler.requestPermission { granted in result(granted) }
+    case "getCurrentLocation":
+      locationHandler.getCurrentLocation(args: args) { payload in result(payload) }
+    case "openAppSettings":
+      LocationToolSupport.openAppSettings()
+      result(nil)
     case "queryCalendar":
       ensureCalendarAccess { [weak self] granted in
         guard let self else { return }
@@ -1245,5 +1257,274 @@ private final class DeviceLocalToolsHandler {
   /// an exact midnight are treated as exclusive and returned unchanged.
   private static func exclusiveAllDayEnd(_ end: Date, calendar: Calendar) -> Date {
     calendar.startOfDay(for: end.addingTimeInterval(1))
+  }
+}
+
+/// One-shot When-In-Use location for `get_current_location`. Ported from
+/// upstream Kelivo (`ios/Runner/DeviceTools/LocationToolHandler.swift`);
+/// the WeatherKit-only `resolveLocation` helper is trimmed, and the payload
+/// helpers live in `LocationToolSupport` because Cuplivo keeps its device
+/// tool handlers in this file rather than dedicated sources.
+private final class LocationToolHandler: NSObject, CLLocationManagerDelegate {
+  private let manager = CLLocationManager()
+  private var pendingLocation: ((Result<CLLocation, LocationToolError>) -> Void)?
+  private var pendingAuth: [(CLAuthorizationStatus) -> Void] = []
+  private var locationTimeout: DispatchWorkItem?
+
+  override init() {
+    super.init()
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    manager.distanceFilter = kCLDistanceFilterNone
+  }
+
+  func hasPermission() -> Bool {
+    isAuthorized(manager.authorizationStatus)
+  }
+
+  /// Settings toggle: prompt when undetermined; open Settings when denied.
+  func requestPermission(completion: @escaping (Bool) -> Void) {
+    LocationToolSupport.finishOnMain { [weak self] in
+      guard let self else {
+        completion(false)
+        return
+      }
+      guard CLLocationManager.locationServicesEnabled() else {
+        completion(false)
+        return
+      }
+      let status = self.manager.authorizationStatus
+      if self.isAuthorized(status) {
+        completion(true)
+        return
+      }
+      switch status {
+      case .notDetermined:
+        self.enqueueAuthorization { next in completion(self.isAuthorized(next)) }
+      default:
+        LocationToolSupport.openAppSettings()
+        completion(false)
+      }
+    }
+  }
+
+  func getCurrentLocation(args: [String: Any], completion: @escaping (String) -> Void) {
+    requestOneShotLocation { [weak self] result in
+      switch result {
+      case .failure(let error):
+        completion(error.payload)
+      case .success(let location):
+        self?.buildPayload(location: location, completion: completion)
+      }
+    }
+  }
+
+  private func requestOneShotLocation(
+    completion: @escaping (Result<CLLocation, LocationToolError>) -> Void
+  ) {
+    LocationToolSupport.finishOnMain { [weak self] in
+      guard let self else {
+        completion(.failure(.unavailable))
+        return
+      }
+      guard CLLocationManager.locationServicesEnabled() else {
+        completion(.failure(.servicesDisabled))
+        return
+      }
+      if self.pendingLocation != nil {
+        completion(.failure(.busy))
+        return
+      }
+
+      let deliver: (Result<CLLocation, LocationToolError>) -> Void = { result in
+        LocationToolSupport.finishOnMain { completion(result) }
+      }
+
+      let startRequest = { [weak self] in
+        guard let self else {
+          deliver(.failure(.unavailable))
+          return
+        }
+        if self.pendingLocation != nil {
+          deliver(.failure(.busy))
+          return
+        }
+        self.pendingLocation = deliver
+        let timeout = DispatchWorkItem { [weak self] in
+          guard let self, let pending = self.pendingLocation else { return }
+          self.pendingLocation = nil
+          pending(.failure(.timeout))
+        }
+        self.locationTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeout)
+        self.manager.requestLocation()
+      }
+
+      let status = self.manager.authorizationStatus
+      if self.isAuthorized(status) {
+        startRequest()
+        return
+      }
+      if status == .notDetermined {
+        self.enqueueAuthorization { [weak self] next in
+          guard let self else { return }
+          if self.isAuthorized(next) {
+            startRequest()
+          } else {
+            deliver(.failure(.denied))
+          }
+        }
+        return
+      }
+      deliver(.failure(.denied))
+    }
+  }
+
+  private func buildPayload(location: CLLocation, completion: @escaping (String) -> Void) {
+    var payload: [String: Any] = [
+      "latitude": location.coordinate.latitude,
+      "longitude": location.coordinate.longitude,
+      "accuracy_m": location.horizontalAccuracy,
+      "timestamp": LocationToolSupport.formatDateTime(location.timestamp),
+      "timestamp_ms": Int(location.timestamp.timeIntervalSince1970 * 1000),
+    ]
+    if location.verticalAccuracy >= 0 {
+      payload["altitude_m"] = location.altitude
+    }
+
+    let geocoder = CLGeocoder()
+    geocoder.reverseGeocodeLocation(location) { marks, _ in
+      if let mark = marks?.first {
+        if let city = mark.locality, !city.isEmpty { payload["city"] = city }
+        if let region = mark.administrativeArea, !region.isEmpty { payload["region"] = region }
+        if let country = mark.country, !country.isEmpty { payload["country"] = country }
+        if let name = mark.name, !name.isEmpty { payload["place_name"] = name }
+      }
+      completion(LocationToolSupport.jsonString(payload))
+    }
+  }
+
+  private func isAuthorized(_ status: CLAuthorizationStatus) -> Bool {
+    status == .authorizedWhenInUse || status == .authorizedAlways
+  }
+
+  private func enqueueAuthorization(_ completion: @escaping (CLAuthorizationStatus) -> Void) {
+    let alreadyWaiting = !pendingAuth.isEmpty
+    pendingAuth.append(completion)
+    if !alreadyWaiting {
+      manager.requestWhenInUseAuthorization()
+    }
+  }
+
+  private func finishLocation(_ result: Result<CLLocation, LocationToolError>) {
+    locationTimeout?.cancel()
+    locationTimeout = nil
+    let pending = pendingLocation
+    pendingLocation = nil
+    pending?(result)
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    let pending = pendingAuth
+    pendingAuth.removeAll()
+    for completion in pending {
+      completion(manager.authorizationStatus)
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    guard let location = locations.last else {
+      finishLocation(.failure(.unavailable))
+      return
+    }
+    finishLocation(.success(location))
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    if let clError = error as? CLError, clError.code == .denied {
+      finishLocation(.failure(.denied))
+      return
+    }
+    finishLocation(.failure(.unavailable))
+  }
+}
+
+private enum LocationToolError: Error {
+  case denied
+  case servicesDisabled
+  case timeout
+  case busy
+  case unavailable
+
+  var payload: String {
+    switch self {
+    case .denied:
+      return LocationToolSupport.noPermissionPayload(
+        "Location permission is not granted. Please allow Location While Using the App "
+          + "in system Settings and try again."
+      )
+    case .servicesDisabled:
+      return LocationToolSupport.errorPayload(
+        "LOCATION_DISABLED",
+        "Location services are turned off on this device."
+      )
+    case .timeout:
+      return LocationToolSupport.errorPayload(
+        "LOCATION_TIMEOUT",
+        "Timed out waiting for a location fix. Please try again."
+      )
+    case .busy:
+      return LocationToolSupport.errorPayload(
+        "LOCATION_BUSY",
+        "A location request is already in progress. Please try again."
+      )
+    case .unavailable:
+      return LocationToolSupport.errorPayload(
+        "LOCATION_UNAVAILABLE",
+        "Could not determine the current location."
+      )
+    }
+  }
+}
+
+/// Minimal helpers for the location tool handler (same-file scope; the
+/// equivalents inside `DeviceLocalToolsHandler` are private to that class).
+private enum LocationToolSupport {
+  static func finishOnMain(_ work: @escaping () -> Void) {
+    if Thread.isMainThread {
+      work()
+    } else {
+      DispatchQueue.main.async(execute: work)
+    }
+  }
+
+  static func openAppSettings() {
+    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+    UIApplication.shared.open(url)
+  }
+
+  static func jsonString(_ payload: [String: Any]) -> String {
+    guard
+      let data = try? JSONSerialization.data(withJSONObject: payload),
+      let text = String(data: data, encoding: .utf8)
+    else {
+      return "{\"error\":\"ENCODING_ERROR\",\"message\":\"Failed to encode tool result.\"}"
+    }
+    return text
+  }
+
+  static func formatDateTime(_ date: Date) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    formatter.timeZone = .current
+    return formatter.string(from: date)
+  }
+
+  static func errorPayload(_ error: String, _ message: String) -> String {
+    jsonString(["error": error, "message": message])
+  }
+
+  static func noPermissionPayload(_ message: String) -> String {
+    errorPayload("NO_PERMISSION", message)
   }
 }

@@ -6815,6 +6815,16 @@ class AppLocalizationsZh extends AppLocalizations {
       '经你确认后在本机创建日历事件，需要日历权限。';
 
   @override
+  String get assistantEditLocalToolLocationTitle => '当前位置';
+
+  @override
+  String get assistantEditLocalToolLocationSubtitle => '读取本设备的一次性位置，需要授予定位权限。';
+
+  @override
+  String get assistantEditLocationPermissionSettingsMessage =>
+      '定位权限已被禁止。请在系统设置中允许定位访问，然后重新开启此工具。';
+
+  @override
   String get chatMessageWidgetScreenTimeTotal => '屏幕使用总时长';
 
   @override
@@ -16782,6 +16792,16 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   @override
   String get assistantEditLocalToolCalendarCreateSubtitle =>
       '经你确认后在本机创建日历事件，需要日历权限。';
+
+  @override
+  String get assistantEditLocalToolLocationTitle => '当前位置';
+
+  @override
+  String get assistantEditLocalToolLocationSubtitle => '读取本设备的一次性位置，需要授予定位权限。';
+
+  @override
+  String get assistantEditLocationPermissionSettingsMessage =>
+      '定位权限已被禁止。请在系统设置中允许定位访问，然后重新开启此工具。';
 
   @override
   String get chatMessageWidgetScreenTimeTotal => '屏幕使用总时长';
@@ -26753,6 +26773,16 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   @override
   String get assistantEditLocalToolCalendarCreateSubtitle =>
       '經你確認後在本機建立行事曆事件，需要行事曆權限。';
+
+  @override
+  String get assistantEditLocalToolLocationTitle => '目前位置';
+
+  @override
+  String get assistantEditLocalToolLocationSubtitle => '讀取本裝置的一次性位置，需要授予定位權限。';
+
+  @override
+  String get assistantEditLocationPermissionSettingsMessage =>
+      '定位權限已被禁止。請在系統設定中允許定位存取，然後重新開啟此工具。';
 
   @override
   String get chatMessageWidgetScreenTimeTotal => '螢幕使用總時長';

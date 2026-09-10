@@ -125,6 +125,21 @@ class _ToolsHubContentState extends State<ToolsHubContent>
           )!.chatMessageWidgetCalendarPermissionDenied,
           type: NotificationType.warning,
         );
+      case DeviceToolToggleOutcome.blockedLocationPermissionDenied:
+        // Upstream parity: the system dialog itself is the feedback; the
+        // tool stays off.
+        break;
+      case DeviceToolToggleOutcome.blockedLocationPermanentlyDenied:
+        showAppSnackBar(
+          context,
+          message: AppLocalizations.of(
+            context,
+          )!.assistantEditLocationPermissionSettingsMessage,
+          type: NotificationType.warning,
+          duration: const Duration(seconds: 8),
+          actionLabel: AppLocalizations.of(context)!.hotkeyOpenSettings,
+          onAction: () => unawaited(DeviceLocalTools.openAppSettings()),
+        );
       case DeviceToolToggleOutcome.notSupported:
         // The row should not be visible on unsupported platforms; if it is,
         // keep the tool off.
@@ -320,12 +335,14 @@ class _ToolsHubContentState extends State<ToolsHubContent>
   bool _isDeviceLocalTool(String toolId) =>
       toolId == LocalToolNames.screenTime ||
       toolId == LocalToolNames.calendarQuery ||
-      toolId == LocalToolNames.calendarCreate;
+      toolId == LocalToolNames.calendarCreate ||
+      toolId == LocalToolNames.currentLocation;
 
   bool _localToolVisibleOnThisDevice(String toolId) => switch (toolId) {
     LocalToolNames.screenTime => DeviceLocalTools.screenTimeSupported,
     LocalToolNames.calendarQuery ||
     LocalToolNames.calendarCreate => DeviceLocalTools.calendarSupported,
+    LocalToolNames.currentLocation => DeviceLocalTools.locationSupported,
     _ => true,
   };
 
@@ -339,25 +356,28 @@ class _ToolsHubContentState extends State<ToolsHubContent>
     LocalToolNames.screenTime => Lucide.Smartphone,
     LocalToolNames.calendarQuery => Lucide.Calendar,
     LocalToolNames.calendarCreate => Lucide.CalendarPlus,
+    LocalToolNames.currentLocation => Lucide.MapPin,
     _ => Lucide.Wrench,
   };
 
-  String _localToolTitle(AppLocalizations l10n, String toolId) =>
-      switch (toolId) {
-        LocalToolNames.timeInfo => l10n.assistantEditLocalToolTimeInfoTitle,
-        LocalToolNames.clipboard => l10n.assistantEditLocalToolClipboardTitle,
-        LocalToolNames.textToSpeech =>
-          l10n.assistantEditLocalToolTextToSpeechTitle,
-        LocalToolNames.askUser => l10n.assistantEditLocalToolAskUserTitle,
-        LocalToolNames.calculate => l10n.assistantEditLocalToolCalculateTitle,
-        LocalToolNames.handoff => l10n.assistantEditLocalToolHandoffTitle,
-        LocalToolNames.screenTime => l10n.assistantEditLocalToolScreenTimeTitle,
-        LocalToolNames.calendarQuery =>
-          l10n.assistantEditLocalToolCalendarQueryTitle,
-        LocalToolNames.calendarCreate =>
-          l10n.assistantEditLocalToolCalendarCreateTitle,
-        _ => toolId,
-      };
+  String _localToolTitle(
+    AppLocalizations l10n,
+    String toolId,
+  ) => switch (toolId) {
+    LocalToolNames.timeInfo => l10n.assistantEditLocalToolTimeInfoTitle,
+    LocalToolNames.clipboard => l10n.assistantEditLocalToolClipboardTitle,
+    LocalToolNames.textToSpeech => l10n.assistantEditLocalToolTextToSpeechTitle,
+    LocalToolNames.askUser => l10n.assistantEditLocalToolAskUserTitle,
+    LocalToolNames.calculate => l10n.assistantEditLocalToolCalculateTitle,
+    LocalToolNames.handoff => l10n.assistantEditLocalToolHandoffTitle,
+    LocalToolNames.screenTime => l10n.assistantEditLocalToolScreenTimeTitle,
+    LocalToolNames.calendarQuery =>
+      l10n.assistantEditLocalToolCalendarQueryTitle,
+    LocalToolNames.calendarCreate =>
+      l10n.assistantEditLocalToolCalendarCreateTitle,
+    LocalToolNames.currentLocation => l10n.assistantEditLocalToolLocationTitle,
+    _ => toolId,
+  };
 
   Widget _buildMcpGroup(
     AppLocalizations l10n,

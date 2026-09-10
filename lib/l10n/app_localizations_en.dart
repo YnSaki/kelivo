@@ -7130,6 +7130,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'Create calendar events on this device with your confirmation, requires the calendar permission.';
 
   @override
+  String get assistantEditLocalToolLocationTitle => 'Current Location';
+
+  @override
+  String get assistantEditLocalToolLocationSubtitle =>
+      'Read a one-shot location from this device, requires the location permission.';
+
+  @override
+  String get assistantEditLocationPermissionSettingsMessage =>
+      'Location permission is blocked. Allow location access in system settings, then turn this tool on again.';
+
+  @override
   String get chatMessageWidgetScreenTimeTotal => 'Total screen time';
 
   @override

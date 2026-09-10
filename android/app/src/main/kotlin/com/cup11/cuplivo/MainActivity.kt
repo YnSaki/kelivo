@@ -153,6 +153,11 @@ class MainActivity : FlutterActivity() {
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
+    override fun onDestroy() {
+        deviceLocalToolsHandler?.dispose()
+        super.onDestroy()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val plugin = volumeCtrlPlugin
         if (plugin != null &&

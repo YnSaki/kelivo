@@ -1301,6 +1301,7 @@ String _localToolLabel(AppLocalizations l10n, String id) => switch (id) {
   LocalToolNames.calendarQuery => l10n.assistantEditLocalToolCalendarQueryTitle,
   LocalToolNames.calendarCreate =>
     l10n.assistantEditLocalToolCalendarCreateTitle,
+  LocalToolNames.currentLocation => l10n.assistantEditLocalToolLocationTitle,
   LocalToolNames.handoff => l10n.assistantEditLocalToolHandoffTitle,
   _ => id,
 };
@@ -1309,6 +1310,7 @@ bool _localToolSupported(String id) => switch (id) {
   LocalToolNames.screenTime => DeviceLocalTools.screenTimeSupported,
   LocalToolNames.calendarQuery ||
   LocalToolNames.calendarCreate => DeviceLocalTools.calendarSupported,
+  LocalToolNames.currentLocation => DeviceLocalTools.locationSupported,
   _ => true,
 };
 

@@ -37,6 +37,9 @@ class _LocalToolsTab extends StatelessWidget {
     final calendarCreateEnabled = assistant.localToolIds.contains(
       LocalToolNames.calendarCreate,
     );
+    final locationEnabled = assistant.localToolIds.contains(
+      LocalToolNames.currentLocation,
+    );
 
     Future<void> updateTool(String toolId, bool value) async {
       if (!context.mounted) {
@@ -101,6 +104,19 @@ class _LocalToolsTab extends StatelessWidget {
             context,
             message: l10n.chatMessageWidgetCalendarPermissionDenied,
             type: NotificationType.warning,
+          );
+        case DeviceToolToggleOutcome.blockedLocationPermissionDenied:
+          // Upstream parity: the system dialog itself is the feedback; the
+          // tool stays off.
+          break;
+        case DeviceToolToggleOutcome.blockedLocationPermanentlyDenied:
+          showAppSnackBar(
+            context,
+            message: l10n.assistantEditLocationPermissionSettingsMessage,
+            type: NotificationType.warning,
+            duration: const Duration(seconds: 8),
+            actionLabel: l10n.hotkeyOpenSettings,
+            onAction: () => unawaited(DeviceLocalTools.openAppSettings()),
           );
         case DeviceToolToggleOutcome.notSupported:
           // The row should not be visible on unsupported platforms; if it is,
@@ -226,6 +242,17 @@ class _LocalToolsTab extends StatelessWidget {
                 enabled: calendarCreateEnabled,
                 onChanged: (value) =>
                     toggleTool(LocalToolNames.calendarCreate, value),
+              ),
+            ],
+            if (DeviceLocalTools.locationSupported) ...[
+              _iosDivider(context),
+              _LocalToolRow(
+                icon: Lucide.MapPin,
+                title: l10n.assistantEditLocalToolLocationTitle,
+                subtitle: l10n.assistantEditLocalToolLocationSubtitle,
+                enabled: locationEnabled,
+                onChanged: (value) =>
+                    toggleTool(LocalToolNames.currentLocation, value),
               ),
             ],
             _iosDivider(context),

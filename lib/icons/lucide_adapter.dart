@@ -36,6 +36,7 @@ class Lucide {
   static const IconData Edit = lucide.LucideIcons.pencil;
   static const IconData Pin = lucide.LucideIcons.pin;
   static const IconData PinOff = lucide.LucideIcons.pinOff;
+  static const IconData MapPin = lucide.LucideIcons.mapPin;
   static const IconData Trash = lucide.LucideIcons.trash2;
   static const IconData SunMoon = lucide.LucideIcons.sunMoon;
   static const IconData Palette = lucide.LucideIcons.palette;

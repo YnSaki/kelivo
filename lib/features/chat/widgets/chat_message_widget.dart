@@ -151,6 +151,7 @@ IconData? _localToolIconFor(String name, Map<String, dynamic> args) {
     LocalToolNames.screenTime => Lucide.Smartphone,
     LocalToolNames.calendarQuery => Lucide.Calendar,
     LocalToolNames.calendarCreate => Lucide.CalendarPlus,
+    LocalToolNames.currentLocation => Lucide.MapPin,
     _ => null,
   };
 }
@@ -181,6 +182,7 @@ String? _localToolTitleFor(
       l10n.assistantEditLocalToolCalendarQueryTitle,
     LocalToolNames.calendarCreate =>
       l10n.assistantEditLocalToolCalendarCreateTitle,
+    LocalToolNames.currentLocation => l10n.assistantEditLocalToolLocationTitle,
     _ => null,
   };
 }
