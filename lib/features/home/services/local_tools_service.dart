@@ -32,6 +32,7 @@ class LocalToolNames {
   static const String screenTime = 'get_screen_time';
   static const String calendarQuery = 'calendar_query';
   static const String calendarCreate = 'calendar_create';
+  static const String currentLocation = 'get_current_location';
 
   /// Canonical registry for user-configurable local tools shown by Tools Hub.
   /// Search, memory, and skill tools intentionally live outside this list.
@@ -45,6 +46,7 @@ class LocalToolNames {
     screenTime,
     calendarQuery,
     calendarCreate,
+    currentLocation,
   ];
 }
 
@@ -63,6 +65,14 @@ enum DeviceToolToggleOutcome {
   /// Calendar permission was denied → do not enable the tool.
   blocked,
 
+  /// Location permission was denied in the system dialog → do not enable the
+  /// tool (upstream parity: the dialog itself is the feedback).
+  blockedLocationPermissionDenied,
+
+  /// Location permission is permanently denied → show a settings-guidance
+  /// snackbar with an open-settings action; do not enable the tool.
+  blockedLocationPermanentlyDenied,
+
   /// The current platform does not support the tool → do not enable it.
   notSupported,
 }
@@ -79,6 +89,13 @@ class DeviceLocalTools {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static bool get calendarSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// One-shot When-In-Use location (`get_current_location`), backed natively
+  /// on Android (system LocationManager) and iOS (CoreLocation).
+  static bool get locationSupported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
@@ -156,9 +173,70 @@ class DeviceLocalTools {
     }
   }
 
+  /// Returns true when location (coarse or fine) is already granted.
+  static Future<bool> hasLocationPermission() async {
+    if (!locationSupported) return false;
+    try {
+      final result = await channel.invokeMethod<bool>('hasLocationPermission');
+      return result == true;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Thrown as a [PlatformException] code by the Android side when the user
+  /// has permanently denied location, so toggle UI can offer app settings.
+  static const locationPermissionPermanentlyDenied =
+      'LOCATION_PERMISSION_PERMANENTLY_DENIED';
+
+  /// Upper bound for `requestLocationPermission` (same activity-recreation
+  /// guard as [calendarPermissionTimeout]). Test overrides this to a short
+  /// duration.
+  @visibleForTesting
+  static Duration locationPermissionTimeout = const Duration(minutes: 2);
+
+  /// Requests location via the native channel. Returns true only when
+  /// granted. On Android, permanently denied state throws a
+  /// [PlatformException] with [locationPermissionPermanentlyDenied]; on iOS,
+  /// denied states open the app Settings page and return false.
+  static Future<bool> requestLocationPermission() async {
+    if (!locationSupported) return false;
+    try {
+      final result = await channel
+          .invokeMethod<bool>('requestLocationPermission')
+          .timeout(locationPermissionTimeout);
+      return result == true;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException catch (error) {
+      if (error.code == locationPermissionPermanentlyDenied) rethrow;
+      return false;
+    } on TimeoutException {
+      // Activity recreation mid-dialog can lose the permission result (same
+      // rationale as [requestCalendarPermission]): re-check the actual grant
+      // state so a retry tap is not stuck behind the stale pending guard.
+      return hasLocationPermission();
+    }
+  }
+
+  /// Opens this app's system settings page (Android: app details; iOS:
+  /// UIApplication.openSettingsURLString).
+  static Future<void> openAppSettings() async {
+    if (!locationSupported) return;
+    try {
+      await channel.invokeMethod<void>('openAppSettings');
+    } on MissingPluginException {
+      // Unsupported host.
+    } on PlatformException {
+      // Settings unavailable.
+    }
+  }
+
   /// True when [toolId] is a device-tool name and the current platform
   /// supports it (rows are hidden elsewhere via `screenTimeSupported` /
-  /// `calendarSupported`).
+  /// `calendarSupported` / `locationSupported`).
   static bool isSupportedDeviceTool(String toolId) {
     if (toolId == LocalToolNames.screenTime) {
       return screenTimeSupported;
@@ -166,6 +244,9 @@ class DeviceLocalTools {
     if (toolId == LocalToolNames.calendarQuery ||
         toolId == LocalToolNames.calendarCreate) {
       return calendarSupported;
+    }
+    if (toolId == LocalToolNames.currentLocation) {
+      return locationSupported;
     }
     return false;
   }
@@ -176,6 +257,10 @@ class DeviceLocalTools {
   ///   missing, the settings page is opened and the tool is still enabled (the
   ///   tool def itself reports NO_PERMISSION and lets the model guide the user).
   /// - calendar: standard runtime request. When denied, the tool stays off.
+  /// - location: standard runtime request. Simple denial leaves the tool off
+  ///   silently (upstream parity); permanent denial (Android) reports
+  ///   [DeviceToolToggleOutcome.blockedLocationPermanentlyDenied] so the UI can
+  ///   offer an open-settings action.
   static Future<DeviceToolToggleOutcome> requestToggleEnable(
     String toolId,
   ) async {
@@ -196,6 +281,22 @@ class DeviceLocalTools {
         final granted = await requestCalendarPermission();
         if (!granted) {
           return DeviceToolToggleOutcome.blocked;
+        }
+      }
+      return DeviceToolToggleOutcome.canEnable;
+    }
+    if (toolId == LocalToolNames.currentLocation) {
+      if (!await hasLocationPermission()) {
+        try {
+          final granted = await requestLocationPermission();
+          if (!granted) {
+            return DeviceToolToggleOutcome.blockedLocationPermissionDenied;
+          }
+        } on PlatformException catch (error) {
+          if (error.code == locationPermissionPermanentlyDenied) {
+            return DeviceToolToggleOutcome.blockedLocationPermanentlyDenied;
+          }
+          rethrow;
         }
       }
       return DeviceToolToggleOutcome.canEnable;
@@ -483,6 +584,22 @@ class LocalToolsService {
         },
       });
     }
+    if (DeviceLocalTools.locationSupported &&
+        assistant.localToolIds.contains(LocalToolNames.currentLocation)) {
+      tools.add(const {
+        'type': 'function',
+        'function': {
+          'name': LocalToolNames.currentLocation,
+          'description':
+              "Get the user's current location from the device (one-shot, When In Use). "
+              'Returns latitude, longitude, accuracy in meters, timestamp, and optional '
+              'city/region/country from reverse geocoding. Do not request this unless the '
+              'user asked for their location or it is needed for weather. '
+              'Requires the Location permission; if it is not granted, an error is returned.',
+          'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
+        },
+      });
+    }
     if (assistant.skillIds.isNotEmpty) {
       tools.add(const {
         'type': 'function',
@@ -694,6 +811,10 @@ class LocalToolsService {
     if (name == LocalToolNames.calendarCreate &&
         DeviceLocalTools.calendarSupported) {
       return _invokeDeviceTool('createCalendarEvent', args);
+    }
+    if (name == LocalToolNames.currentLocation &&
+        DeviceLocalTools.locationSupported) {
+      return _invokeDeviceTool('getCurrentLocation', args);
     }
     if (name == LocalToolNames.downloadSkill) {
       return _handleDownloadSkill(args, onSkillsImported);

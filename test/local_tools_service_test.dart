@@ -683,6 +683,7 @@ void main() {
         LocalToolNames.screenTime,
         LocalToolNames.calendarQuery,
         LocalToolNames.calendarCreate,
+        LocalToolNames.currentLocation,
       ],
     );
 
@@ -699,17 +700,21 @@ void main() {
     test('screen time supported only on Android', () {
       expect(DeviceLocalTools.screenTimeSupported, isTrue);
       expect(DeviceLocalTools.calendarSupported, isTrue);
+      expect(DeviceLocalTools.locationSupported, isTrue);
 
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       expect(DeviceLocalTools.screenTimeSupported, isFalse);
       expect(DeviceLocalTools.calendarSupported, isTrue);
+      expect(DeviceLocalTools.locationSupported, isTrue);
 
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       expect(DeviceLocalTools.screenTimeSupported, isFalse);
       expect(DeviceLocalTools.calendarSupported, isFalse);
+      expect(DeviceLocalTools.locationSupported, isFalse);
 
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       expect(DeviceLocalTools.calendarSupported, isFalse);
+      expect(DeviceLocalTools.locationSupported, isFalse);
     });
 
     test('definitions are gated by platform support and localToolIds', () {
@@ -726,6 +731,7 @@ void main() {
           LocalToolNames.screenTime,
           LocalToolNames.calendarQuery,
           LocalToolNames.calendarCreate,
+          LocalToolNames.currentLocation,
         ]),
       );
 
@@ -774,7 +780,6 @@ void main() {
             }
             return '{"success":true}';
           });
-
       expect(
         await LocalToolsService.tryHandleToolCall(
           LocalToolNames.screenTime,
@@ -942,6 +947,171 @@ void main() {
             });
 
         expect(await DeviceLocalTools.requestCalendarPermission(), isFalse);
+      },
+    );
+
+    test('get_current_location dispatches over the device channel', () async {
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+            calls.add(call.method);
+            return '{"latitude":37.77,"longitude":-122.41}';
+          });
+
+      expect(
+        await LocalToolsService.tryHandleToolCall(
+          LocalToolNames.currentLocation,
+          const <String, dynamic>{},
+          deviceToolsAssistant,
+        ),
+        '{"latitude":37.77,"longitude":-122.41}',
+      );
+      expect(calls, ['getCurrentLocation']);
+    });
+
+    test(
+      'get_current_location is not handled when its switch is off',
+      () async {
+        final assistant = Assistant(
+          id: 'd2',
+          name: 'Assistant',
+          localToolIds: [LocalToolNames.screenTime],
+        );
+
+        expect(
+          await LocalToolsService.tryHandleToolCall(
+            LocalToolNames.currentLocation,
+            const <String, dynamic>{},
+            assistant,
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'get_current_location returns null on unsupported platforms',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        expect(
+          await LocalToolsService.tryHandleToolCall(
+            LocalToolNames.currentLocation,
+            const <String, dynamic>{},
+            deviceToolsAssistant,
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'requestToggleEnable: location already granted enables the tool',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+              if (call.method == 'hasLocationPermission') return true;
+              return false;
+            });
+        expect(
+          await DeviceLocalTools.requestToggleEnable(
+            LocalToolNames.currentLocation,
+          ),
+          DeviceToolToggleOutcome.canEnable,
+        );
+      },
+    );
+
+    test(
+      'requestToggleEnable: location granted on request enables the tool',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+              if (call.method == 'hasLocationPermission') return false;
+              if (call.method == 'requestLocationPermission') return true;
+              return false;
+            });
+        expect(
+          await DeviceLocalTools.requestToggleEnable(
+            LocalToolNames.currentLocation,
+          ),
+          DeviceToolToggleOutcome.canEnable,
+        );
+      },
+    );
+
+    test('requestToggleEnable: location denied keeps the tool off', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+            if (call.method == 'hasLocationPermission') return false;
+            if (call.method == 'requestLocationPermission') return false;
+            return false;
+          });
+      expect(
+        await DeviceLocalTools.requestToggleEnable(
+          LocalToolNames.currentLocation,
+        ),
+        DeviceToolToggleOutcome.blockedLocationPermissionDenied,
+      );
+    });
+
+    test(
+      'requestToggleEnable: permanently denied location reports the settings outcome',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+              if (call.method == 'hasLocationPermission') return false;
+              if (call.method == 'requestLocationPermission') {
+                throw PlatformException(
+                  code: DeviceLocalTools.locationPermissionPermanentlyDenied,
+                  message: 'Allow location permission in system Settings.',
+                );
+              }
+              return false;
+            });
+        expect(
+          await DeviceLocalTools.requestToggleEnable(
+            LocalToolNames.currentLocation,
+          ),
+          DeviceToolToggleOutcome.blockedLocationPermanentlyDenied,
+        );
+      },
+    );
+
+    test(
+      'requestLocationPermission swallows unrelated platform errors',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+              if (call.method == 'requestLocationPermission') {
+                throw PlatformException(code: 'MISSING_ACTIVITY');
+              }
+              return false;
+            });
+        expect(await DeviceLocalTools.requestLocationPermission(), isFalse);
+      },
+    );
+
+    test(
+      'requestLocationPermission times out and re-checks the grant state',
+      () async {
+        final previousTimeout = DeviceLocalTools.locationPermissionTimeout;
+        DeviceLocalTools.locationPermissionTimeout = const Duration(
+          milliseconds: 50,
+        );
+        addTearDown(
+          () => DeviceLocalTools.locationPermissionTimeout = previousTimeout,
+        );
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(DeviceLocalTools.channel, (call) async {
+              if (call.method == 'requestLocationPermission') {
+                // Simulate a lost native result: never completes.
+                return Completer<bool>().future;
+              }
+              if (call.method == 'hasLocationPermission') return true;
+              return false;
+            });
+
+        expect(await DeviceLocalTools.requestLocationPermission(), isTrue);
       },
     );
   });
