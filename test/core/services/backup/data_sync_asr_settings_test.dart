@@ -65,6 +65,16 @@ void main() {
               'modelDirectory': '/device/models/sense-voice',
             },
             {
+              'id': 'qwen-asr',
+              'kind': 'qwen_audio',
+              'apiKey': 'qwen-secret',
+              'workspaceId': 'ws-1',
+              'region': 'ap-southeast-1',
+              'model': 'qwen-audio-3.0-asr-flash-streaming',
+              'sampleRate': 8000,
+              'format': 'pcm',
+            },
+            {
               'id': 'cloud-asr',
               'kind': 'openai_realtime',
               'apiKey': 'asr-secret',
@@ -78,7 +88,16 @@ void main() {
           chatService: ChatService(),
         );
         final backupFile = await sync.prepareBackupFile(
-          const WebDavConfig(content: BackupContentScope(chatsAndAssistants: false, attachments: false, workspaces: false, fontsAndAvatars: false, settings: true, skills: true)),
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: false,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: true,
+              skills: true,
+            ),
+          ),
         );
         addTearDown(() => backupFile.deleteSync());
 
@@ -91,7 +110,17 @@ void main() {
 
         final asrServices =
             jsonDecode(settings['asr_services_v1'] as String) as List;
-        expect(asrServices.map((entry) => (entry as Map)['id']), ['cloud-asr']);
+        expect(asrServices.map((entry) => (entry as Map)['id']), [
+          'qwen-asr',
+          'cloud-asr',
+        ]);
+        // Cloud-only fields survive the export round-trip untouched.
+        final qwen = asrServices.first as Map;
+        expect(qwen['kind'], 'qwen_audio');
+        expect(qwen['workspaceId'], 'ws-1');
+        expect(qwen['region'], 'ap-southeast-1');
+        expect(qwen['sampleRate'], 8000);
+        expect(qwen['format'], 'pcm');
         // Selected device-bound service is dropped with its services.
         expect(settings, isNot(contains('asr_selected_service_id_v1')));
       },
@@ -111,7 +140,16 @@ void main() {
         chatService: ChatService(),
       );
       final backupFile = await sync.prepareBackupFile(
-        const WebDavConfig(content: BackupContentScope(chatsAndAssistants: false, attachments: false, workspaces: false, fontsAndAvatars: false, settings: true, skills: true)),
+        const WebDavConfig(
+          content: BackupContentScope(
+            chatsAndAssistants: false,
+            attachments: false,
+            workspaces: false,
+            fontsAndAvatars: false,
+            settings: true,
+            skills: true,
+          ),
+        ),
       );
       addTearDown(() => backupFile.deleteSync());
 
@@ -170,7 +208,16 @@ void main() {
         );
         await sync.restoreFromLocalFile(
           zipFile,
-          const WebDavConfig(content: BackupContentScope(chatsAndAssistants: false, attachments: false, workspaces: false, fontsAndAvatars: false, settings: true, skills: true)),
+          const WebDavConfig(
+            content: BackupContentScope(
+              chatsAndAssistants: false,
+              attachments: false,
+              workspaces: false,
+              fontsAndAvatars: false,
+              settings: true,
+              skills: true,
+            ),
+          ),
           mode: RestoreMode.merge,
         );
 

@@ -235,6 +235,322 @@ void main() {
     });
   });
 
+  group('Qwen Audio ASR', () {
+    test(
+      'combineQwenAudioTranscript inserts space after Latin punctuation',
+      () {
+        expect(combineQwenAudioTranscript('Hello.', 'World'), 'Hello. World');
+        expect(combineQwenAudioTranscript('Hello!', 'World'), 'Hello! World');
+        expect(combineQwenAudioTranscript('Hello', 'World'), 'Hello World');
+        expect(combineQwenAudioTranscript('Hello. ', 'World'), 'Hello. World');
+        // CJK joins stay unspaced.
+        expect(combineQwenAudioTranscript('你好。', '今天'), '你好。今天');
+        expect(combineQwenAudioTranscript('你好', '世界'), '你好世界');
+      },
+    );
+
+    test('uses MAAS endpoint and workspace header when configured', () async {
+      final socket = _FakeWebSocket();
+      late Uri connectedUri;
+      late Map<String, String> connectedHeaders;
+      final session =
+          await CloudAsrService(
+            websocketConnector: (uri, headers) async {
+              connectedUri = uri;
+              connectedHeaders = headers;
+              return socket;
+            },
+          ).startSession(
+            QwenAudioAsrOptions(
+              apiKey: 'qwen-audio-secret',
+              workspaceId: ' ws-1 ',
+              region: 'ap-southeast-1',
+            ),
+          );
+
+      expect(
+        connectedUri.toString(),
+        'wss://ws-1.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference',
+      );
+      expect(connectedHeaders['Authorization'], 'Bearer qwen-audio-secret');
+      expect(connectedHeaders['X-DashScope-WorkSpace'], 'ws-1');
+      expect(socket.sentJson.single['header']['action'], 'run-task');
+
+      await session.cancel();
+    });
+
+    test('accumulates finalized sentences with the current partial', () async {
+      final socket = _FakeWebSocket();
+      late Uri connectedUri;
+      late Map<String, String> connectedHeaders;
+      final session =
+          await CloudAsrService(
+            websocketConnector: (uri, headers) async {
+              connectedUri = uri;
+              connectedHeaders = headers;
+              return socket;
+            },
+          ).startSession(
+            QwenAudioAsrOptions(
+              apiKey: 'qwen-audio-secret',
+              model: 'qwen-audio-3.0-asr-flash-streaming',
+            ),
+          );
+
+      expect(
+        connectedUri.toString(),
+        'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+      );
+      expect(connectedHeaders['Authorization'], 'Bearer qwen-audio-secret');
+      expect(connectedHeaders['X-DashScope-WorkSpace'], isNull);
+      expect(socket.sentJson.single['header']['action'], 'run-task');
+
+      final partials = <String>[];
+      final subscription = session.partialTranscripts.listen(partials.add);
+
+      socket.serverJson({
+        'header': {'event': 'task-started', 'task_id': 't1'},
+        'payload': const <String, dynamic>{},
+      });
+      await session.addPcm16(Uint8List.fromList([1, 2, 3, 4]));
+      expect(socket.sentBinary, isNotEmpty);
+
+      socket.serverJson({
+        'header': {'event': 'result-generated'},
+        'payload': {
+          'output': {
+            'sentence': {'text': '你好', 'sentence_end': false},
+          },
+        },
+      });
+      expect(partials, ['你好']);
+
+      socket.serverJson({
+        'header': {'event': 'result-generated'},
+        'payload': {
+          'output': {
+            'sentence': {'text': '你好世界', 'sentence_end': true},
+          },
+        },
+      });
+      expect(partials.last, '你好世界');
+
+      socket.serverJson({
+        'header': {'event': 'result-generated'},
+        'payload': {
+          'output': {
+            'sentence': {'text': '今天', 'sentence_end': false},
+          },
+        },
+      });
+      expect(partials.last, '你好世界今天');
+
+      socket.serverJson({
+        'header': {'event': 'result-generated'},
+        'payload': {
+          'output': {
+            'sentence': {'text': '今天天气不错', 'sentence_end': true},
+          },
+        },
+      });
+      expect(partials.last, '你好世界今天天气不错');
+
+      final resultFuture = session.finish();
+      expect(socket.sentJson.last['header']['action'], 'finish-task');
+      socket.serverJson({
+        'header': {'event': 'task-finished'},
+        'payload': const <String, dynamic>{},
+      });
+
+      expect(await resultFuture, '你好世界今天天气不错');
+      expect(socket.closeCode, 1000);
+      await subscription.cancel();
+    });
+
+    test(
+      'inserts a space between English sentences ending with punctuation',
+      () async {
+        final socket = _FakeWebSocket();
+        final session =
+            await CloudAsrService(
+              websocketConnector: (uri, headers) async => socket,
+            ).startSession(
+              QwenAudioAsrOptions(
+                apiKey: 'qwen-audio-secret',
+                model: 'qwen-audio-3.0-asr-flash-streaming',
+              ),
+            );
+
+        final partials = <String>[];
+        final subscription = session.partialTranscripts.listen(partials.add);
+
+        socket.serverJson({
+          'header': {'event': 'task-started', 'task_id': 't1'},
+          'payload': const <String, dynamic>{},
+        });
+
+        socket.serverJson({
+          'header': {'event': 'result-generated'},
+          'payload': {
+            'output': {
+              'sentence': {'text': 'Hello.', 'sentence_end': true},
+            },
+          },
+        });
+        expect(partials.last, 'Hello.');
+
+        socket.serverJson({
+          'header': {'event': 'result-generated'},
+          'payload': {
+            'output': {
+              'sentence': {'text': 'World', 'sentence_end': false},
+            },
+          },
+        });
+        expect(partials.last, 'Hello. World');
+
+        socket.serverJson({
+          'header': {'event': 'result-generated'},
+          'payload': {
+            'output': {
+              'sentence': {'text': 'World', 'sentence_end': true},
+            },
+          },
+        });
+        // The repeated sentence is deduplicated, so no new partial is emitted.
+        expect(partials, ['Hello.', 'Hello. World']);
+
+        final resultFuture = session.finish();
+        socket.serverJson({
+          'header': {'event': 'task-finished'},
+          'payload': const <String, dynamic>{},
+        });
+        expect(await resultFuture, 'Hello. World');
+        await subscription.cancel();
+      },
+    );
+
+    test('surfaces task-failed without waiting for the timeout', () async {
+      final socket = _FakeWebSocket();
+      final session = await CloudAsrService(
+        websocketConnector: (uri, headers) async => socket,
+        completionTimeout: const Duration(milliseconds: 100),
+      ).startSession(QwenAudioAsrOptions(apiKey: 'qwen-audio-secret'));
+
+      final partialError = expectLater(
+        session.partialTranscripts,
+        emitsError(
+          isA<AsrException>().having(
+            (error) => error.message,
+            'message',
+            contains('Invalid API-key provided.'),
+          ),
+        ),
+      );
+      socket.serverJson({
+        'header': {
+          'event': 'task-failed',
+          'error_code': 'InvalidApiKey',
+          'error_message': 'Invalid API-key provided.',
+        },
+        'payload': const <String, dynamic>{},
+      });
+      await partialError;
+
+      await expectLater(
+        session.addPcm16(Uint8List.fromList([1, 2])),
+        throwsA(isA<AsrException>()),
+      );
+      await expectLater(session.finish(), throwsA(isA<AsrException>()));
+    });
+
+    test('fails when the socket closes before the final transcript', () async {
+      final socket = _FakeWebSocket();
+      final session = await CloudAsrService(
+        websocketConnector: (uri, headers) async => socket,
+      ).startSession(QwenAudioAsrOptions(apiKey: 'qwen-audio-secret'));
+
+      socket.serverJson({
+        'header': {'event': 'task-started', 'task_id': 't1'},
+        'payload': const <String, dynamic>{},
+      });
+
+      final partialError = expectLater(
+        session.partialTranscripts,
+        emitsError(
+          isA<AsrException>().having(
+            (error) => error.message,
+            'message',
+            contains('connection closed before the final transcript'),
+          ),
+        ),
+      );
+      await socket.close(1011, 'network lost');
+      await partialError;
+
+      await expectLater(session.finish(), throwsA(isA<AsrException>()));
+    });
+
+    test('reports a start timeout as an ASR exception', () async {
+      final socket = _FakeWebSocket();
+      final session = await CloudAsrService(
+        websocketConnector: (uri, headers) async => socket,
+        completionTimeout: const Duration(milliseconds: 50),
+      ).startSession(QwenAudioAsrOptions(apiKey: 'qwen-audio-secret'));
+
+      await expectLater(
+        session.addPcm16(Uint8List.fromList([1, 2])),
+        throwsA(
+          isA<AsrException>().having(
+            (error) => error.message,
+            'message',
+            'Qwen Audio ASR timed out',
+          ),
+        ),
+      );
+    });
+
+    test('fails on malformed lifecycle JSON', () async {
+      final socket = _FakeWebSocket();
+      final session = await CloudAsrService(
+        websocketConnector: (uri, headers) async => socket,
+      ).startSession(QwenAudioAsrOptions(apiKey: 'qwen-audio-secret'));
+
+      final partialError = expectLater(
+        session.partialTranscripts,
+        emitsError(
+          isA<AsrException>().having(
+            (error) => error.message,
+            'message',
+            contains('invalid JSON'),
+          ),
+        ),
+      );
+      socket.serverRaw('not-json');
+      await partialError;
+    });
+
+    test('fails on non-text server frames', () async {
+      final socket = _FakeWebSocket();
+      final session = await CloudAsrService(
+        websocketConnector: (uri, headers) async => socket,
+      ).startSession(QwenAudioAsrOptions(apiKey: 'qwen-audio-secret'));
+
+      final partialError = expectLater(
+        session.partialTranscripts,
+        emitsError(
+          isA<AsrException>().having(
+            (error) => error.message,
+            'message',
+            contains('unsupported event'),
+          ),
+        ),
+      );
+      socket.serverBinary(Uint8List.fromList([1, 2, 3]));
+      await partialError;
+    });
+  });
+
   group('Volcengine ASR', () {
     test('uses the RikkaHub binary WebSocket protocol', () async {
       final socket = _FakeWebSocket();
@@ -658,6 +974,10 @@ class _FakeWebSocket implements AsrWebSocketConnection {
 
   void serverJson(Map<String, dynamic> event) {
     _controller.add(jsonEncode(event));
+  }
+
+  void serverRaw(String message) {
+    _controller.add(message);
   }
 
   void serverBinary(Uint8List frame) {

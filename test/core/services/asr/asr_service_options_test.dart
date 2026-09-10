@@ -8,6 +8,7 @@ void main() {
       expect(AsrServiceKind.system.id, 'system');
       expect(AsrServiceKind.openAiRealtime.id, 'openai_realtime');
       expect(AsrServiceKind.dashScope.id, 'dashscope');
+      expect(AsrServiceKind.qwenAudio.id, 'qwen_audio');
       expect(AsrServiceKind.volcengine.id, 'volcengine');
       expect(AsrServiceKind.mimo.id, 'mimo');
       expect(AsrServiceKind.step.id, 'step');
@@ -28,6 +29,7 @@ void main() {
         SystemAsrOptions(),
         OpenAiRealtimeAsrOptions(),
         DashScopeAsrOptions(),
+        QwenAudioAsrOptions(),
         VolcengineAsrOptions(),
         MimoAsrOptions(),
         StepAsrOptions(),
@@ -38,6 +40,7 @@ void main() {
         'System',
         'OpenAI Realtime',
         'DashScope',
+        'Qwen Audio',
         'Volcengine',
         'MiMo',
         'Step',
@@ -75,6 +78,35 @@ void main() {
       expect(dashScope.sampleRate, 16000);
       expect(dashScope.vadThreshold, 0);
       expect(dashScope.isConfigured, isFalse);
+
+      final qwenAudio = AsrServiceOptions.fromJson({'kind': 'qwen_audio'});
+      expect(qwenAudio, isA<QwenAudioAsrOptions>());
+      expect((qwenAudio as QwenAudioAsrOptions).workspaceId, '');
+      expect(qwenAudio.region, 'cn-beijing');
+      expect(qwenAudio.model, 'qwen-audio-3.0-asr-flash-streaming');
+      expect(qwenAudio.sampleRate, 16000);
+      expect(qwenAudio.format, 'pcm');
+      expect(
+        qwenAudio.websocketUrl,
+        'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+      );
+      expect(qwenAudio.isConfigured, isFalse);
+      expect(
+        QwenAudioAsrOptions(
+          apiKey: 'k',
+          workspaceId: 'ws-1',
+          region: 'ap-southeast-1',
+        ).websocketUrl,
+        'wss://ws-1.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference',
+      );
+      expect(
+        QwenAudioAsrOptions(
+          apiKey: 'k',
+          workspaceId: 'ws-1',
+          region: '',
+        ).websocketUrl,
+        'wss://ws-1.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference',
+      );
 
       expect(volcengine, isA<VolcengineAsrOptions>());
       expect(
@@ -136,6 +168,16 @@ void main() {
           sampleRate: 16000,
           vadThreshold: 0.25,
           silenceDurationMs: 900,
+        ),
+        QwenAudioAsrOptions(
+          id: 'qwen-id',
+          name: 'Qwen',
+          apiKey: 'qwen-secret',
+          workspaceId: 'ws-1',
+          region: 'ap-southeast-1',
+          model: 'qwen-audio-asr',
+          sampleRate: 8000,
+          format: 'pcm',
         ),
         VolcengineAsrOptions(
           id: 'volc-id',

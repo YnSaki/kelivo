@@ -5942,9 +5942,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get asrServicesOpenAiTitle => 'OpenAI Realtime';
 
   @override
+  String get asrServicesQwenAudioSubtitle =>
+      'Qwen Audio 3.0 语音识别（/api-ws/v1/inference）';
+
+  @override
+  String get asrServicesQwenAudioTitle => 'Qwen Audio';
+
+  @override
   String asrServicesRecognitionFailed(Object error) {
     return '语音识别失败：$error';
   }
+
+  @override
+  String get asrServicesRegionLabel => '地域';
+
+  @override
+  String get asrServicesSampleRateLabel => '采样率';
 
   @override
   String get asrServicesResourceIdLabel => '资源 ID';
@@ -5990,6 +6003,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get asrServicesVolcengineTitle => '火山引擎';
+
+  @override
+  String get asrServicesWorkspaceIdLabel => '业务空间 ID';
 
   @override
   String get ttsServicesPageSystemTtsTitle => '系统TTS';
@@ -15853,9 +15869,22 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   String get asrServicesOpenAiTitle => 'OpenAI Realtime';
 
   @override
+  String get asrServicesQwenAudioSubtitle =>
+      'Qwen Audio 3.0 语音识别（/api-ws/v1/inference）';
+
+  @override
+  String get asrServicesQwenAudioTitle => 'Qwen Audio';
+
+  @override
   String asrServicesRecognitionFailed(Object error) {
     return '语音识别失败：$error';
   }
+
+  @override
+  String get asrServicesRegionLabel => '地域';
+
+  @override
+  String get asrServicesSampleRateLabel => '采样率';
 
   @override
   String get asrServicesResourceIdLabel => '资源 ID';
@@ -15901,6 +15930,9 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get asrServicesVolcengineTitle => '火山引擎';
+
+  @override
+  String get asrServicesWorkspaceIdLabel => '业务空间 ID';
 
   @override
   String get ttsServicesPageSystemTtsTitle => '系统TTS';
@@ -25763,9 +25795,22 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get asrServicesOpenAiTitle => 'OpenAI Realtime';
 
   @override
+  String get asrServicesQwenAudioSubtitle =>
+      'Qwen Audio 3.0 語音辨識（/api-ws/v1/inference）';
+
+  @override
+  String get asrServicesQwenAudioTitle => 'Qwen Audio';
+
+  @override
   String asrServicesRecognitionFailed(Object error) {
     return '語音辨識失敗：$error';
   }
+
+  @override
+  String get asrServicesRegionLabel => '地域';
+
+  @override
+  String get asrServicesSampleRateLabel => '取樣率';
 
   @override
   String get asrServicesResourceIdLabel => '資源 ID';
@@ -25811,6 +25856,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get asrServicesVolcengineTitle => '火山引擎';
+
+  @override
+  String get asrServicesWorkspaceIdLabel => '業務空間 ID';
 
   @override
   String get ttsServicesPageSystemTtsTitle => '系統TTS';

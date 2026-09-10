@@ -6224,9 +6224,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get asrServicesOpenAiTitle => 'OpenAI Realtime';
 
   @override
+  String get asrServicesQwenAudioSubtitle =>
+      'Qwen Audio 3.0 ASR (/api-ws/v1/inference)';
+
+  @override
+  String get asrServicesQwenAudioTitle => 'Qwen Audio';
+
+  @override
   String asrServicesRecognitionFailed(Object error) {
     return 'Speech recognition failed: $error';
   }
+
+  @override
+  String get asrServicesRegionLabel => 'Region';
+
+  @override
+  String get asrServicesSampleRateLabel => 'Sample rate';
 
   @override
   String get asrServicesResourceIdLabel => 'Resource ID';
@@ -6275,6 +6288,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get asrServicesVolcengineTitle => 'Volcengine';
+
+  @override
+  String get asrServicesWorkspaceIdLabel => 'Workspace ID';
 
   @override
   String get ttsServicesPageSystemTtsTitle => 'System TTS';
