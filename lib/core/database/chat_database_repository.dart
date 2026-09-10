@@ -999,6 +999,24 @@ class ChatDatabaseRepository {
     await _compactMessageOrder(row.conversationId);
   }
 
+  /// Deletes all preset rows (`is_preset = 1`) of [conversationId] and
+  /// compacts the remaining `messageOrder` values once. Used by the preset
+  /// sync (issue #577); the caller owns trash / deletion-marker bookkeeping.
+  /// Returns the number of removed rows.
+  Future<int> deletePresetMessages(String conversationId) {
+    return _db.transaction(() async {
+      final deleted =
+          await (_db.delete(_db.messageRows)..where(
+                (t) =>
+                    t.conversationId.equals(conversationId) &
+                    t.isPreset.equals(true),
+              ))
+              .go();
+      await _compactMessageOrder(conversationId);
+      return deleted;
+    });
+  }
+
   Future<void> clearAllData() async {
     await _db.transaction(() async {
       await _db.delete(_db.geminiThoughtSignatureRows).go();

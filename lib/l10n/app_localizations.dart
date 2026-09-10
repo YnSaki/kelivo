@@ -2176,6 +2176,60 @@ abstract class AppLocalizations {
   /// **'Send a message first before creating a new conversation'**
   String get homePagePresetConversationBlocked;
 
+  /// No description provided for @homePagePresetSyncBannerText.
+  ///
+  /// In en, this message translates to:
+  /// **'Preset messages changed'**
+  String get homePagePresetSyncBannerText;
+
+  /// No description provided for @homePagePresetSyncApplyCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply here'**
+  String get homePagePresetSyncApplyCurrent;
+
+  /// No description provided for @homePagePresetSyncApplyAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply to all'**
+  String get homePagePresetSyncApplyAll;
+
+  /// No description provided for @homePagePresetSyncApplyAllConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply to all conversations?'**
+  String get homePagePresetSyncApplyAllConfirmTitle;
+
+  /// No description provided for @homePagePresetSyncApplyAllConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The current preset messages will be applied to every conversation of this assistant. Conversations with chat history will have their context updated.'**
+  String get homePagePresetSyncApplyAllConfirmBody;
+
+  /// No description provided for @homePagePresetSyncConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get homePagePresetSyncConfirm;
+
+  /// No description provided for @homePagePresetSyncAllDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Applied to {count, plural, one{{count} conversation} other{{count} conversations}}'**
+  String homePagePresetSyncAllDone(int count);
+
+  /// No description provided for @homePagePresetSyncDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get homePagePresetSyncDismiss;
+
+  /// No description provided for @homePagePresetSyncFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Preset messages could not be applied'**
+  String get homePagePresetSyncFailed;
+
   /// No description provided for @assistantEditPageTitle.
   ///
   /// In en, this message translates to:

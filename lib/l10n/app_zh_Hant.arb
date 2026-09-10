@@ -1018,6 +1018,22 @@
     }
   },
   "homePagePresetConversationBlocked": "請先傳送訊息後再建立新對話",
+  "homePagePresetSyncBannerText": "預設訊息已更新",
+  "homePagePresetSyncApplyCurrent": "套用到目前會話",
+  "homePagePresetSyncApplyAll": "套用到所有會話",
+  "homePagePresetSyncApplyAllConfirmTitle": "套用到所有會話？",
+  "homePagePresetSyncApplyAllConfirmBody": "目前預設訊息將套用到該助手的所有會話；包含歷史訊息的會話，其上下文將被更新。",
+  "homePagePresetSyncConfirm": "套用",
+  "homePagePresetSyncAllDone": "{count, plural, other{已套用到 {count} 個會話}}",
+  "@homePagePresetSyncAllDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homePagePresetSyncDismiss": "關閉",
+  "homePagePresetSyncFailed": "預設訊息套用失敗",
   "chatHistoryPageTitle": "聊天歷史",
   "chatHistoryPageSearchTooltip": "搜尋",
   "chatHistoryPageDeleteAllTooltip": "刪除未置頂",

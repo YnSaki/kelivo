@@ -1481,6 +1481,132 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// Issue #577: shown below the preset toggle bar when the owning
+  /// assistant's preset messages changed and this conversation holds real
+  /// messages (fresh conversations self-sync instead).
+  Widget _buildPresetSyncBanner(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    final busy = _controller.isCurrentConversationLoading;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 2, 6),
+        decoration: BoxDecoration(
+          color: context.appColors.surfaceFill,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                l10n.homePagePresetSyncBannerText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurface.withValues(alpha: 0.8),
+                ),
+              ),
+            ),
+            _buildPresetSyncBannerAction(
+              context,
+              label: l10n.homePagePresetSyncApplyCurrent,
+              enabled: !busy,
+              onTap: () =>
+                  unawaited(_controller.applyPresetsToCurrentConversation()),
+            ),
+            const SizedBox(width: 4),
+            _buildPresetSyncBannerAction(
+              context,
+              label: l10n.homePagePresetSyncApplyAll,
+              enabled: !busy,
+              onTap: () => unawaited(_applyPresetsToAllConversations()),
+            ),
+            IosIconButton(
+              icon: Lucide.X,
+              size: 14,
+              padding: const EdgeInsets.all(6),
+              semanticLabel: l10n.homePagePresetSyncDismiss,
+              onTap: _controller.dismissPresetSyncBanner,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPresetSyncBannerAction(
+    BuildContext context, {
+    required String label,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return IosCardPress(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      baseColor: Colors.transparent,
+      pressedBlendStrength: 0.06,
+      haptics: false,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: AppFontWeights.medium,
+          color: enabled ? cs.primary : cs.onSurface.withValues(alpha: 0.4),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyPresetsToAllConversations() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          AppLocalizations.of(
+            dialogContext,
+          )!.homePagePresetSyncApplyAllConfirmTitle,
+        ),
+        content: Text(
+          AppLocalizations.of(
+            dialogContext,
+          )!.homePagePresetSyncApplyAllConfirmBody,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(AppLocalizations.of(dialogContext)!.homePageCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              AppLocalizations.of(dialogContext)!.homePagePresetSyncConfirm,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final result = await _controller.applyPresetsToAllConversations();
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    if (result.failed > 0) {
+      showAppSnackBar(
+        context,
+        message: l10n.homePagePresetSyncFailed,
+        type: NotificationType.error,
+      );
+      return;
+    }
+    if (result.touched <= 0) return;
+    showAppSnackBar(
+      context,
+      message: l10n.homePagePresetSyncAllDone(result.touched),
+      type: NotificationType.success,
+    );
+  }
+
   Widget _buildMessageListView(
     BuildContext context, {
     required double topContentPadding,
@@ -1517,12 +1643,21 @@ class _HomePageState extends State<HomePage>
         : allMessages;
 
     Widget? presetHeaderWidget;
-    if (showPresetToggle) {
-      presetHeaderWidget = _buildPresetToggleBar(
-        context,
-        presetCount: presetCount,
-        isExpanded: _presetsExpanded,
-        onToggle: () => setState(() => _presetsExpanded = !_presetsExpanded),
+    final showPresetSyncBanner = _controller.showPresetSyncBanner;
+    if (showPresetToggle || showPresetSyncBanner) {
+      presetHeaderWidget = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showPresetToggle)
+            _buildPresetToggleBar(
+              context,
+              presetCount: presetCount,
+              isExpanded: _presetsExpanded,
+              onToggle: () =>
+                  setState(() => _presetsExpanded = !_presetsExpanded),
+            ),
+          if (showPresetSyncBanner) _buildPresetSyncBanner(context),
+        ],
       );
     }
 
@@ -1545,6 +1680,12 @@ class _HomePageState extends State<HomePage>
     if (useWebViewport && afterMessageWidgets.isNotEmpty) {
       useWebViewport = false;
       _scheduleMultiAIFallbackPrompt(conversationId);
+    }
+
+    // Issue #577: the preset sync banner is a Flutter list header; while a
+    // pending change exists, fall back so its apply actions stay reachable.
+    if (useWebViewport && showPresetSyncBanner) {
+      useWebViewport = false;
     }
 
     final truncIndex = HomeViewModel.adjustTruncIndexForPresetFolding(

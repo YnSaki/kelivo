@@ -1194,6 +1194,43 @@ class AppLocalizationsEn extends AppLocalizations {
       'Send a message first before creating a new conversation';
 
   @override
+  String get homePagePresetSyncBannerText => 'Preset messages changed';
+
+  @override
+  String get homePagePresetSyncApplyCurrent => 'Apply here';
+
+  @override
+  String get homePagePresetSyncApplyAll => 'Apply to all';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmTitle =>
+      'Apply to all conversations?';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmBody =>
+      'The current preset messages will be applied to every conversation of this assistant. Conversations with chat history will have their context updated.';
+
+  @override
+  String get homePagePresetSyncConfirm => 'Apply';
+
+  @override
+  String homePagePresetSyncAllDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversations',
+      one: '$count conversation',
+    );
+    return 'Applied to $_temp0';
+  }
+
+  @override
+  String get homePagePresetSyncDismiss => 'Dismiss';
+
+  @override
+  String get homePagePresetSyncFailed => 'Preset messages could not be applied';
+
+  @override
   String get assistantEditPageTitle => 'Assistant';
 
   @override
