@@ -3740,6 +3740,8 @@ class DataSync {
     'openAiRealtime',
     'dashscope',
     'dashScope',
+    'qwen_audio',
+    'qwenAudio',
     'volcengine',
     'mimo',
     'step',

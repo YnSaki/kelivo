@@ -11182,11 +11182,35 @@ abstract class AppLocalizations {
   /// **'OpenAI Realtime'**
   String get asrServicesOpenAiTitle;
 
+  /// No description provided for @asrServicesQwenAudioSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Qwen Audio 3.0 ASR (/api-ws/v1/inference)'**
+  String get asrServicesQwenAudioSubtitle;
+
+  /// No description provided for @asrServicesQwenAudioTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Qwen Audio'**
+  String get asrServicesQwenAudioTitle;
+
   /// No description provided for @asrServicesRecognitionFailed.
   ///
   /// In en, this message translates to:
   /// **'Speech recognition failed: {error}'**
   String asrServicesRecognitionFailed(Object error);
+
+  /// No description provided for @asrServicesRegionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Region'**
+  String get asrServicesRegionLabel;
+
+  /// No description provided for @asrServicesSampleRateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample rate'**
+  String get asrServicesSampleRateLabel;
 
   /// No description provided for @asrServicesResourceIdLabel.
   ///
@@ -11277,6 +11301,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Volcengine'**
   String get asrServicesVolcengineTitle;
+
+  /// No description provided for @asrServicesWorkspaceIdLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace ID'**
+  String get asrServicesWorkspaceIdLabel;
 
   /// No description provided for @ttsServicesPageSystemTtsTitle.
   ///

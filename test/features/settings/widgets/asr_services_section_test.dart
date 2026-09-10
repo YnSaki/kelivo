@@ -41,6 +41,7 @@ void main() {
     expect(find.text('Offline Model'), findsOneWidget);
     expect(find.text('OpenAI Realtime'), findsOneWidget);
     expect(find.text('DashScope'), findsOneWidget);
+    expect(find.text('Qwen Audio'), findsOneWidget);
     expect(find.text('Volcengine'), findsOneWidget);
     expect(find.text('MiMo'), findsOneWidget);
     expect(find.text('Step'), findsOneWidget);
@@ -227,6 +228,52 @@ void main() {
       expect(dashScope.silenceDurationMs, 1230);
     },
   );
+
+  testWidgets('editing Qwen Audio exposes workspace, region and sample rate', (
+    tester,
+  ) async {
+    final settings = await createBusinessTestPreferences();
+    await settings.setAsrServices([
+      QwenAudioAsrOptions(
+        id: 'qwen-test',
+        name: 'Qwen custom',
+        apiKey: 'qwen-key',
+        workspaceId: 'ws-1',
+        region: 'ap-southeast-1',
+        model: 'qwen-audio-3.0-asr-flash-streaming',
+        sampleRate: 8000,
+        format: 'pcm',
+      ),
+    ]);
+    final fixture = _ModelManagerFixture.create();
+    addTearDown(fixture.dispose);
+
+    await _pumpSection(
+      tester,
+      settings: settings,
+      modelManager: fixture.manager,
+    );
+
+    await tester.tap(find.byTooltip('Edit').at(0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workspace ID'), findsOneWidget);
+    expect(find.text('Region'), findsOneWidget);
+    expect(find.text('Sample rate'), findsOneWidget);
+    expect(find.text('Language'), findsNothing);
+
+    await tester.enterText(find.widgetWithText(TextField, '8000'), '4000');
+    await tester.tap(find.byTooltip('Save'));
+    await tester.pumpAndSettle();
+
+    final qwen = settings.asrServices.single as QwenAudioAsrOptions;
+    expect(qwen.workspaceId, 'ws-1');
+    expect(qwen.region, 'ap-southeast-1');
+    expect(qwen.sampleRate, 4000);
+    expect(qwen.model, 'qwen-audio-3.0-asr-flash-streaming');
+    expect(qwen.format, 'pcm');
+    expect(qwen.apiKey, 'qwen-key');
+  });
 
   testWidgets('desktop ASR editor reuses the custom TTS-style selector', (
     tester,
