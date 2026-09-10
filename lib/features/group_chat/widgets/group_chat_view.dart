@@ -91,6 +91,7 @@ class _GroupChatViewState extends State<GroupChatView> {
   late GroupChatOrchestrator _orchestrator;
   late FileUploadService _fileUploadService;
   late OcrService _ocrService;
+  late GroupChatProvider _groupChatProvider;
 
   bool _loading = false;
   bool _initialized = false;
@@ -99,6 +100,9 @@ class _GroupChatViewState extends State<GroupChatView> {
   /// per-conversation queue semantics — see queueIfCurrentConversationBusy).
   /// Drained by [_maybeDrainQueue] when the round ends.
   ChatInputData? _queuedInput;
+
+  /// Coalesces provider notifications into one post-frame stash pickup.
+  bool _stashPickupScheduled = false;
 
   bool get _isDesktop =>
       defaultTargetPlatform == TargetPlatform.macOS ||
@@ -118,6 +122,7 @@ class _GroupChatViewState extends State<GroupChatView> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
+    _groupChatProvider = context.read<GroupChatProvider>();
     _listController = ListController();
     _chatService = context.read<ChatService>();
     _ocrService = OcrService(chatService: _chatService);
@@ -210,6 +215,8 @@ class _GroupChatViewState extends State<GroupChatView> {
       },
     );
     _bindConversation();
+    _takeStashedQueuedInput();
+    _groupChatProvider.addListener(_onGroupChatProviderChanged);
   }
 
   void _onChatControllerChanged() {
@@ -285,6 +292,18 @@ class _GroupChatViewState extends State<GroupChatView> {
 
   @override
   void dispose() {
+    // Session-level queue handoff: a queued send must not die with the page.
+    // Stash it for the next GroupChatView instance of this group (mobile
+    // route pop; a mounted successor picks it up via the provider
+    // notification). The getById guard is the actual protection: desktop
+    // keep-alive views dispose only when their group is deleted, and by then
+    // getById is null, so nothing is re-stashed for a dead group.
+    // (deleteGroup only clears entries stashed before the deletion.)
+    _groupChatProvider.removeListener(_onGroupChatProviderChanged);
+    if (_queuedInput != null &&
+        _groupChatProvider.getById(widget.groupChatId) != null) {
+      _groupChatProvider.stashQueuedInput(widget.groupChatId, _queuedInput!);
+    }
     _orchestrator.requestStop();
     _streamController.dispose();
     _chatController.removeListener(_onChatControllerChanged);
@@ -338,12 +357,37 @@ class _GroupChatViewState extends State<GroupChatView> {
   /// double-drain.
   void _maybeDrainQueue() {
     if (!mounted) return;
-    if (_queuedInput == null) return;
     if (_loading || _orchestrator.isBusy) return;
-    final q = _queuedInput!;
+    final q = _queuedInput;
+    if (q == null) {
+      // Idle with an empty local slot: a session-level stash may have
+      // arrived after mount (the previous view's dispose can land after
+      // this one mounted during the pop animation) — pick it up. Called
+      // from a post-frame phase or an async continuation, so draining
+      // directly is safe.
+      _takeStashedQueuedInput(deferSend: false);
+      return;
+    }
     _queuedInput = null;
     setState(() {});
     unawaited(_send(q));
+  }
+
+  /// Picks up a session-level stash that lands after this view mounted (see
+  /// [GroupChatProvider.stashQueuedInput]). One post-frame check per
+  /// notification burst, deferred because the notification can fire inside
+  /// another widget's unmount/build; the frame is requested explicitly
+  /// because a provider notification alone does not schedule one.
+  void _onGroupChatProviderChanged() {
+    if (_stashPickupScheduled) return;
+    if (!_groupChatProvider.hasQueuedInput(widget.groupChatId)) return;
+    _stashPickupScheduled = true;
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stashPickupScheduled = false;
+      if (!mounted) return;
+      _maybeDrainQueue();
+    });
   }
 
   /// Restores a cancelled queued send back into the composer (text + media),
@@ -362,6 +406,42 @@ class _GroupChatViewState extends State<GroupChatView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _inputFocus.requestFocus();
     });
+  }
+
+  /// Session-level queue handoff: pops the stash a previous GroupChatView
+  /// instance of this group left on dispose (mobile route pop while a round
+  /// was busy) and auto-drains it, mirroring the single-chat queue that
+  /// drains when the conversation becomes current and free. The round was
+  /// stopped by the old page's dispose, so a fresh mount is normally idle;
+  /// if it is somehow busy, the stashed send falls back into the one-slot
+  /// pending input and drains via [_maybeDrainQueue]. A local slot always
+  /// wins (it is newer); the stash stays for the next drain check.
+  ///
+  /// [deferSend] is for the mount path: it runs inside
+  /// `didChangeDependencies` (build phase), where starting the send would
+  /// `setState` illegally, so it defers to the end of the frame. Callers
+  /// running after the build phase (post-frame, async continuations) pass
+  /// `false` and drain immediately.
+  void _takeStashedQueuedInput({bool deferSend = true}) {
+    if (_queuedInput != null) return;
+    final stashed = _groupChatProvider.takeQueuedInput(widget.groupChatId);
+    if (stashed == null) return;
+
+    void drain() {
+      if (!mounted) return;
+      if (_loading || _orchestrator.isBusy) {
+        _queuedInput = stashed;
+        setState(() {});
+        return;
+      }
+      unawaited(_send(stashed));
+    }
+
+    if (deferSend) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => drain());
+    } else {
+      drain();
+    }
   }
 
   Future<void> _showQuickInstructionMenu() async {
