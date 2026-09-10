@@ -1087,6 +1087,10 @@ class HomeViewModel extends ChangeNotifier {
       notifyListeners();
       onConversationSwitched?.call();
       unawaited(_drainQueuedInputIfReady(id));
+      // Issue #577: a fresh conversation always reflects the owning
+      // assistant's current preset list. Conversations with history are
+      // handled by the explicit banner actions instead.
+      unawaited(syncFreshPresets(convo));
       // Recycle only after the switch really happened; a failed target
       // (convo == null) leaves the old conversation visible, and deleting it
       // here would yank the user's current view.
@@ -1138,6 +1142,89 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
+  // ============================================================================
+  // Preset Message Sync (issue #577)
+  // ============================================================================
+
+  /// Guards shared by the preset sync entry points: the conversation must be
+  /// a persisted (non-temporary) single-chat conversation owned by a live
+  /// assistant.
+  bool _canSyncPresetsFor(Conversation convo) {
+    if (_chatService.isTemporaryConversation(convo.id)) return false;
+    final assistantId = convo.assistantId;
+    if (assistantId == null || assistantId.isEmpty) return false;
+    return _contextProvider.read<AssistantProvider>().getById(assistantId) !=
+        null;
+  }
+
+  /// Auto-sync for the #577 flow: when [convo] holds no real (non-preset)
+  /// messages, replace its preset rows with the owning assistant's current
+  /// list. Conversations with history are never touched here — they go
+  /// through the explicit banner actions instead. Returns true when rows
+  /// were written.
+  Future<bool> syncFreshPresets(Conversation convo) async {
+    if (!_canSyncPresetsFor(convo)) return false;
+    try {
+      if (!await _chatService.hasNoRealMessages(convo.id)) return false;
+      return await _syncPresetsAndReload(convo);
+    } catch (e) {
+      debugPrint('[PresetSync] fresh preset sync failed for ${convo.id}: $e');
+      return false;
+    }
+  }
+
+  /// Explicit "apply to this conversation" (banner action): replaces the
+  /// preset rows regardless of history; real rows keep their order and shift
+  /// below the new presets. Returns true when rows were written.
+  ///
+  /// Unlike [syncFreshPresets], failures are rethrown after logging so the
+  /// banner flow can restore its pending marker and surface the error
+  /// instead of reporting a silent success.
+  Future<bool> syncPresetsToConversation(Conversation convo) async {
+    if (!_canSyncPresetsFor(convo)) return false;
+    try {
+      return await _syncPresetsAndReload(convo);
+    } catch (e) {
+      debugPrint('[PresetSync] preset sync failed for ${convo.id}: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> _syncPresetsAndReload(Conversation convo) async {
+    final ap = _contextProvider.read<AssistantProvider>();
+    final changed = await _chatService.syncPresetMessages(
+      conversationId: convo.id,
+      presets: ap.getPresetMessagesForAssistant(convo.assistantId),
+    );
+    if (changed && currentConversation?.id == convo.id) {
+      _chatController.reloadMessages();
+      notifyListeners();
+    }
+    return changed;
+  }
+
+  /// "Apply to all conversations" (banner action): applies the assistant's
+  /// current preset list to every persisted conversation it owns. Returns the
+  /// per-conversation outcome; the caller surfaces failures.
+  Future<({int touched, int failed})> syncPresetsAcrossConversations(
+    String assistantId,
+  ) async {
+    final ap = _contextProvider.read<AssistantProvider>();
+    if (ap.getById(assistantId) == null) return (touched: 0, failed: 0);
+    final result = await _chatService.syncPresetMessagesForAssistant(
+      assistantId: assistantId,
+      presets: ap.getPresetMessagesForAssistant(assistantId),
+    );
+    final convo = currentConversation;
+    if (result.touched > 0 &&
+        convo != null &&
+        convo.assistantId == assistantId) {
+      _chatController.reloadMessages();
+      notifyListeners();
+    }
+    return result;
+  }
+
   /// Create a new conversation.
   Future<void> createNewConversation() async {
     // Flush current conversation progress before creating new
@@ -1160,25 +1247,22 @@ class HomeViewModel extends ChangeNotifier {
     _streamController.clearAllState();
     notifyListeners();
 
-    // Inject assistant preset messages into new conversation (ordered)
+    // Inject assistant preset messages into new conversation (ordered).
+    // Shares the #577 row shape with the existing-conversation sync via
+    // ChatService.appendPresetMessages.
     try {
       final presets = ap.getPresetMessagesForAssistant(a?.id);
       if (presets.isNotEmpty && currentConversation != null) {
-        for (final pm in presets) {
-          final role = (pm['role'] == 'assistant') ? 'assistant' : 'user';
-          final content = (pm['content'] ?? '').trim();
-          if (content.isEmpty) continue;
-          await _chatService.addMessage(
-            conversationId: currentConversation!.id,
-            role: role,
-            content: content,
-            isPreset: true,
-          );
-        }
+        await _chatService.appendPresetMessages(
+          conversationId: currentConversation!.id,
+          presets: presets,
+        );
         _chatController.reloadMessages();
         notifyListeners();
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[HomeViewModel] preset injection failed: $e');
+    }
 
     onScrollToBottom?.call();
   }

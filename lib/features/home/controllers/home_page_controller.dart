@@ -163,6 +163,13 @@ class HomePageController extends ChangeNotifier {
 
   McpProvider? _mcpProvider;
   GenerationEngine? _generationEngine;
+  AssistantProvider? _assistantProvider;
+
+  // Preset message sync (issue #577): last-seen preset fingerprints per
+  // assistant id for cheap change detection, and the assistants whose preset
+  // changes are still pending a user decision on history conversations.
+  final Map<String, String> _assistantPresetFingerprints = <String, String>{};
+  final Set<String> _pendingPresetSyncAssistantIds = <String>{};
   String? _headlessChunkMessageId;
   bool _wasCurrentHeadlessActive = false;
   StreamSubscription<ChatAction>? _chatActionSub;
@@ -692,6 +699,169 @@ class HomePageController extends ChangeNotifier {
     } catch (e) {
       debugPrint('[GenerationEngine] listener FAILED: $e');
     }
+    try {
+      _assistantProvider = _context.read<AssistantProvider>();
+      _snapshotAssistantPresetFingerprints();
+      _assistantProvider!.addListener(_onAssistantsChanged);
+    } catch (e) {
+      debugPrint('[PresetSync] AssistantProvider listener failed: $e');
+    }
+  }
+
+  void _snapshotAssistantPresetFingerprints() {
+    final ap = _assistantProvider;
+    if (ap == null) return;
+    _assistantPresetFingerprints
+      ..clear()
+      ..addEntries(<MapEntry<String, String>>[
+        for (final a in ap.assistants)
+          MapEntry(
+            a.id,
+            ChatService.presetPayloadFingerprint(
+              ap.getPresetMessagesForAssistant(a.id),
+            ),
+          ),
+      ]);
+  }
+
+  void _onAssistantsChanged() {
+    if (_disposed) return;
+    unawaited(_handleAssistantsChangedForPresetSync());
+  }
+
+  /// Issue #577 change detection: diff each assistant's preset fingerprint.
+  /// A fresh current conversation self-syncs immediately; a conversation
+  /// with history raises the banner instead.
+  Future<void> _handleAssistantsChangedForPresetSync() async {
+    final ap = _assistantProvider;
+    if (ap == null) return;
+    final changedIds = <String>[];
+    final liveIds = <String>{};
+    for (final a in ap.assistants) {
+      liveIds.add(a.id);
+      final fingerprint = ChatService.presetPayloadFingerprint(
+        ap.getPresetMessagesForAssistant(a.id),
+      );
+      final previous = _assistantPresetFingerprints[a.id];
+      if (previous == null) {
+        // First observation (the cold-start DB load notifies after this
+        // listener attaches, and newly added assistants arrive the same way):
+        // record the baseline without treating it as a preset change — a
+        // null previous fingerprint is not an edit.
+        _assistantPresetFingerprints[a.id] = fingerprint;
+        continue;
+      }
+      if (previous != fingerprint) {
+        _assistantPresetFingerprints[a.id] = fingerprint;
+        changedIds.add(a.id);
+      }
+    }
+    for (final id in _assistantPresetFingerprints.keys.toSet()) {
+      if (!liveIds.contains(id)) {
+        _assistantPresetFingerprints.remove(id);
+        _pendingPresetSyncAssistantIds.remove(id);
+      }
+    }
+    if (changedIds.isEmpty || _disposed) return;
+    if (!_chatService.initialized) return;
+    final convo = currentConversation;
+    final assistantId = convo?.assistantId;
+
+    // Edits made while chatting with another assistant (issue #577
+    // follow-up): keep a pending marker for any changed assistant that owns
+    // persisted conversations, so the banner surfaces when the user later
+    // opens one of its history conversations. No banner now — banner
+    // visibility is scoped to the current conversation's assistant.
+    for (final id in changedIds) {
+      if (id == assistantId) continue;
+      final ownsConversations = _chatService.getAllConversations().any(
+        (c) => c.assistantId == id,
+      );
+      if (ownsConversations) _pendingPresetSyncAssistantIds.add(id);
+    }
+
+    if (convo == null ||
+        assistantId == null ||
+        !changedIds.contains(assistantId)) {
+      return;
+    }
+    if (_chatService.isTemporaryConversation(convo.id)) return;
+    try {
+      final fresh = await _chatService.hasNoRealMessages(convo.id);
+      if (_disposed) return;
+      if (fresh) {
+        await _viewModel.syncFreshPresets(convo);
+      } else {
+        _pendingPresetSyncAssistantIds.add(assistantId);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[PresetSync] change handling failed for $assistantId: $e');
+    }
+  }
+
+  /// Whether the current conversation should show the "preset messages
+  /// changed" banner (issue #577): its owning assistant has a pending preset
+  /// change and the conversation holds real messages (fresh ones self-sync).
+  bool get showPresetSyncBanner {
+    final convo = currentConversation;
+    final assistantId = convo?.assistantId;
+    if (convo == null || assistantId == null) return false;
+    if (!_pendingPresetSyncAssistantIds.contains(assistantId)) return false;
+    if (_chatService.isTemporaryConversation(convo.id)) return false;
+    return _chatController.messages.any((m) => !m.isPreset);
+  }
+
+  Future<void> applyPresetsToCurrentConversation() async {
+    final convo = currentConversation;
+    final assistantId = convo?.assistantId;
+    if (convo == null || assistantId == null) return;
+    _pendingPresetSyncAssistantIds.remove(assistantId);
+    notifyListeners();
+    try {
+      await _viewModel.syncPresetsToConversation(convo);
+    } catch (e) {
+      debugPrint('[PresetSync] apply-to-current failed: $e');
+      if (_disposed) return;
+      // The rewrite failed: restore the banner instead of reporting success.
+      _pendingPresetSyncAssistantIds.add(assistantId);
+      notifyListeners();
+      _showPresetSyncFailed();
+    }
+  }
+
+  /// Returns the per-conversation outcome; the caller surfaces the result.
+  Future<({int touched, int failed})> applyPresetsToAllConversations() async {
+    final convo = currentConversation;
+    final assistantId = convo?.assistantId;
+    if (convo == null || assistantId == null) return (touched: 0, failed: 0);
+    _pendingPresetSyncAssistantIds.remove(assistantId);
+    notifyListeners();
+    final result = await _viewModel.syncPresetsAcrossConversations(assistantId);
+    if (result.failed > 0 && !_disposed) {
+      // Partial failure: keep the banner so the user can retry.
+      _pendingPresetSyncAssistantIds.add(assistantId);
+      notifyListeners();
+    }
+    return result;
+  }
+
+  void _showPresetSyncFailed() {
+    final l10n = AppLocalizations.of(_context);
+    if (l10n == null) return;
+    showAppSnackBar(
+      _context,
+      message: l10n.homePagePresetSyncFailed,
+      type: NotificationType.error,
+    );
+  }
+
+  void dismissPresetSyncBanner() {
+    final assistantId = currentConversation?.assistantId;
+    if (assistantId == null) return;
+    if (_pendingPresetSyncAssistantIds.remove(assistantId)) {
+      notifyListeners();
+    }
   }
 
   void _setupKeyboardListeners() {}
@@ -942,6 +1112,9 @@ class HomePageController extends ChangeNotifier {
         _chatController.setCurrentConversation(startup);
         _streamController.clearGeminiThoughtSigs();
         _restoreMessageUiState();
+        // Issue #577: a fresh startup conversation reflects the owning
+        // assistant's current preset list.
+        unawaited(_viewModel.syncFreshPresets(startup));
         notifyListeners();
         _scrollToBottomSoon(animate: false);
       } else {
@@ -3289,6 +3462,7 @@ class HomePageController extends ChangeNotifier {
     _convoFadeController.dispose();
     _mcpProvider?.removeListener(_onMcpChanged);
     _generationEngine?.removeListener(_onHeadlessGenChanged);
+    _assistantProvider?.removeListener(_onAssistantsChanged);
     _cancelHeadlessChunkSub();
     _scrollCtrl.dispose();
     try {

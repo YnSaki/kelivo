@@ -1063,6 +1063,22 @@
     }
   },
   "homePagePresetConversationBlocked": "请先发送消息后再创建新对话",
+  "homePagePresetSyncBannerText": "预设消息已更新",
+  "homePagePresetSyncApplyCurrent": "应用到当前会话",
+  "homePagePresetSyncApplyAll": "应用到所有会话",
+  "homePagePresetSyncApplyAllConfirmTitle": "应用到所有会话？",
+  "homePagePresetSyncApplyAllConfirmBody": "当前预设消息将应用到该助手的所有会话；包含历史消息的会话，其上下文将被更新。",
+  "homePagePresetSyncConfirm": "应用",
+  "homePagePresetSyncAllDone": "{count, plural, other{已应用到 {count} 个会话}}",
+  "@homePagePresetSyncAllDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homePagePresetSyncDismiss": "关闭",
+  "homePagePresetSyncFailed": "预设消息应用失败",
   "chatHistoryPageTitle": "聊天历史",
   "chatHistoryPageSearchTooltip": "搜索",
   "chatHistoryPageDeleteAllTooltip": "删除未置顶",

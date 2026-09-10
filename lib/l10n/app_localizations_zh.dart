@@ -1158,6 +1158,41 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homePagePresetConversationBlocked => '请先发送消息后再创建新对话';
 
   @override
+  String get homePagePresetSyncBannerText => '预设消息已更新';
+
+  @override
+  String get homePagePresetSyncApplyCurrent => '应用到当前会话';
+
+  @override
+  String get homePagePresetSyncApplyAll => '应用到所有会话';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmTitle => '应用到所有会话？';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmBody =>
+      '当前预设消息将应用到该助手的所有会话；包含历史消息的会话，其上下文将被更新。';
+
+  @override
+  String get homePagePresetSyncConfirm => '应用';
+
+  @override
+  String homePagePresetSyncAllDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已应用到 $count 个会话',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get homePagePresetSyncDismiss => '关闭';
+
+  @override
+  String get homePagePresetSyncFailed => '预设消息应用失败';
+
+  @override
   String get assistantEditPageTitle => '助手';
 
   @override
@@ -11090,6 +11125,41 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get homePagePresetConversationBlocked => '请先发送消息后再创建新对话';
+
+  @override
+  String get homePagePresetSyncBannerText => '预设消息已更新';
+
+  @override
+  String get homePagePresetSyncApplyCurrent => '应用到当前会话';
+
+  @override
+  String get homePagePresetSyncApplyAll => '应用到所有会话';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmTitle => '应用到所有会话？';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmBody =>
+      '当前预设消息将应用到该助手的所有会话；包含历史消息的会话，其上下文将被更新。';
+
+  @override
+  String get homePagePresetSyncConfirm => '应用';
+
+  @override
+  String homePagePresetSyncAllDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已应用到 $count 个会话',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get homePagePresetSyncDismiss => '关闭';
+
+  @override
+  String get homePagePresetSyncFailed => '预设消息应用失败';
 
   @override
   String get assistantEditPageTitle => '助手';
@@ -21025,6 +21095,41 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get homePagePresetConversationBlocked => '請先傳送訊息後再建立新對話';
+
+  @override
+  String get homePagePresetSyncBannerText => '預設訊息已更新';
+
+  @override
+  String get homePagePresetSyncApplyCurrent => '套用到目前會話';
+
+  @override
+  String get homePagePresetSyncApplyAll => '套用到所有會話';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmTitle => '套用到所有會話？';
+
+  @override
+  String get homePagePresetSyncApplyAllConfirmBody =>
+      '目前預設訊息將套用到該助手的所有會話；包含歷史訊息的會話，其上下文將被更新。';
+
+  @override
+  String get homePagePresetSyncConfirm => '套用';
+
+  @override
+  String homePagePresetSyncAllDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已套用到 $count 個會話',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get homePagePresetSyncDismiss => '關閉';
+
+  @override
+  String get homePagePresetSyncFailed => '預設訊息套用失敗';
 
   @override
   String get assistantEditPageTitle => '助理';

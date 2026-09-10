@@ -506,6 +506,22 @@
     }
   },
   "homePagePresetConversationBlocked": "Send a message first before creating a new conversation",
+  "homePagePresetSyncBannerText": "Preset messages changed",
+  "homePagePresetSyncApplyCurrent": "Apply here",
+  "homePagePresetSyncApplyAll": "Apply to all",
+  "homePagePresetSyncApplyAllConfirmTitle": "Apply to all conversations?",
+  "homePagePresetSyncApplyAllConfirmBody": "The current preset messages will be applied to every conversation of this assistant. Conversations with chat history will have their context updated.",
+  "homePagePresetSyncConfirm": "Apply",
+  "homePagePresetSyncAllDone": "Applied to {count, plural, one{{count} conversation} other{{count} conversations}}",
+  "@homePagePresetSyncAllDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homePagePresetSyncDismiss": "Dismiss",
+  "homePagePresetSyncFailed": "Preset messages could not be applied",
   "assistantEditPageTitle": "Assistant",
   "assistantEditPageNotFound": "Assistant not found",
   "assistantEditPageBasicTab": "Basic",

@@ -55,6 +55,10 @@ class ChatService extends ChangeNotifier {
   final Set<String> _temporaryConversationIds = <String>{};
   final Map<String, Future<void>> _proactiveCareOperationTails =
       <String, Future<void>>{};
+  // Per-conversation preset-sync tails (issue #577): overlapping syncs for
+  // one conversation would otherwise interleave their delete/append passes
+  // and duplicate preset rows.
+  final Map<String, Future<void>> _presetSyncTails = <String, Future<void>>{};
   // Evicting these ids could reopen persistence races with background work.
   final Set<String> _discardedTemporaryConversationIds = <String>{};
   final Set<String> _discardedTemporaryMessageIds = <String>{};
@@ -879,6 +883,285 @@ class ChatService extends ChangeNotifier {
     return nonPreset == 0;
   }
 
+  /// Normalized preset payload (issue #577): role collapses to
+  /// 'assistant' | 'user' and empty-content entries are dropped. Shared by
+  /// the new-conversation injection and the existing-conversation sync so
+  /// both produce identical rows.
+  static List<({String role, String content})> normalizePresetPayload(
+    List<Map<String, String>> presets,
+  ) {
+    return <({String role, String content})>[
+      for (final pm in presets)
+        if ((pm['content'] ?? '').trim().isNotEmpty)
+          (
+            role: (pm['role'] ?? '') == 'assistant' ? 'assistant' : 'user',
+            content: (pm['content'] ?? '').trim(),
+          ),
+    ];
+  }
+
+  /// Stable fingerprint of a preset payload for cheap change detection.
+  static String presetPayloadFingerprint(List<Map<String, String>> presets) {
+    return jsonEncode(<List<String>>[
+      for (final pm in normalizePresetPayload(presets))
+        <String>[pm.role, pm.content],
+    ]);
+  }
+
+  /// Whether [conversationId] holds no real (non-preset) message rows — it is
+  /// empty or preset-only (issue #577). Decided via repo-level counts, never
+  /// through the ChatController load window (ADR-0050 rationale). Temporary
+  /// conversations keep their rows outside the repository; callers must skip
+  /// them before consulting this predicate.
+  Future<bool> hasNoRealMessages(String conversationId) async {
+    if (!initialized) return false;
+    return await _repo.getNonPresetMessageCount(conversationId) == 0;
+  }
+
+  /// Appends the normalized preset payload to [conversationId] through the
+  /// standard add path, which also promotes a draft. Shared by the
+  /// new-conversation injection (HomeViewModel.createNewConversation) and
+  /// the fresh branch of [syncPresetMessages] so both produce identical rows
+  /// (issue #577).
+  ///
+  /// Deliberately does NOT await [init]: callers are either post-startup
+  /// flows (chat service initialized by the startup gate) or test fakes that
+  /// override [addMessage]; opening the real database here would force a
+  /// synchronous init in contexts that cannot settle it.
+  Future<void> appendPresetMessages({
+    required String conversationId,
+    required List<Map<String, String>> presets,
+  }) async {
+    for (final pm in normalizePresetPayload(presets)) {
+      await addMessage(
+        conversationId: conversationId,
+        role: pm.role,
+        content: pm.content,
+        isPreset: true,
+      );
+    }
+  }
+
+  /// Replaces the preset message rows of [conversationId] with [presets]
+  /// (issue #577). [presets] uses the payload shape of
+  /// `AssistantProvider.getPresetMessagesForAssistant`.
+  ///
+  /// - Fresh conversations (no non-preset rows): stale preset rows are
+  ///   removed and the new list is appended — the same shape the
+  ///   new-conversation injection produces.
+  /// - Conversations with real messages: the new presets are inserted at the
+  ///   TOP; real rows keep their relative order, `messageOrder` is compacted
+  ///   and `truncateIndex` shifts by (added - removed) so the clear-context
+  ///   split keeps excluding the same real messages.
+  ///
+  /// Removed preset rows go through the standard deletion bookkeeping (trash
+  /// bundle + LAN-sync deletion marker) before the physical delete, mirroring
+  /// ADR-0050's "no bypass deletes" stance.
+  ///
+  /// Overlapping calls for the same conversation are serialized; a queued
+  /// call re-runs the fingerprint check and no-ops when the first one already
+  /// converged the rows.
+  ///
+  /// Returns true when rows were written. Temporary conversations, group
+  /// conversations and unknown conversation ids are never touched. Like
+  /// [isRecyclablePresetOnlyConversation], an uninitialized service no-ops
+  /// (logged) instead of opening the database mid-flight.
+  Future<bool> syncPresetMessages({
+    required String conversationId,
+    required List<Map<String, String>> presets,
+  }) {
+    return _enqueuePresetSync(
+      conversationId,
+      () => _syncPresetMessagesUnlocked(
+        conversationId: conversationId,
+        presets: presets,
+      ),
+    );
+  }
+
+  Future<bool> _syncPresetMessagesUnlocked({
+    required String conversationId,
+    required List<Map<String, String>> presets,
+  }) async {
+    if (!initialized) {
+      debugPrint('[PresetSync] skipped for $conversationId: not initialized');
+      return false;
+    }
+    final conversation = _conversationForMessages(conversationId);
+    if (conversation == null) return false;
+    if (conversation.isGroup) return false;
+    if (isTemporaryConversation(conversationId)) return false;
+
+    final normalized = normalizePresetPayload(presets);
+    final existing = getMessages(conversationId);
+    final existingPresets = existing
+        .where((m) => m.isPreset)
+        .toList(growable: false);
+    final realMessages = existing
+        .where((m) => !m.isPreset)
+        .toList(growable: false);
+
+    if (_presetRowsMatchPayload(existingPresets, normalized)) return false;
+
+    for (final preset in existingPresets) {
+      await _recordMessageDeletion(preset);
+      // Mirror ChatService.deleteMessage: assistant-role rows may carry tool
+      // events / Gemini thought signatures; presets normally have neither,
+      // but any that once did must not leave orphaned fidelity rows.
+      if (preset.role == 'assistant') {
+        try {
+          await _repo.deleteToolEvents(preset.id);
+          await _repo.deleteGeminiThoughtSignature(preset.id);
+        } catch (e) {
+          debugPrint(
+            '[PresetSync] fidelity cleanup failed for ${preset.id}: $e',
+          );
+        }
+      }
+    }
+    await _repo.deletePresetMessages(conversationId);
+
+    if (realMessages.isEmpty) {
+      // Fresh conversation: keep a clear-context split consistent. A split
+      // at 0 is a no-op marker and stays; any positive split excluded (some
+      // of) the old preset block, so the replacement keeps the context empty
+      // by excluding all new presets.
+      final shiftedTruncateIndex = conversation.truncateIndex <= 0
+          ? conversation.truncateIndex
+          : normalized.length;
+      if (shiftedTruncateIndex != conversation.truncateIndex) {
+        conversation.truncateIndex = shiftedTruncateIndex;
+        conversation.updatedAt = DateTime.now();
+        if (!_draftConversations.containsKey(conversationId)) {
+          await _saveConversation(conversation);
+        }
+      }
+      // Append the new list through the standard add path, which also
+      // promotes a draft exactly like the new-conversation injection does.
+      await appendPresetMessages(
+        conversationId: conversationId,
+        presets: presets,
+      );
+      await _refreshConversation(conversationId);
+      _messagesCache.remove(conversationId);
+      notifyListeners();
+      return true;
+    }
+
+    // Conversation with real messages: insert the new presets at the top.
+    // Provisional orders collide with the real rows' compacted orders; the
+    // reindex inside updateConversationMessages converges everything (the
+    // message_order index is not unique).
+    final presetIds = <String>[];
+    for (var i = 0; i < normalized.length; i++) {
+      final row = ChatMessage(
+        role: normalized[i].role,
+        content: normalized[i].content,
+        conversationId: conversationId,
+        isPreset: true,
+      );
+      presetIds.add(row.id);
+      await _repo.putMessage(row, messageOrder: i);
+    }
+
+    final orderedIds = <String>[...presetIds, ...realMessages.map((m) => m.id)];
+    conversation.truncateIndex = _shiftTruncateIndexForPresetReplacement(
+      conversation.truncateIndex,
+      removedPresets: existingPresets.length,
+      addedPresets: presetIds.length,
+    );
+    conversation.updatedAt = DateTime.now();
+    conversation.messageIds
+      ..clear()
+      ..addAll(orderedIds);
+    await _repo.updateConversationMessages(
+      conversation: conversation,
+      messageIds: orderedIds,
+    );
+    _messagesCache.remove(conversationId);
+    notifyListeners();
+    return true;
+  }
+
+  /// Applies the current preset payload to every persisted, non-group
+  /// conversation owned by [assistantId] (issue #577 "apply to all
+  /// conversations"). Returns the number of conversations whose rows
+  /// changed and the number whose rewrite failed. A per-conversation failure
+  /// is logged, counted and skipped so one bad conversation cannot abort the
+  /// batch.
+  Future<({int touched, int failed})> syncPresetMessagesForAssistant({
+    required String assistantId,
+    required List<Map<String, String>> presets,
+  }) async {
+    if (!initialized) {
+      debugPrint(
+        '[PresetSync] assistant-wide sync skipped for $assistantId: '
+        'not initialized',
+      );
+      return (touched: 0, failed: 0);
+    }
+    final targetIds = _conversationsCache.values
+        .where(
+          (c) =>
+              !c.isGroup &&
+              c.assistantId == assistantId &&
+              !isTemporaryConversation(c.id),
+        )
+        .map((c) => c.id)
+        .toList(growable: false);
+    var touched = 0;
+    var failed = 0;
+    for (final id in targetIds) {
+      try {
+        if (await syncPresetMessages(conversationId: id, presets: presets)) {
+          touched++;
+        }
+      } catch (e, st) {
+        failed++;
+        debugPrint('[PresetSync] assistant-wide sync failed for $id: $e\n$st');
+      }
+    }
+    if (touched > 0) notifyListeners();
+    return (touched: touched, failed: failed);
+  }
+
+  bool _presetRowsMatchPayload(
+    List<ChatMessage> rows,
+    List<({String role, String content})> payload,
+  ) {
+    if (rows.length != payload.length) return false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].role != payload[i].role) return false;
+      if (rows[i].content != payload[i].content) return false;
+    }
+    return true;
+  }
+
+  /// Shifts a clear-context split point across a preset replacement: the old
+  /// split excluded [removedPresets] preset rows that are gone and now has
+  /// [addedPresets] new ones at the top. A negative result means the old
+  /// split pointed inside the preset block; clamp to 0 (exclude nothing)
+  /// rather than dropping the marker entirely.
+  ///
+  /// `index <= 0` is a "no truncation" value (`0` excludes nothing) and is
+  /// preserved as-is — shifting it would silently exclude leading presets.
+  int _shiftTruncateIndexForPresetReplacement(
+    int index, {
+    required int removedPresets,
+    required int addedPresets,
+  }) {
+    if (index <= 0) return index;
+    final shifted = index - removedPresets + addedPresets;
+    if (shifted < 0) {
+      debugPrint(
+        '[PresetSync] truncateIndex $index clamped to 0 '
+        '(removed=$removedPresets added=$addedPresets)',
+      );
+      return 0;
+    }
+    return shifted;
+  }
+
   Future<bool> _deleteDraftConversation(String id) async {
     if (!_draftConversations.containsKey(id)) return false;
 
@@ -1495,6 +1778,33 @@ class ChatService extends ChangeNotifier {
     }
     notifyListeners();
     return message;
+  }
+
+  /// Serializes preset-sync rewrites for a single conversation (issue #577).
+  /// Failures are still reported to the originating caller, but never block a
+  /// later sync.
+  Future<T> _enqueuePresetSync<T>(
+    String conversationId,
+    Future<T> Function() operation,
+  ) {
+    final previous = _presetSyncTails[conversationId] ?? Future<void>.value();
+    final result = previous.then<T>(
+      (_) => operation(),
+      onError: (Object _, StackTrace __) => operation(),
+    );
+    final tail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    _presetSyncTails[conversationId] = tail;
+    unawaited(
+      tail.then<void>((_) {
+        if (identical(_presetSyncTails[conversationId], tail)) {
+          _presetSyncTails.remove(conversationId);
+        }
+      }),
+    );
+    return result;
   }
 
   /// Serializes proactive-care writes for a single conversation. Failures are
