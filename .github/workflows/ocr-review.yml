@@ -52,7 +52,17 @@ jobs:
   code-review:
     name: OpenCodeReview
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # OCR CLI 启动器（bin/ocr.js）默认在后台 detached 自查更新，并执行
+    # npm i -g @alibaba-group/open-code-review@latest：它会替换 /usr/local/bin/ocr，
+    # 与同 job 里并发的 ocr 调用竞争（2026-09-10 首次运行即因此崩在 Configure OCR：
+    # Cannot find module '/usr/local/bin/ocr'），还会把 ocr_version 的 pin 换成 latest。
+    # 官方 action.yml 未设置该开关，必须自己关；runner 无 last-update-check，首跑必触发。
+    env:
+      OCR_NO_UPDATE: '1'
+    # 60 分钟上限的依据：本机 75 个真实 OCR 会话实测中位 9.6 分钟、p90 17.6 分钟；
+    # 再用最近 22 个 PR 的 --preview 标定，中位 8.9 分钟、p90 21.1 分钟，
+    # 最大 49.6 分钟（上游同步类 PR、61 个可审文件）。30 分钟会把这类 PR 整个取消。
+    timeout-minutes: 60
     # PR 事件直接跑；评论触发必须是「人类 + 有写权限」，避免任意评论消耗 LLM 配额。
     if: |
       github.event_name == 'pull_request_target'
