@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/chat_input_data.dart';
 import '../models/conversation.dart';
 import '../models/group_chat.dart';
 import '../models/group_chat_member.dart';
@@ -28,6 +29,14 @@ class GroupChatProvider extends ChangeNotifier {
   final Map<String, List<GroupChatMember>> _membersByGroup = {};
   final Map<String, List<GroupChatDirectorRuntimeLog>> _runtimeDirectorLogs =
       {};
+
+  /// Session-level stash for a queued send that outlives its page:
+  /// GroupChatView stashes its one-slot pending send on dispose (mobile
+  /// route pop) so the queued text is not silently lost; a freshly mounted
+  /// view for the same group takes it back and auto-drains (mirrors the
+  /// single-chat per-conversation queue drain). In-memory only — process
+  /// death loses it, same as the single-chat queue. Cleared with the group.
+  final Map<String, ChatInputData> _pendingQueuedInput = {};
   bool _loaded = false;
 
   bool get loaded => _loaded;
@@ -43,6 +52,7 @@ class GroupChatProvider extends ChangeNotifier {
       ..addAll(list);
     _membersByGroup.clear();
     _runtimeDirectorLogs.clear();
+    _pendingQueuedInput.clear();
     for (final g in list) {
       _membersByGroup[g.id] = await _chatService.repo.getGroupMembers(g.id);
     }
@@ -84,6 +94,28 @@ class GroupChatProvider extends ChangeNotifier {
       logs.removeRange(0, logs.length - maxRuntimeDirectorLogsPerGroup);
     }
     notifyListeners();
+  }
+
+  /// Stashes a queued send for [groupChatId] so it survives the page being
+  /// disposed (mobile route pop). Callers must not stash for a group that no
+  /// longer exists. Notifies listeners: a view of the same group that mounted
+  /// before this stash landed (the disposing route can outlive the new one's
+  /// first frame during the pop animation) picks it up from the notification.
+  void stashQueuedInput(String groupChatId, ChatInputData input) {
+    _pendingQueuedInput[groupChatId] = input;
+    notifyListeners();
+  }
+
+  /// Takes (and removes) the stashed queued send for [groupChatId], if any.
+  ChatInputData? takeQueuedInput(String groupChatId) {
+    return _pendingQueuedInput.remove(groupChatId);
+  }
+
+  /// Whether a stash exists for [groupChatId], without consuming it. Lets a
+  /// mounted view cheaply decide whether a provider notification is a stash
+  /// handoff worth a post-frame drain check.
+  bool hasQueuedInput(String groupChatId) {
+    return _pendingQueuedInput.containsKey(groupChatId);
   }
 
   /// Latest public message preview for list subtitle.
@@ -312,6 +344,9 @@ class GroupChatProvider extends ChangeNotifier {
     _groups.removeWhere((g) => g.id == groupChatId);
     _membersByGroup.remove(groupChatId);
     _runtimeDirectorLogs.remove(groupChatId);
+    // A queued send of a deleted group must never resurrect as a send into
+    // a fresh view (or leak in memory).
+    _pendingQueuedInput.remove(groupChatId);
     notifyListeners();
   }
 }
