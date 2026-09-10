@@ -32,7 +32,7 @@ abstract final class PlatformUtils {
   static bool get isIOS => Platform.isIOS;
 
   static Future<void> restartApp() async {
-    if (Platform.isAndroid) {
+    if (defaultTargetPlatform == TargetPlatform.android || isDesktopTarget) {
       await Restart.restartApp();
     } else {
       exit(0);
