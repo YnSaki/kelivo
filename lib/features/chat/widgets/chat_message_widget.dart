@@ -6498,8 +6498,8 @@ class _ReasoningSectionState extends State<_ReasoningSection>
     // Android-like surface style
     final curve = const Cubic(0.2, 0.8, 0.2, 1);
 
-    // Build a compact header; the current summary is rendered below it when
-    // the card is collapsed.
+    // Build a compact header; while reasoning is active, the current summary
+    // is rendered below it when the card is collapsed.
     Widget header = IosCardPress(
       borderRadius: BorderRadius.circular(12),
       baseColor: Colors.transparent,
