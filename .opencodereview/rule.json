@@ -3,7 +3,8 @@
   "exclude": [
     "lib/l10n/app_localizations*.dart",
     "**/*.g.dart",
-    "**/*.freezed.dart"
+    "**/*.freezed.dart",
+    "**/*_test.dart"
   ],
   "rules": [
     {
