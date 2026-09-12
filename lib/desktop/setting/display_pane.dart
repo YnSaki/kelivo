@@ -2467,6 +2467,7 @@ class _ToggleRowCollapsedReasoningPreview extends StatelessWidget {
     final sp = context.watch<SettingsProvider>();
     return _ToggleRow(
       label: l10n.displaySettingsPageShowCollapsedReasoningPreviewTitle,
+      subtitle: l10n.displaySettingsPageShowCollapsedReasoningPreviewSubtitle,
       value: sp.showCollapsedReasoningPreview,
       onChanged: (v) =>
           context.read<SettingsProvider>().setShowCollapsedReasoningPreview(v),

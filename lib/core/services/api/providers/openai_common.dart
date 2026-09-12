@@ -639,9 +639,11 @@ String _responsesReasoningKey(dynamic rawObj, {required bool isSummary}) {
 /// that has not been emitted yet. Final (`*.done`) payloads repeat the whole
 /// text, so emit the missing suffix instead of duplicating it.
 ///
-/// [textByKey] tracks the per-key stream state; [streamedByItemId] tracks
-/// everything emitted for an item across keys, which is what a terminal item
-/// is eventually compared against.
+/// [textByKey] tracks the per-key stream state. [streamedByItemId] tracks
+/// everything already shown for an item, across keys and summary parts; every
+/// emitted fragment is appended there — including fragments that came from a
+/// `*.done` payload — so a terminal item can be compared against the complete
+/// text no matter which namespace carried it.
 String? _emitResponsesReasoningDelta(
   Map<String, String> textByKey,
   Map<String, String> streamedByItemId,
@@ -661,11 +663,9 @@ String? _emitResponsesReasoningDelta(
   }
   if (delta.isEmpty) return null;
   textByKey[key] = '$previous$delta';
-  if (!isFinal) {
-    final itemId = rawObj is Map ? (rawObj['item_id'] ?? '').toString() : '';
-    if (itemId.isNotEmpty) {
-      streamedByItemId[itemId] = '${streamedByItemId[itemId] ?? ''}$delta';
-    }
+  final itemId = rawObj is Map ? (rawObj['item_id'] ?? '').toString() : '';
+  if (itemId.isNotEmpty) {
+    streamedByItemId[itemId] = '${streamedByItemId[itemId] ?? ''}$delta';
   }
   return delta;
 }
@@ -684,7 +684,11 @@ String? _emitResponsesReasoningItemText(
   final summary = _responsesReasoningValue(item['summary']);
   final text = content.isNotEmpty ? content : summary;
   if (text.isEmpty) return null;
-  final itemId = (item['id'] ?? '').toString();
+  final rawItemId = (item['id'] ?? '').toString();
+  // Items without an id would otherwise share one bucket and dedupe against
+  // each other's text, silently dropping valid reasoning; fall back to the
+  // output index so each item keeps its own aggregate.
+  final itemId = rawItemId.isNotEmpty ? rawItemId : 'idx:${outputIndex ?? -1}';
   final streamed = streamedByItemId[itemId] ?? '';
   if (streamed.isNotEmpty) {
     if (text == streamed || streamed.startsWith(text)) return null;
@@ -699,7 +703,7 @@ String? _emitResponsesReasoningItemText(
     textByKey,
     streamedByItemId,
     <String, dynamic>{
-      'item_id': item['id'],
+      'item_id': itemId,
       if (outputIndex != null) 'output_index': outputIndex,
       'summary_index': 0,
     },
@@ -2443,13 +2447,13 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     );
   }
 
-  String? emitResponsesReasoningItem(Map item) {
+  String? emitResponsesReasoningItem(Map item, {int? outputIndex}) {
     final itemId = (item['id'] ?? '').toString();
     return _emitResponsesReasoningItemText(
       respReasoningTextByKey,
       respReasoningStreamedByItemId,
       item,
-      outputIndex: respOutputItemIndexesById[itemId],
+      outputIndex: outputIndex ?? respOutputItemIndexesById[itemId],
     );
   }
 
@@ -3182,9 +3186,17 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               lastResponseOutputItems = terminalItems.isNotEmpty
                   ? terminalItems
                   : capturedResponsesOutputItems();
-              for (final item in lastResponseOutputItems) {
+              for (
+                var index = 0;
+                index < lastResponseOutputItems.length;
+                index++
+              ) {
+                final item = lastResponseOutputItems[index];
                 if (item['type'] != 'reasoning') continue;
-                final reasoningItemText = emitResponsesReasoningItem(item);
+                final reasoningItemText = emitResponsesReasoningItem(
+                  item,
+                  outputIndex: index,
+                );
                 if (reasoningItemText != null && reasoningItemText.isNotEmpty) {
                   yield ChatStreamChunk(
                     content: '',
@@ -3523,6 +3535,23 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     <String, String>{};
                 final Map<String, String> reasoning2StreamedByItemId =
                     <String, String>{};
+                // Output items seen while streaming this round, so a terminal
+                // payload that omits `output` can still replay them.
+                final Map<int, Map<String, dynamic>> roundItemsByIndex =
+                    <int, Map<String, dynamic>>{};
+
+                ChatStreamChunk? reasoningChunk(String? delta) {
+                  if (delta == null || delta.isEmpty) {
+                    return null;
+                  }
+                  return ChatStreamChunk(
+                    content: '',
+                    reasoning: delta,
+                    isDone: false,
+                    totalTokens: 0,
+                    usage: usage,
+                  );
+                }
                 await for (final ch in _ensureTrailingNewline(s2)) {
                   buf2 += ch;
                   final lines2 = buf2.split('\n');
@@ -3556,23 +3585,16 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                             'response.reasoning_summary_text.delta';
                         final delta = (o['delta'] ?? '').toString();
                         if (delta.isNotEmpty) {
-                          final reasoningDelta = _emitResponsesReasoningDelta(
-                            reasoning2TextByKey,
-                            reasoning2StreamedByItemId,
-                            o,
-                            delta,
-                            isSummary: isSummary,
+                          final chunk = reasoningChunk(
+                            _emitResponsesReasoningDelta(
+                              reasoning2TextByKey,
+                              reasoning2StreamedByItemId,
+                              o,
+                              delta,
+                              isSummary: isSummary,
+                            ),
                           );
-                          if (reasoningDelta != null &&
-                              reasoningDelta.isNotEmpty) {
-                            yield ChatStreamChunk(
-                              content: '',
-                              reasoning: reasoningDelta,
-                              isDone: false,
-                              totalTokens: 0,
-                              usage: usage,
-                            );
-                          }
+                          if (chunk != null) yield chunk;
                         }
                       } else if (o is Map &&
                           ((o['type'] ?? '') ==
@@ -3584,47 +3606,38 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                             'response.reasoning_summary_text.done';
                         final doneText = (o['text'] ?? '').toString();
                         if (doneText.isNotEmpty) {
-                          final reasoningDelta = _emitResponsesReasoningDelta(
-                            reasoning2TextByKey,
-                            reasoning2StreamedByItemId,
-                            o,
-                            doneText,
-                            isSummary: isSummary,
-                            isFinal: true,
+                          final chunk = reasoningChunk(
+                            _emitResponsesReasoningDelta(
+                              reasoning2TextByKey,
+                              reasoning2StreamedByItemId,
+                              o,
+                              doneText,
+                              isSummary: isSummary,
+                              isFinal: true,
+                            ),
                           );
-                          if (reasoningDelta != null &&
-                              reasoningDelta.isNotEmpty) {
-                            yield ChatStreamChunk(
-                              content: '',
-                              reasoning: reasoningDelta,
-                              isDone: false,
-                              totalTokens: 0,
-                              usage: usage,
-                            );
-                          }
+                          if (chunk != null) yield chunk;
                         }
                       } else if (o is Map &&
                           (o['type'] ?? '') == 'response.output_item.added') {
                         final item = o['item'];
                         final idx2 = (o['output_index'] ?? 0) as int? ?? 0;
+                        if (item is Map) {
+                          roundItemsByIndex[idx2] = Map<String, dynamic>.from(
+                            item,
+                          );
+                        }
                         if (item is Map &&
                             (item['type'] ?? '') == 'reasoning') {
-                          final reasoningDelta = _emitResponsesReasoningItemText(
-                            reasoning2TextByKey,
-                            reasoning2StreamedByItemId,
-                            item,
-                            outputIndex: idx2,
+                          final chunk = reasoningChunk(
+                            _emitResponsesReasoningItemText(
+                              reasoning2TextByKey,
+                              reasoning2StreamedByItemId,
+                              item,
+                              outputIndex: idx2,
+                            ),
                           );
-                          if (reasoningDelta != null &&
-                              reasoningDelta.isNotEmpty) {
-                            yield ChatStreamChunk(
-                              content: '',
-                              reasoning: reasoningDelta,
-                              isDone: false,
-                              totalTokens: 0,
-                              usage: usage,
-                            );
-                          }
+                          if (chunk != null) yield chunk;
                         } else if (item is Map &&
                             (item['type'] ?? '') == 'function_call') {
                           respCalls2[idx2] = {
@@ -3649,24 +3662,22 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                           (o['type'] ?? '') == 'response.output_item.done') {
                         final item = o['item'];
                         final idx2 = (o['output_index'] ?? 0) as int? ?? 0;
+                        if (item is Map) {
+                          roundItemsByIndex[idx2] = Map<String, dynamic>.from(
+                            item,
+                          );
+                        }
                         if (item is Map &&
                             (item['type'] ?? '') == 'reasoning') {
-                          final reasoningDelta = _emitResponsesReasoningItemText(
-                            reasoning2TextByKey,
-                            reasoning2StreamedByItemId,
-                            item,
-                            outputIndex: idx2,
+                          final chunk = reasoningChunk(
+                            _emitResponsesReasoningItemText(
+                              reasoning2TextByKey,
+                              reasoning2StreamedByItemId,
+                              item,
+                              outputIndex: idx2,
+                            ),
                           );
-                          if (reasoningDelta != null &&
-                              reasoningDelta.isNotEmpty) {
-                            yield ChatStreamChunk(
-                              content: '',
-                              reasoning: reasoningDelta,
-                              isDone: false,
-                              totalTokens: 0,
-                              usage: usage,
-                            );
-                          }
+                          if (chunk != null) yield chunk;
                         } else if (item is Map &&
                             (item['type'] ?? '') == 'function_call') {
                           final args = (item['arguments'] ?? '').toString();
@@ -3688,34 +3699,48 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                           o['response']?['usage'],
                         );
                         totalTokens = usage?.totalTokens ?? totalTokens;
-                        // capture output items
+                        // Capture output items, falling back to the items
+                        // seen while streaming when the terminal payload omits
+                        // them (mirrors the outer stream's capture map).
+                        final terminalItems = <Map<String, dynamic>>[];
                         final out2 = o['response']?['output'];
                         if (out2 is List) {
-                          outItems2 = [
-                            for (final it in out2)
-                              if (it is Map) (it.cast<String, dynamic>()),
-                          ];
-                          // A terminal item may be the only carrier of the
-                          // round's reasoning; emit what was not streamed.
-                          for (final it in outItems2) {
-                            if (it['type'] != 'reasoning') continue;
-                            final reasoningDelta =
-                                _emitResponsesReasoningItemText(
-                                  reasoning2TextByKey,
-                                  reasoning2StreamedByItemId,
-                                  it,
-                                );
-                            if (reasoningDelta != null &&
-                                reasoningDelta.isNotEmpty) {
-                              yield ChatStreamChunk(
-                                content: '',
-                                reasoning: reasoningDelta,
-                                isDone: false,
-                                totalTokens: 0,
-                                usage: usage,
-                              );
-                            }
+                          for (
+                            var index = 0;
+                            index < out2.length;
+                            index++
+                          ) {
+                            final rawItem = out2[index];
+                            if (rawItem is! Map) continue;
+                            final item = Map<String, dynamic>.from(rawItem);
+                            roundItemsByIndex[index] = item;
+                            terminalItems.add(item);
                           }
+                        }
+                        if (terminalItems.isNotEmpty) {
+                          outItems2 = terminalItems;
+                        } else {
+                          final indexes = roundItemsByIndex.keys.toList()
+                            ..sort();
+                          outItems2 = [
+                            for (final index in indexes)
+                              roundItemsByIndex[index]!,
+                          ];
+                        }
+                        // A terminal item may be the only carrier of the
+                        // round's reasoning; emit what was not streamed.
+                        for (var index = 0; index < outItems2.length; index++) {
+                          final it = outItems2[index];
+                          if (it['type'] != 'reasoning') continue;
+                          final chunk = reasoningChunk(
+                            _emitResponsesReasoningItemText(
+                              reasoning2TextByKey,
+                              reasoning2StreamedByItemId,
+                              it,
+                              outputIndex: index,
+                            ),
+                          );
+                          if (chunk != null) yield chunk;
                         }
                       }
                     } catch (_) {}
