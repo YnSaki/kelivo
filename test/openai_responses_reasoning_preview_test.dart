@@ -278,6 +278,67 @@ void main() {
       );
     });
 
+    test('dedupes a summary-only terminal item against reasoning deltas', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      server.listen((request) async {
+        await utf8.decoder.bind(request).join();
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType(
+          'text',
+          'event-stream',
+        );
+        void send(Map<String, dynamic> event) {
+          request.response.write('data: ${jsonEncode(event)}\n\n');
+        }
+
+        send({
+          'type': 'response.reasoning_text.delta',
+          'item_id': 'rs_namespace',
+          'output_index': 0,
+          'summary_index': 0,
+          'delta': 'Streamed as reasoning text',
+        });
+        send({'type': 'response.output_text.delta', 'delta': 'Answer'});
+        send({
+          'type': 'response.completed',
+          'response': {
+            'output': [
+              {
+                'id': 'rs_namespace',
+                'type': 'reasoning',
+                'content': const <dynamic>[],
+                // Gateway exposes the same text under `summary` on the
+                // terminal item even though the deltas were reasoning parts.
+                'summary': const [
+                  {'type': 'summary_text', 'text': 'Streamed as reasoning text'},
+                ],
+              },
+            ],
+          },
+        });
+        await request.response.close();
+      });
+
+      final chunks = await ChatApiService.sendMessageStream(
+        config: _responsesConfig(_baseUrl(server)),
+        modelId: 'gpt-5',
+        messages: const [
+          {'role': 'user', 'content': 'hi'},
+        ],
+      ).toList();
+
+      expect(chunks.map((c) => c.content).join(), 'Answer');
+      // The dedup namespace follows the delta stream, not the terminal field.
+      expect(
+        chunks.map((c) => c.reasoning ?? '').join(),
+        'Streamed as reasoning text',
+      );
+    });
+
     test('does not replay the previous round after a tool follow-up', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() async {

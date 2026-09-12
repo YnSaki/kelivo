@@ -112,7 +112,7 @@ class _DisplaySettingsBody extends StatelessWidget {
                   _RowDivider(),
                   _ToggleRowAutoCollapseThinking(),
                   _RowDivider(),
-                  _ToggleRowShowCollapsedReasoningPreview(),
+                  _ToggleRowCollapsedReasoningPreview(),
                   _RowDivider(),
                   _ToggleRowCollapseThinkingSteps(),
                   _RowDivider(),
@@ -2459,8 +2459,8 @@ class _ToggleRowAutoCollapseThinking extends StatelessWidget {
   }
 }
 
-class _ToggleRowShowCollapsedReasoningPreview extends StatelessWidget {
-  const _ToggleRowShowCollapsedReasoningPreview();
+class _ToggleRowCollapsedReasoningPreview extends StatelessWidget {
+  const _ToggleRowCollapsedReasoningPreview();
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;

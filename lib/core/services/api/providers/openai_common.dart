@@ -2335,6 +2335,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       <int, Map<String, dynamic>>{};
   final Map<String, int> respOutputItemIndexesById = <String, int>{};
   final Map<String, String> respReasoningTextByKey = <String, String>{};
+  // Which namespace the delta stream used for an item (`summary:` vs
+  // `reasoning:`), keyed by item id. Terminal items can carry the same text
+  // under a different field than the deltas did, and the dedup lookup has to
+  // follow the stream, not the field.
+  final Map<String, bool> respReasoningIsSummaryByItemId = <String, bool>{};
 
   void rememberResponsesOutputItem(int index, Map item) {
     final copied = Map<String, dynamic>.from(item);
@@ -2368,6 +2373,12 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     }
     if (delta.isEmpty) return null;
     respReasoningTextByKey[key] = '$previous$delta';
+    if (!isFinal) {
+      final itemId = rawObj is Map ? (rawObj['item_id'] ?? '').toString() : '';
+      if (itemId.isNotEmpty) {
+        respReasoningIsSummaryByItemId[itemId] = isSummary;
+      }
+    }
     return delta;
   }
 
@@ -2376,10 +2387,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     final summary = _responsesReasoningValue(item['summary']);
     final text = content.isNotEmpty ? content : summary;
     if (text.isEmpty) return null;
-    // Derive the dedup namespace from the field that produced the text so the
-    // terminal item is compared against the delta stream that carried it.
-    final isSummary = content.isEmpty;
     final itemId = (item['id'] ?? '').toString();
+    // Follow the namespace the deltas used for this item; only fall back to
+    // the field that produced the text when no delta was ever seen. Some
+    // gateways stream `reasoning_text.delta` but expose the terminal text
+    // under `summary` (and vice versa), which would otherwise miss the
+    // accumulated entry and re-emit the whole block.
+    final isSummary =
+        respReasoningIsSummaryByItemId[itemId] ?? content.isEmpty;
     return emitResponsesReasoning(
       <String, dynamic>{
         'item_id': item['id'],
@@ -3135,13 +3150,18 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   );
                 }
               }
-              // Round-scoped bookkeeping: a tool follow-up round reuses this
-              // generator, so the capture and dedup maps must not leak into
-              // the next request (unlike `lastResponseOutputItems`, which is
-              // the payload handed to the next round on purpose).
+              // Round-scoped bookkeeping captured from streaming events. It
+              // has served its purpose once the terminal payload arrived, so
+              // release it here rather than holding reasoning text and output
+              // items for the rest of the generator's lifetime. Rounds after
+              // the first one are parsed by the follow-up loop with its own
+              // per-round state, so nothing re-reads these maps; the tool-call
+              // accumulators (`respToolCallsByIndex`, `toolAccResp`) are read
+              // in this same iteration and therefore stay untouched.
               respOutputItemsByIndex.clear();
               respOutputItemIndexesById.clear();
               respReasoningTextByKey.clear();
+              respReasoningIsSummaryByItemId.clear();
               if (output is List) {
                 int idx = 1;
                 final seen = <String>{};
