@@ -339,6 +339,72 @@ void main() {
       );
     });
 
+    test('dedupes multi-part summary deltas against the terminal item', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      server.listen((request) async {
+        await utf8.decoder.bind(request).join();
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType(
+          'text',
+          'event-stream',
+        );
+        void send(Map<String, dynamic> event) {
+          request.response.write('data: ${jsonEncode(event)}\n\n');
+        }
+
+        send({
+          'type': 'response.reasoning_summary_text.delta',
+          'item_id': 'rs_parts',
+          'output_index': 0,
+          'summary_index': 0,
+          'delta': 'First part. ',
+        });
+        send({
+          'type': 'response.reasoning_summary_text.delta',
+          'item_id': 'rs_parts',
+          'output_index': 0,
+          'summary_index': 1,
+          'delta': 'Second part.',
+        });
+        send({'type': 'response.output_text.delta', 'delta': 'Answer'});
+        send({
+          'type': 'response.completed',
+          'response': {
+            'output': [
+              {
+                'id': 'rs_parts',
+                'type': 'reasoning',
+                'content': const <dynamic>[],
+                'summary': const [
+                  {'type': 'summary_text', 'text': 'First part. '},
+                  {'type': 'summary_text', 'text': 'Second part.'},
+                ],
+              },
+            ],
+          },
+        });
+        await request.response.close();
+      });
+
+      final chunks = await ChatApiService.sendMessageStream(
+        config: _responsesConfig(_baseUrl(server)),
+        modelId: 'gpt-5',
+        messages: const [
+          {'role': 'user', 'content': 'hi'},
+        ],
+      ).toList();
+
+      expect(chunks.map((c) => c.content).join(), 'Answer');
+      expect(
+        chunks.map((c) => c.reasoning ?? '').join(),
+        'First part. Second part.',
+      );
+    });
+
     test('does not replay the previous round after a tool follow-up', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() async {
@@ -467,6 +533,102 @@ void main() {
       expect(
         'ROUND_ONE_REASONING'.allMatches(jsonEncode(requestBodies[2])).length,
         1,
+      );
+    });
+
+    test('keeps reasoning streamed by the tool follow-up round', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+      var requestCount = 0;
+
+      server.listen((request) async {
+        await utf8.decoder.bind(request).join();
+        requestCount += 1;
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType(
+          'text',
+          'event-stream',
+        );
+        void send(Map<String, dynamic> event) {
+          request.response.write('data: ${jsonEncode(event)}\n\n');
+        }
+
+        if (requestCount == 1) {
+          send({
+            'type': 'response.output_item.added',
+            'output_index': 0,
+            'item': {
+              'id': 'fc_1',
+              'type': 'function_call',
+              'call_id': 'call_1',
+              'name': 'lookup',
+              'arguments': '{}',
+            },
+          });
+          send({
+            'type': 'response.function_call_arguments.delta',
+            'output_index': 0,
+            'delta': '{}',
+          });
+          send({
+            'type': 'response.completed',
+            'response': {
+              'output': [
+                {
+                  'id': 'fc_1',
+                  'type': 'function_call',
+                  'call_id': 'call_1',
+                  'name': 'lookup',
+                  'arguments': '{}',
+                },
+              ],
+            },
+          });
+        } else {
+          send({
+            'type': 'response.reasoning_summary_text.delta',
+            'item_id': 'rs_followup',
+            'output_index': 0,
+            'summary_index': 0,
+            'delta': 'FOLLOW_UP_REASONING',
+          });
+          send({'type': 'response.output_text.delta', 'delta': 'FINAL'});
+          send({
+            'type': 'response.completed',
+            'response': {
+              'output': [
+                {
+                  'id': 'rs_followup',
+                  'type': 'reasoning',
+                  'content': const <dynamic>[],
+                  'summary': const [
+                    {'type': 'summary_text', 'text': 'FOLLOW_UP_REASONING'},
+                  ],
+                },
+              ],
+            },
+          });
+        }
+        await request.response.close();
+      });
+
+      final chunks = await ChatApiService.sendMessageStream(
+        config: _responsesConfig(_baseUrl(server)),
+        modelId: 'gpt-5',
+        messages: const [
+          {'role': 'user', 'content': 'hi'},
+        ],
+        onToolCall: (name, args, {toolCallId}) async => 'tool-result',
+      ).toList();
+
+      expect(requestCount, 2);
+      expect(chunks.map((c) => c.content).join(), contains('FINAL'));
+      // Reasoning from the follow-up round used to be dropped entirely.
+      expect(
+        chunks.map((c) => c.reasoning ?? '').join(),
+        'FOLLOW_UP_REASONING',
       );
     });
   });

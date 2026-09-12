@@ -635,6 +635,80 @@ String _responsesReasoningKey(dynamic rawObj, {required bool isSummary}) {
   return '$prefix:$itemId:$outputIndex:$summaryIndex';
 }
 
+/// Accumulates reasoning text per stream key and returns only the fragment
+/// that has not been emitted yet. Final (`*.done`) payloads repeat the whole
+/// text, so emit the missing suffix instead of duplicating it.
+///
+/// [textByKey] tracks the per-key stream state; [streamedByItemId] tracks
+/// everything emitted for an item across keys, which is what a terminal item
+/// is eventually compared against.
+String? _emitResponsesReasoningDelta(
+  Map<String, String> textByKey,
+  Map<String, String> streamedByItemId,
+  dynamic rawObj,
+  String text, {
+  required bool isSummary,
+  bool isFinal = false,
+}) {
+  final key = _responsesReasoningKey(rawObj, isSummary: isSummary);
+  final previous = textByKey[key] ?? '';
+  var delta = text;
+  if (isFinal) {
+    if (text == previous || previous.startsWith(text)) return null;
+    if (text.startsWith(previous)) {
+      delta = text.substring(previous.length);
+    }
+  }
+  if (delta.isEmpty) return null;
+  textByKey[key] = '$previous$delta';
+  if (!isFinal) {
+    final itemId = rawObj is Map ? (rawObj['item_id'] ?? '').toString() : '';
+    if (itemId.isNotEmpty) {
+      streamedByItemId[itemId] = '${streamedByItemId[itemId] ?? ''}$delta';
+    }
+  }
+  return delta;
+}
+
+/// Emits the reasoning carried by a `reasoning` output item. The item repeats
+/// what was streamed for it, possibly under a different field or concatenated
+/// from several summary parts, so compare against the per-item aggregate and
+/// only emit what is still missing.
+String? _emitResponsesReasoningItemText(
+  Map<String, String> textByKey,
+  Map<String, String> streamedByItemId,
+  Map item, {
+  int? outputIndex,
+}) {
+  final content = _responsesReasoningValue(item['content']);
+  final summary = _responsesReasoningValue(item['summary']);
+  final text = content.isNotEmpty ? content : summary;
+  if (text.isEmpty) return null;
+  final itemId = (item['id'] ?? '').toString();
+  final streamed = streamedByItemId[itemId] ?? '';
+  if (streamed.isNotEmpty) {
+    if (text == streamed || streamed.startsWith(text)) return null;
+    final delta = text.startsWith(streamed)
+        ? text.substring(streamed.length)
+        : text;
+    if (delta.isEmpty) return null;
+    streamedByItemId[itemId] = text;
+    return delta;
+  }
+  return _emitResponsesReasoningDelta(
+    textByKey,
+    streamedByItemId,
+    <String, dynamic>{
+      'item_id': item['id'],
+      if (outputIndex != null) 'output_index': outputIndex,
+      'summary_index': 0,
+    },
+    text,
+    isSummary: content.isEmpty,
+    isFinal: true,
+  );
+}
+
 String _stripDataUrlPrefix(String dataUrl) {
   final commaIndex = dataUrl.indexOf(',');
   if (commaIndex >= 0 && commaIndex + 1 < dataUrl.length) {
@@ -2335,11 +2409,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       <int, Map<String, dynamic>>{};
   final Map<String, int> respOutputItemIndexesById = <String, int>{};
   final Map<String, String> respReasoningTextByKey = <String, String>{};
-  // Which namespace the delta stream used for an item (`summary:` vs
-  // `reasoning:`), keyed by item id. Terminal items can carry the same text
-  // under a different field than the deltas did, and the dedup lookup has to
-  // follow the stream, not the field.
-  final Map<String, bool> respReasoningIsSummaryByItemId = <String, bool>{};
+  // Everything already streamed for a reasoning item — across namespaces and
+  // summary parts. A terminal item repeats that text (possibly under another
+  // field or concatenated from several summary parts), so the final dedup
+  // compares against this aggregate rather than a single key.
+  final Map<String, String> respReasoningStreamedByItemId = <String, String>{};
 
   void rememberResponsesOutputItem(int index, Map item) {
     final copied = Map<String, dynamic>.from(item);
@@ -2353,58 +2427,29 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     return [for (final index in indexes) respOutputItemsByIndex[index]!];
   }
 
-  /// Accumulates reasoning text per stream key and returns only the fragment
-  /// that has not been emitted yet. Final (`*.done` / item) payloads repeat
-  /// the whole text, so emit the missing suffix instead of duplicating it.
   String? emitResponsesReasoning(
     dynamic rawObj,
     String text, {
     required bool isSummary,
     bool isFinal = false,
   }) {
-    final key = _responsesReasoningKey(rawObj, isSummary: isSummary);
-    final previous = respReasoningTextByKey[key] ?? '';
-    var delta = text;
-    if (isFinal) {
-      if (text == previous || previous.startsWith(text)) return null;
-      if (text.startsWith(previous)) {
-        delta = text.substring(previous.length);
-      }
-    }
-    if (delta.isEmpty) return null;
-    respReasoningTextByKey[key] = '$previous$delta';
-    if (!isFinal) {
-      final itemId = rawObj is Map ? (rawObj['item_id'] ?? '').toString() : '';
-      if (itemId.isNotEmpty) {
-        respReasoningIsSummaryByItemId[itemId] = isSummary;
-      }
-    }
-    return delta;
+    return _emitResponsesReasoningDelta(
+      respReasoningTextByKey,
+      respReasoningStreamedByItemId,
+      rawObj,
+      text,
+      isSummary: isSummary,
+      isFinal: isFinal,
+    );
   }
 
   String? emitResponsesReasoningItem(Map item) {
-    final content = _responsesReasoningValue(item['content']);
-    final summary = _responsesReasoningValue(item['summary']);
-    final text = content.isNotEmpty ? content : summary;
-    if (text.isEmpty) return null;
     final itemId = (item['id'] ?? '').toString();
-    // Follow the namespace the deltas used for this item; only fall back to
-    // the field that produced the text when no delta was ever seen. Some
-    // gateways stream `reasoning_text.delta` but expose the terminal text
-    // under `summary` (and vice versa), which would otherwise miss the
-    // accumulated entry and re-emit the whole block.
-    final isSummary =
-        respReasoningIsSummaryByItemId[itemId] ?? content.isEmpty;
-    return emitResponsesReasoning(
-      <String, dynamic>{
-        'item_id': item['id'],
-        if (respOutputItemIndexesById[itemId] != null)
-          'output_index': respOutputItemIndexesById[itemId],
-        'summary_index': 0,
-      },
-      text,
-      isSummary: isSummary,
-      isFinal: true,
+    return _emitResponsesReasoningItemText(
+      respReasoningTextByKey,
+      respReasoningStreamedByItemId,
+      item,
+      outputIndex: respOutputItemIndexesById[itemId],
     );
   }
 
@@ -3161,7 +3206,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               respOutputItemsByIndex.clear();
               respOutputItemIndexesById.clear();
               respReasoningTextByKey.clear();
-              respReasoningIsSummaryByItemId.clear();
+              respReasoningStreamedByItemId.clear();
               if (output is List) {
                 int idx = 1;
                 final seen = <String>{};
@@ -3472,6 +3517,12 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     <int, Map<String, String>>{};
                 List<Map<String, dynamic>> outItems2 =
                     const <Map<String, dynamic>>[];
+                // Reasoning stream state for this follow-up round only; the
+                // round-scoped maps of the outer stream are not reused here.
+                final Map<String, String> reasoning2TextByKey =
+                    <String, String>{};
+                final Map<String, String> reasoning2StreamedByItemId =
+                    <String, String>{};
                 await for (final ch in _ensureTrailingNewline(s2)) {
                   buf2 += ch;
                   final lines2 = buf2.split('\n');
@@ -3496,10 +3547,85 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                           );
                         }
                       } else if (o is Map &&
+                          ((o['type'] ?? '') ==
+                                  'response.reasoning_summary_text.delta' ||
+                              (o['type'] ?? '') ==
+                                  'response.reasoning_text.delta')) {
+                        final isSummary =
+                            (o['type'] ?? '') ==
+                            'response.reasoning_summary_text.delta';
+                        final delta = (o['delta'] ?? '').toString();
+                        if (delta.isNotEmpty) {
+                          final reasoningDelta = _emitResponsesReasoningDelta(
+                            reasoning2TextByKey,
+                            reasoning2StreamedByItemId,
+                            o,
+                            delta,
+                            isSummary: isSummary,
+                          );
+                          if (reasoningDelta != null &&
+                              reasoningDelta.isNotEmpty) {
+                            yield ChatStreamChunk(
+                              content: '',
+                              reasoning: reasoningDelta,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
+                        }
+                      } else if (o is Map &&
+                          ((o['type'] ?? '') ==
+                                  'response.reasoning_summary_text.done' ||
+                              (o['type'] ?? '') ==
+                                  'response.reasoning_text.done')) {
+                        final isSummary =
+                            (o['type'] ?? '') ==
+                            'response.reasoning_summary_text.done';
+                        final doneText = (o['text'] ?? '').toString();
+                        if (doneText.isNotEmpty) {
+                          final reasoningDelta = _emitResponsesReasoningDelta(
+                            reasoning2TextByKey,
+                            reasoning2StreamedByItemId,
+                            o,
+                            doneText,
+                            isSummary: isSummary,
+                            isFinal: true,
+                          );
+                          if (reasoningDelta != null &&
+                              reasoningDelta.isNotEmpty) {
+                            yield ChatStreamChunk(
+                              content: '',
+                              reasoning: reasoningDelta,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
+                        }
+                      } else if (o is Map &&
                           (o['type'] ?? '') == 'response.output_item.added') {
                         final item = o['item'];
                         final idx2 = (o['output_index'] ?? 0) as int? ?? 0;
                         if (item is Map &&
+                            (item['type'] ?? '') == 'reasoning') {
+                          final reasoningDelta = _emitResponsesReasoningItemText(
+                            reasoning2TextByKey,
+                            reasoning2StreamedByItemId,
+                            item,
+                            outputIndex: idx2,
+                          );
+                          if (reasoningDelta != null &&
+                              reasoningDelta.isNotEmpty) {
+                            yield ChatStreamChunk(
+                              content: '',
+                              reasoning: reasoningDelta,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
+                        } else if (item is Map &&
                             (item['type'] ?? '') == 'function_call') {
                           respCalls2[idx2] = {
                             'call_id': (item['call_id'] ?? '').toString(),
@@ -3524,6 +3650,24 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                         final item = o['item'];
                         final idx2 = (o['output_index'] ?? 0) as int? ?? 0;
                         if (item is Map &&
+                            (item['type'] ?? '') == 'reasoning') {
+                          final reasoningDelta = _emitResponsesReasoningItemText(
+                            reasoning2TextByKey,
+                            reasoning2StreamedByItemId,
+                            item,
+                            outputIndex: idx2,
+                          );
+                          if (reasoningDelta != null &&
+                              reasoningDelta.isNotEmpty) {
+                            yield ChatStreamChunk(
+                              content: '',
+                              reasoning: reasoningDelta,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
+                        } else if (item is Map &&
                             (item['type'] ?? '') == 'function_call') {
                           final args = (item['arguments'] ?? '').toString();
                           final entry = respCalls2.putIfAbsent(
@@ -3551,6 +3695,27 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                             for (final it in out2)
                               if (it is Map) (it.cast<String, dynamic>()),
                           ];
+                          // A terminal item may be the only carrier of the
+                          // round's reasoning; emit what was not streamed.
+                          for (final it in outItems2) {
+                            if (it['type'] != 'reasoning') continue;
+                            final reasoningDelta =
+                                _emitResponsesReasoningItemText(
+                                  reasoning2TextByKey,
+                                  reasoning2StreamedByItemId,
+                                  it,
+                                );
+                            if (reasoningDelta != null &&
+                                reasoningDelta.isNotEmpty) {
+                              yield ChatStreamChunk(
+                                content: '',
+                                reasoning: reasoningDelta,
+                                isDone: false,
+                                totalTokens: 0,
+                                usage: usage,
+                              );
+                            }
+                          }
                         }
                       }
                     } catch (_) {}
