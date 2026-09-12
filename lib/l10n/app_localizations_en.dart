@@ -5720,7 +5720,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get displaySettingsPageShowCollapsedReasoningPreviewSubtitle =>
-      'Show the latest thought with animation while a thinking card is collapsed.';
+      'Show the latest thought with animation while a thinking card is collapsed';
 
   @override
   String get displaySettingsPageCollapseThinkingStepsTitle =>

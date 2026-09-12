@@ -2376,7 +2376,9 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     final summary = _responsesReasoningValue(item['summary']);
     final text = content.isNotEmpty ? content : summary;
     if (text.isEmpty) return null;
-    final isSummary = item['summary'] is List;
+    // Derive the dedup namespace from the field that produced the text so the
+    // terminal item is compared against the delta stream that carried it.
+    final isSummary = content.isEmpty;
     final itemId = (item['id'] ?? '').toString();
     return emitResponsesReasoning(
       <String, dynamic>{
@@ -3133,6 +3135,13 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   );
                 }
               }
+              // Round-scoped bookkeeping: a tool follow-up round reuses this
+              // generator, so the capture and dedup maps must not leak into
+              // the next request (unlike `lastResponseOutputItems`, which is
+              // the payload handed to the next round on purpose).
+              respOutputItemsByIndex.clear();
+              respOutputItemIndexesById.clear();
+              respReasoningTextByKey.clear();
               if (output is List) {
                 int idx = 1;
                 final seen = <String>{};
